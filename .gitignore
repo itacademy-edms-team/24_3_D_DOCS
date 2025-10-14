@@ -1,0 +1,25 @@
+# infra
+terraform.tfvars
+cloud-config.yml.tpl
+terraform.tfstate.backup
+.terraform
+
+# Local
+.DS_Store
+*.local
+*.log*
+
+# Dist
+node_modules
+dist/
+
+# Profile
+.rspack-profile-*/
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# env
+.env
