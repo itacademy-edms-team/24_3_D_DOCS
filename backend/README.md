@@ -6,26 +6,49 @@ ASP.NET Core Web API проект с PostgreSQL и Redis.
 
 ```
 backend/
-├── Controllers/          # API контроллеры
+├── Controllers/
+│   └── AuthController.cs          # JWT авторизация (register, login, refresh, logout)
 ├── Models/
-│   ├── Entities/        # Entity модели (User, Schema)
-│   └── DTOs/            # Data Transfer Objects
-│       ├── Auth/        # DTOs для авторизации
+│   ├── Entities/
+│   │   ├── User.cs                # Entity модель пользователя
+│   │   └── Schema.cs              # Entity модель схемы
+│   └── DTOs/
+│       ├── Auth/                  # DTOs для авторизации
+│       │   ├── LoginRequestDTO.cs
+│       │   ├── LoginResponseDTO.cs
+│       │   ├── RegisterRequestDTO.cs
+│       │   ├── RefreshTokenRequestDTO.cs
+│       │   └── TokenResponseDTO.cs
 │       ├── UserDTO.cs
 │       └── SchemaDTO.cs
+├── Services/
+│   └── Auth/
+│       ├── IPasswordHasher.cs     # Интерфейс хеширования паролей
+│       ├── PasswordHasher.cs      # BCrypt хеширование
+│       ├── IJwtService.cs         # Интерфейс работы с JWT
+│       ├── JwtService.cs          # Генерация и валидация JWT
+│       ├── IAuthService.cs        # Интерфейс авторизации
+│       └── AuthService.cs         # Бизнес-логика авторизации
 ├── Provider/
-│   ├── Database/        # ApplicationDbContext
-│   └── Redis/           # Redis сервис (токены, blacklist, rate limiting)
-├── Migrations/          # EF Core миграции
-└── Program.cs           # Точка входа
+│   ├── Database/
+│   │   └── ApplicationDbContext.cs  # EF Core DbContext
+│   └── Redis/
+│       ├── IRedisService.cs       # Интерфейс Redis
+│       └── RedisService.cs        # Redis (токены, blacklist, rate limiting)
+├── Migrations/                    # EF Core миграции
+├── Program.cs                     # Точка входа, DI, middleware
+└── RusalProject.http              # HTTP запросы для тестирования API
 ```
 
 ## Технологии
 
-- **ASP.NET Core 9.0**
-- **PostgreSQL** (через Npgsql.EntityFrameworkCore.PostgreSQL)
-- **Redis** (через StackExchange.Redis)
-- **Entity Framework Core** для миграций
+- **ASP.NET Core 9.0** - Web API framework
+- **PostgreSQL** (через Npgsql.EntityFrameworkCore.PostgreSQL 9.0.4)
+- **Redis** (через StackExchange.Redis 2.9.32)
+- **Entity Framework Core 9.0** - ORM и миграции
+- **BCrypt.Net-Next 4.0.3** - хеширование паролей
+- **System.IdentityModel.Tokens.Jwt 8.14.0** - работа с JWT
+- **Microsoft.AspNetCore.Authentication.JwtBearer 9.0.10** - JWT middleware
 
 ## Конфигурация
 

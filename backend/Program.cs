@@ -1,6 +1,10 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
+using RusalProject.Services.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +21,39 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Redis Configuration
 var redisConnection = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
 builder.Services.AddSingleton<IRedisService>(sp => new RedisService(redisConnection));
+
+// Auth Services
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+// JWT Authentication Configuration
+var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] 
+    ?? throw new InvalidOperationException("JWT SecretKey is not configured");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "RusalProject";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "RusalProject-Client";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecretKey)),
+        ValidateIssuer = true,
+        ValidIssuer = jwtIssuer,
+        ValidateAudience = true,
+        ValidAudience = jwtAudience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddAuthorization();
 
 // CORS Configuration
 builder.Services.AddCors(options =>
@@ -45,6 +82,7 @@ app.UseHttpsRedirection();
 
 app.UseCors("AllowFrontend");
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

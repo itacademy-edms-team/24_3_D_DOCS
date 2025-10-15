@@ -1,6 +1,46 @@
-@RusalProject_HostAddress = http://localhost:5159
+@host = http://localhost:5000
+@accessToken = your_access_token_here
 
-GET {{RusalProject_HostAddress}}/weatherforecast/
-Accept: application/json
+### Register new user
+POST {{host}}/api/auth/register
+Content-Type: application/json
 
-###
+{
+  "email": "test@example.com",
+  "password": "password123",
+  "name": "Test User"
+}
+
+### Login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### Refresh Token
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "your_refresh_token_here"
+}
+
+### Get current user info (requires authentication)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{accessToken}}
+
+### Logout
+POST {{host}}/api/auth/logout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "refreshToken": "your_refresh_token_here"
+}
+
+### Logout from all devices
+POST {{host}}/api/auth/logout-all
+Authorization: Bearer {{accessToken}}
