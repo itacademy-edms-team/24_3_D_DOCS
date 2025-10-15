@@ -1,0 +1,6 @@
+@RusalProject_HostAddress = http://localhost:5159
+
+GET {{RusalProject_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
