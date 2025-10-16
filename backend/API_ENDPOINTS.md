@@ -79,7 +79,7 @@ Base URL: `/api/auth`
 
 **POST** `/api/auth/refresh`
 
-⚠️ **TODO:** Требует доработки архитектуры хранения
+✅ **Fully Implemented** - использует refresh token rotation для безопасности
 
 **Request:**
 ```json
@@ -99,9 +99,13 @@ Base URL: `/api/auth`
 ```
 
 **Errors:**
-- `401 Unauthorized` - Невалидный refresh token
-- `501 Not Implemented` - Метод требует доработки
+- `401 Unauthorized` - Невалидный, истекший refresh token или пользователь не найден
 - `500 Internal Server Error` - Внутренняя ошибка сервера
+
+**Security Features:**
+- Token Rotation: при обновлении старый refresh token удаляется, выдается новый
+- Двойное хранение: refresh token хранится и в основном хранилище, и в mapping (token → userId)
+- Automatic cleanup: истекшие токены автоматически удаляются Redis TTL
 
 ---
 

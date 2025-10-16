@@ -78,22 +78,65 @@ public class AuthService : IAuthService
     {
         var refreshToken = request.RefreshToken;
 
-        // Поиск refresh token в Redis
-        // Нужно получить userId из токена, но у нас только сам токен
-        // Поэтому мы ищем по паттерну (не оптимально, но работает)
-        // В production лучше хранить mapping токена на userId
+        // Получаем userId по refresh token из mapping
+        var userId = await _redisService.GetUserIdByRefreshTokenAsync(refreshToken);
         
-        // Альтернативный подход: проверяем все пользователей (не оптимально!)
-        // Лучше хранить отдельный индекс token -> userId в Redis
+        if (userId == null)
+        {
+            throw new UnauthorizedAccessException("Невалидный или истекший refresh token");
+        }
+
+        // Проверяем, что refresh token существует в основном хранилище
+        var tokenData = await _redisService.GetRefreshTokenAsync(userId.Value, refreshToken);
         
-        // Для простоты, предположим что мы можем найти по паттерну
-        // В реальности стоит добавить отдельное хранилище для маппинга
+        if (tokenData == null)
+        {
+            throw new UnauthorizedAccessException("Невалидный или истекший refresh token");
+        }
+
+        // Получаем пользователя из БД
+        var user = await _context.Users.FindAsync(userId.Value);
         
-        throw new NotImplementedException("RefreshToken требует доработки архитектуры хранения");
+        if (user == null)
+        {
+            throw new UnauthorizedAccessException("Пользователь не найден");
+        }
+
+        // Удаляем старый refresh token
+        await _redisService.DeleteRefreshTokenAsync(userId.Value, refreshToken);
+        await _redisService.DeleteRefreshTokenMappingAsync(refreshToken);
+
+        // Генерируем новые токены
+        var newAccessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Role);
+        var newRefreshToken = _jwtService.GenerateRefreshToken();
         
-        // TODO: Реализовать правильное хранение refresh токенов
-        // Вариант 1: Хранить mapping refresh_token:userId отдельно
-        // Вариант 2: Хранить refresh токены в БД
+        var accessTokenExpiration = _jwtService.GetTokenExpiration();
+        var refreshTokenExpiration = _jwtService.GetRefreshTokenExpiration();
+        var refreshTokenTtl = refreshTokenExpiration - DateTime.UtcNow;
+
+        // Сохраняем новый refresh token
+        var metadata = $"{{\"userId\":\"{user.Id}\",\"createdAt\":\"{DateTime.UtcNow:O}\",\"rotated\":true}}";
+        
+        await _redisService.SaveRefreshTokenAsync(
+            user.Id,
+            newRefreshToken,
+            refreshTokenTtl,
+            metadata
+        );
+        
+        await _redisService.SaveRefreshTokenMappingAsync(
+            newRefreshToken,
+            user.Id,
+            refreshTokenTtl
+        );
+
+        return new TokenResponseDTO
+        {
+            AccessToken = newAccessToken,
+            RefreshToken = newRefreshToken,
+            AccessTokenExpiration = accessTokenExpiration,
+            RefreshTokenExpiration = refreshTokenExpiration
+        };
     }
 
     public async Task LogoutAsync(string accessToken, string refreshToken)
@@ -118,12 +161,21 @@ public class AuthService : IAuthService
 
         // Удаляем refresh token из Redis
         await _redisService.DeleteRefreshTokenAsync(userId.Value, refreshToken);
+        await _redisService.DeleteRefreshTokenMappingAsync(refreshToken);
     }
 
     public async Task LogoutAllAsync(Guid userId)
     {
-        // Удаляем все refresh токены пользователя
+        // Получаем все refresh токены пользователя
+        var refreshTokens = await _redisService.GetAllRefreshTokensByUserIdAsync(userId);
+        
+        // Удаляем все refresh токены и их mapping'и
         await _redisService.DeleteAllUserRefreshTokensAsync(userId);
+        
+        foreach (var token in refreshTokens)
+        {
+            await _redisService.DeleteRefreshTokenMappingAsync(token);
+        }
     }
 
     // Private helper methods
@@ -147,6 +199,13 @@ public class AuthService : IAuthService
             refreshToken,
             refreshTokenTtl,
             metadata
+        );
+        
+        // Сохранение mapping refresh_token → userId для быстрого поиска
+        await _redisService.SaveRefreshTokenMappingAsync(
+            refreshToken,
+            user.Id,
+            refreshTokenTtl
         );
 
         // Формирование ответа

@@ -13,6 +13,12 @@ public interface IRedisService
     Task<string?> GetRefreshTokenAsync(Guid userId, string refreshToken);
     Task<bool> DeleteRefreshTokenAsync(Guid userId, string refreshToken);
     Task<bool> DeleteAllUserRefreshTokensAsync(Guid userId);
+    
+    // Refresh Token Mapping operations (token → userId для быстрого поиска)
+    Task<bool> SaveRefreshTokenMappingAsync(string refreshToken, Guid userId, TimeSpan expiry);
+    Task<Guid?> GetUserIdByRefreshTokenAsync(string refreshToken);
+    Task<bool> DeleteRefreshTokenMappingAsync(string refreshToken);
+    Task<List<string>> GetAllRefreshTokensByUserIdAsync(Guid userId);
 
     // Blacklist operations (для Access Token)
     Task<bool> AddToBlacklistAsync(string jti, TimeSpan expiry);

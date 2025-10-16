@@ -75,6 +75,56 @@ public class RedisService : IRedisService
 
     #endregion
 
+    #region Refresh Token Mapping Operations
+
+    public async Task<bool> SaveRefreshTokenMappingAsync(string refreshToken, Guid userId, TimeSpan expiry)
+    {
+        var key = $"refresh_token_mapping:{refreshToken}";
+        return await _database.StringSetAsync(key, userId.ToString(), expiry);
+    }
+
+    public async Task<Guid?> GetUserIdByRefreshTokenAsync(string refreshToken)
+    {
+        var key = $"refresh_token_mapping:{refreshToken}";
+        var value = await _database.StringGetAsync(key);
+        
+        if (value.HasValue && Guid.TryParse(value.ToString(), out var userId))
+        {
+            return userId;
+        }
+        
+        return null;
+    }
+
+    public async Task<bool> DeleteRefreshTokenMappingAsync(string refreshToken)
+    {
+        var key = $"refresh_token_mapping:{refreshToken}";
+        return await _database.KeyDeleteAsync(key);
+    }
+
+    public async Task<List<string>> GetAllRefreshTokensByUserIdAsync(Guid userId)
+    {
+        var pattern = $"refresh_token:{userId}:*";
+        var server = _redis.GetServer(_redis.GetEndPoints().First());
+        var keys = server.Keys(pattern: pattern).ToArray();
+        
+        var tokens = new List<string>();
+        foreach (var key in keys)
+        {
+            // Извлекаем токен из ключа: refresh_token:{userId}:{token}
+            var keyString = key.ToString();
+            var parts = keyString.Split(':');
+            if (parts.Length == 3)
+            {
+                tokens.Add(parts[2]);
+            }
+        }
+        
+        return tokens;
+    }
+
+    #endregion
+
     #region Blacklist Operations
 
     public async Task<bool> AddToBlacklistAsync(string jti, TimeSpan expiry)

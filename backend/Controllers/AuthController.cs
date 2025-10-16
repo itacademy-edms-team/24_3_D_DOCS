@@ -84,10 +84,6 @@ public class AuthController : ControllerBase
         {
             return Unauthorized(new { message = ex.Message });
         }
-        catch (NotImplementedException ex)
-        {
-            return StatusCode(501, new { message = ex.Message });
-        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during token refresh");
