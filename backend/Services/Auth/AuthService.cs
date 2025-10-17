@@ -141,22 +141,25 @@ public class AuthService : IAuthService
 
     public async Task LogoutAsync(string accessToken, string refreshToken)
     {
-        // Получаем userId и jti из access token
-        var userId = _jwtService.GetUserIdFromToken(accessToken);
-        var jti = _jwtService.GetJtiFromToken(accessToken);
-
-        if (userId == null || jti == null)
+        // Получаем userId из access token
+        // Примечание: если токен expired, logout всё равно должен работать
+        Guid? userId;
+        try
         {
-            throw new UnauthorizedAccessException("Невалидный токен");
+            userId = _jwtService.GetUserIdFromToken(accessToken);
+        }
+        catch
+        {
+            // Если токен expired, пытаемся извлечь userId напрямую без валидации
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(accessToken);
+            var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            userId = Guid.TryParse(userIdClaim, out var id) ? id : null;
         }
 
-        // Добавляем access token в blacklist
-        var tokenExpiration = _jwtService.GetTokenExpiration();
-        var ttl = tokenExpiration - DateTime.UtcNow;
-        
-        if (ttl > TimeSpan.Zero)
+        if (userId == null)
         {
-            await _redisService.AddToBlacklistAsync(jti, ttl);
+            throw new UnauthorizedAccessException("Невалидный токен");
         }
 
         // Удаляем refresh token из Redis
