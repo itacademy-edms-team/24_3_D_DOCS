@@ -36,7 +36,7 @@ backend/
 │       ├── IRedisService.cs       # Интерфейс Redis
 │       └── RedisService.cs        # Redis (токены, blacklist, rate limiting)
 ├── Migrations/                    # EF Core миграции
-├── Program.cs                     # Точка входа, DI, middleware
+├── Program.cs                     
 └── RusalProject.http              # HTTP запросы для тестирования API
 ```
 
@@ -50,26 +50,6 @@ backend/
 - **System.IdentityModel.Tokens.Jwt 8.14.0** - работа с JWT
 - **Microsoft.AspNetCore.Authentication.JwtBearer 9.0.10** - JWT middleware
 
-## Конфигурация
-
-### appsettings.json
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=postgres;Port=5432;Database=rusal_db;Username=postgres;Password=postgres",
-    "Redis": "redis:6379"
-  }
-}
-```
-
-### appsettings.Development.json
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=rusal_db;Username=postgres;Password=postgres",
-    "Redis": "localhost:6379"
-  }
-}
 ```
 
 ## База данных
