@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rusal_postgres
+    environment:
+      POSTGRES_USER: rusal_user
+      POSTGRES_PASSWORD: rusal_password
+      POSTGRES_DB: rusal_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rusal_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rusal_user -d rusal_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: rusal_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - rusal_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rusal_backend
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5159
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=rusal_db;Username=rusal_user;Password=rusal_password"
+      ConnectionStrings__Redis: "redis:6379"
+      Jwt__SecretKey: "your-super-secret-jwt-key-change-this-in-production-minimum-32-characters"
+      Jwt__Issuer: "RusalProject"
+      Jwt__Audience: "RusalProject-Client"
+      Jwt__AccessTokenExpirationMinutes: "60"
+      Jwt__RefreshTokenExpirationDays: "30"
+    ports:
+      - "5159:5159"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - rusal_network
+    restart: unless-stopped
+
+networks:
+  rusal_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+
