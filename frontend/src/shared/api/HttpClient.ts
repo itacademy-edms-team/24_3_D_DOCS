@@ -63,16 +63,18 @@ class HttpClient {
   }
 
   private errorHandler(error: AxiosError) {
-    const status = error.status;
-    const message = error.message;
+    const status = error.response?.status || error.status;
+    // Получаем сообщение с бэкенда
+    const backendMessage = (error.response?.data as any)?.message;
+    const message = backendMessage || error.message;
 
     switch (status) {
       case 404:
-        return Promise.reject(new NotFoundError(`Ресурс не найден | ${message}`));
+        return Promise.reject(new NotFoundError(message));
       case 400:
-        return Promise.reject(new BadRequest(`Неверный запрос | ${message}`));
+        return Promise.reject(new BadRequest(message));
       case 500:
-      return Promise.reject(new ServerError(`Ошибка сервера | ${message}`));
+        return Promise.reject(new ServerError(message));
       default:
         return Promise.reject(new HttpError(status || 500, message));
     }

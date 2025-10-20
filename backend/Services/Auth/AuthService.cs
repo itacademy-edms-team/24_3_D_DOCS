@@ -4,6 +4,7 @@ using RusalProject.Models.DTOs.Auth;
 using RusalProject.Models.Entities;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
+using RusalProject.Services.Email;
 
 namespace RusalProject.Services.Auth;
 
@@ -13,22 +14,71 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
     private readonly IRedisService _redisService;
+    private readonly IEmailService _emailService;
 
     public AuthService(
         ApplicationDbContext context,
         IPasswordHasher passwordHasher,
         IJwtService jwtService,
-        IRedisService redisService)
+        IRedisService redisService,
+        IEmailService emailService)
     {
         _context = context;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _redisService = redisService;
+        _emailService = emailService;
     }
 
-    public async Task<LoginResponseDTO> RegisterAsync(RegisterRequestDTO request)
+    public async Task SendVerificationCodeAsync(SendVerificationCodeRequestDTO request)
     {
         // Проверка существования пользователя
+        var existingUser = await _context.Users
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+        if (existingUser != null)
+        {
+            throw new InvalidOperationException("Пользователь с таким email уже существует");
+        }
+
+        // Генерируем код
+        var code = _emailService.GenerateVerificationCode();
+        
+        // Хешируем пароль и сохраняем данные в Redis (на 10 минут)
+        var passwordHash = _passwordHasher.HashPassword(request.Password);
+        await _redisService.SavePendingUserAsync(request.Email, passwordHash, request.Name, TimeSpan.FromMinutes(10));
+        
+        // Сохраняем код в Redis (на 10 минут)
+        await _redisService.SaveVerificationCodeAsync(request.Email, code, TimeSpan.FromMinutes(10));
+        
+        // Отправляем email
+        await _emailService.SendVerificationCodeAsync(request.Email, code);
+    }
+
+    public async Task<LoginResponseDTO> RegisterAsync(VerifyEmailRequestDTO request)
+    {
+        // Получаем сохраненный код
+        var savedCode = await _redisService.GetVerificationCodeAsync(request.Email);
+        
+        if (savedCode == null)
+        {
+            throw new InvalidOperationException("Код верификации истек или не найден. Запросите новый код.");
+        }
+
+        if (savedCode != request.Code)
+        {
+            throw new InvalidOperationException("Неверный код верификации");
+        }
+
+        // Получаем данные пользователя из Redis
+        var (passwordHash, name) = await _redisService.GetPendingUserAsync(request.Email);
+        
+        if (passwordHash == null || name == null)
+        {
+            throw new InvalidOperationException("Данные регистрации истекли. Начните регистрацию заново.");
+        }
+
+        // Проверяем еще раз, не зарегистрировался ли кто-то с этим email
         var existingUser = await _context.Users
             .FirstOrDefaultAsync(u => u.Email == request.Email);
 
@@ -41,13 +91,17 @@ public class AuthService : IAuthService
         var user = new User
         {
             Email = request.Email,
-            Name = request.Name,
-            PasswordHash = _passwordHasher.HashPassword(request.Password),
+            Name = name,
+            PasswordHash = passwordHash,
             Role = "User"
         };
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
+
+        // Удаляем данные из Redis
+        await _redisService.DeleteVerificationCodeAsync(request.Email);
+        await _redisService.DeletePendingUserAsync(request.Email);
 
         // Генерация токенов
         return await GenerateTokensForUser(user);

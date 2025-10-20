@@ -20,12 +20,36 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Регистрация нового пользователя
+    /// Отправка кода верификации на email
+    /// </summary>
+    [HttpPost("send-verification")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SendVerificationCode([FromBody] SendVerificationCodeRequestDTO request)
+    {
+        try
+        {
+            await _authService.SendVerificationCodeAsync(request);
+            return Ok(new { message = "Код верификации отправлен на email" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending verification code");
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Регистрация нового пользователя с проверкой кода
     /// </summary>
     [HttpPost("register")]
     [ProducesResponseType(typeof(LoginResponseDTO), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Register([FromBody] RegisterRequestDTO request)
+    public async Task<IActionResult> Register([FromBody] VerifyEmailRequestDTO request)
     {
         try
         {

@@ -170,5 +170,55 @@ public class RedisService : IRedisService
     }
 
     #endregion
+
+    #region Email Verification Operations
+
+    public async Task<bool> SaveVerificationCodeAsync(string email, string code, TimeSpan expiry)
+    {
+        var key = $"verification:{email.ToLower()}";
+        return await _database.StringSetAsync(key, code, expiry);
+    }
+
+    public async Task<string?> GetVerificationCodeAsync(string email)
+    {
+        var key = $"verification:{email.ToLower()}";
+        return await _database.StringGetAsync(key);
+    }
+
+    public async Task<bool> DeleteVerificationCodeAsync(string email)
+    {
+        var key = $"verification:{email.ToLower()}";
+        return await _database.KeyDeleteAsync(key);
+    }
+
+    public async Task<bool> SavePendingUserAsync(string email, string passwordHash, string name, TimeSpan expiry)
+    {
+        var key = $"pending_user:{email.ToLower()}";
+        var data = $"{passwordHash}|{name}";
+        return await _database.StringSetAsync(key, data, expiry);
+    }
+
+    public async Task<(string? passwordHash, string? name)> GetPendingUserAsync(string email)
+    {
+        var key = $"pending_user:{email.ToLower()}";
+        var data = await _database.StringGetAsync(key);
+        
+        if (data.IsNullOrEmpty)
+            return (null, null);
+        
+        var parts = data.ToString().Split('|');
+        if (parts.Length != 2)
+            return (null, null);
+        
+        return (parts[0], parts[1]);
+    }
+
+    public async Task<bool> DeletePendingUserAsync(string email)
+    {
+        var key = $"pending_user:{email.ToLower()}";
+        return await _database.KeyDeleteAsync(key);
+    }
+
+    #endregion
 }
 

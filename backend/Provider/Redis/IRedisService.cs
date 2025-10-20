@@ -28,5 +28,13 @@ public interface IRedisService
     Task<long> IncrementLoginAttemptsAsync(string identifier, TimeSpan expiry);
     Task<long> GetLoginAttemptsAsync(string identifier);
     Task<bool> ResetLoginAttemptsAsync(string identifier);
+
+    // Email Verification operations
+    Task<bool> SaveVerificationCodeAsync(string email, string code, TimeSpan expiry);
+    Task<string?> GetVerificationCodeAsync(string email);
+    Task<bool> DeleteVerificationCodeAsync(string email);
+    Task<bool> SavePendingUserAsync(string email, string passwordHash, string name, TimeSpan expiry);
+    Task<(string? passwordHash, string? name)> GetPendingUserAsync(string email);
+    Task<bool> DeletePendingUserAsync(string email);
 }
 

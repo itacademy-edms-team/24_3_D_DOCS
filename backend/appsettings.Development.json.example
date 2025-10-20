@@ -16,5 +16,15 @@
     "Audience": "RusalProject-Client",
     "AccessTokenExpirationMinutes": 60,
     "RefreshTokenExpirationDays": 7
+  },
+  "Email": {
+    "EnableEmailSending": false,
+    "FromName": "Rusal Project",
+    "FromAddress": "your-email@gmail.com",
+    "SmtpHost": "smtp.gmail.com",
+    "SmtpPort": 587,
+    "SmtpUsername": "your-email@gmail.com",
+    "SmtpPassword": "your-app-password-here"
   }
 }
+

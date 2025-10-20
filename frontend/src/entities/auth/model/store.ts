@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import AuthAPI from '../api/AuthAPI';
-import type { User, LoginRequest, RegisterRequest } from './types';
+import type { User, LoginRequest, SendVerificationRequest, VerifyEmailRequest } from './types';
 
 interface AuthState {
 	user: User | null;
@@ -13,7 +13,8 @@ interface AuthState {
 
 	// Actions
 	login: (data: LoginRequest) => Promise<void>;
-	register: (data: RegisterRequest) => Promise<void>;
+	sendVerification: (data: SendVerificationRequest) => Promise<void>;
+	register: (data: VerifyEmailRequest) => Promise<void>;
 	logout: () => Promise<void>;
 	checkAuth: () => Promise<void>;
 	refreshAccessToken: () => Promise<void>;
@@ -51,26 +52,40 @@ export const useAuthStore = create<AuthState>()(
 				}
 			},
 
-			register: async (data: RegisterRequest) => {
-				try {
-					set({ isLoading: true, error: null });
-					const response = await AuthAPI.register(data);
+		sendVerification: async (data: SendVerificationRequest) => {
+			try {
+				set({ isLoading: true, error: null });
+				await AuthAPI.sendVerification(data);
+				set({ isLoading: false });
+			} catch (error: any) {
+				set({
+					error: error.message || 'Ошибка при отправке кода',
+					isLoading: false,
+				});
+				throw error;
+			}
+		},
 
-					set({
-						user: response.user,
-						accessToken: response.accessToken,
-						refreshToken: response.refreshToken,
-						isAuth: true,
-						isLoading: false,
-					});
-				} catch (error: any) {
-					set({
-						error: error.message || 'Ошибка при регистрации',
-						isLoading: false,
-					});
-					throw error;
-				}
-			},
+		register: async (data: VerifyEmailRequest) => {
+			try {
+				set({ isLoading: true, error: null });
+				const response = await AuthAPI.register(data);
+
+				set({
+					user: response.user,
+					accessToken: response.accessToken,
+					refreshToken: response.refreshToken,
+					isAuth: true,
+					isLoading: false,
+				});
+			} catch (error: any) {
+				set({
+					error: error.message || 'Ошибка при регистрации',
+					isLoading: false,
+				});
+				throw error;
+			}
+		},
 
 			logout: async () => {
 				try {

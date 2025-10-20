@@ -11,10 +11,15 @@ export interface LoginRequest {
 	password: string;
 }
 
-export interface RegisterRequest {
+export interface SendVerificationRequest {
 	email: string;
 	password: string;
 	name: string;
+}
+
+export interface VerifyEmailRequest {
+	email: string;
+	code: string;
 }
 
 export interface AuthResponse {

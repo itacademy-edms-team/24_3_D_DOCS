@@ -33,3 +33,37 @@
 	75% { transform: translateX(4px); }
 }
 
+.error {
+	color: #ff6b6b;
+	text-align: center;
+	font-size: 0.9rem;
+	padding: 0.5rem;
+	background: rgba(255, 107, 107, 0.1);
+	border-radius: 8px;
+}
+
+.codeHint {
+	text-align: center;
+	color: var(--color-text-light);
+	margin-bottom: 1rem;
+	font-size: 0.95rem;
+	line-height: 1.6;
+}
+
+.backButton {
+	background: transparent;
+	border: none;
+	color: var(--color-primary-dark);
+	font-size: 0.9rem;
+	cursor: pointer;
+	padding: 0.5rem;
+	margin-top: 0.5rem;
+	width: 100%;
+	transition: opacity 0.2s;
+	font-weight: 500;
+}
+
+.backButton:hover {
+	opacity: 0.8;
+}
+

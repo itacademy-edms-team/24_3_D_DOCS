@@ -6,9 +6,14 @@ namespace RusalProject.Services.Auth;
 public interface IAuthService
 {
     /// <summary>
-    /// Регистрация нового пользователя
+    /// Отправка кода верификации на email
     /// </summary>
-    Task<LoginResponseDTO> RegisterAsync(RegisterRequestDTO request);
+    Task SendVerificationCodeAsync(SendVerificationCodeRequestDTO request);
+
+    /// <summary>
+    /// Регистрация нового пользователя с проверкой кода
+    /// </summary>
+    Task<LoginResponseDTO> RegisterAsync(VerifyEmailRequestDTO request);
 
     /// <summary>
     /// Вход пользователя

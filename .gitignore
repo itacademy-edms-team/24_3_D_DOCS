@@ -24,6 +24,9 @@ dist/
 # env
 .env
 
+# Backend sensitive config
+backend/appsettings.Development.json
+
 ## C# / .NET
 
 # Build results

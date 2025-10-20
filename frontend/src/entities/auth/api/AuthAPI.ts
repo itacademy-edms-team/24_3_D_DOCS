@@ -5,7 +5,8 @@ import type {
 	LogoutRequest,
 	MeResponse,
 	RefreshTokenRequest,
-	RegisterRequest,
+	SendVerificationRequest,
+	VerifyEmailRequest,
 } from '../model/types';
 
 class AuthAPI extends HttpClient {
@@ -15,8 +16,12 @@ class AuthAPI extends HttpClient {
 		});
 	}
 
-	async register(data: RegisterRequest): Promise<AuthResponse> {
-		return this._post<AuthResponse, RegisterRequest>('/api/auth/register', data);
+	async sendVerification(data: SendVerificationRequest): Promise<{ message: string }> {
+		return this._post<{ message: string }, SendVerificationRequest>('/api/auth/send-verification', data);
+	}
+
+	async register(data: VerifyEmailRequest): Promise<AuthResponse> {
+		return this._post<AuthResponse, VerifyEmailRequest>('/api/auth/register', data);
 	}
 
 	async login(data: LoginRequest): Promise<AuthResponse> {

@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
 using RusalProject.Services.Auth;
+using RusalProject.Services.Email;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,6 +63,7 @@ builder.Services.AddSingleton<IRedisService>(sp => new RedisService(redisConnect
 // Auth Services
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
 // JWT Authentication Configuration
