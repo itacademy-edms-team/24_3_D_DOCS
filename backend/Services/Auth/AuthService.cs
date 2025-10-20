@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RusalProject.Models.DTOs;
 using RusalProject.Models.DTOs.Auth;
 using RusalProject.Models.Entities;
@@ -15,19 +16,22 @@ public class AuthService : IAuthService
     private readonly IJwtService _jwtService;
     private readonly IRedisService _redisService;
     private readonly IEmailService _emailService;
+    private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         ApplicationDbContext context,
         IPasswordHasher passwordHasher,
         IJwtService jwtService,
         IRedisService redisService,
-        IEmailService emailService)
+        IEmailService emailService,
+        ILogger<AuthService> logger)
     {
         _context = context;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _redisService = redisService;
         _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task SendVerificationCodeAsync(SendVerificationCodeRequestDTO request)

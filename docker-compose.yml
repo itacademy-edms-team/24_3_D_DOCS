@@ -48,6 +48,13 @@ services:
       Jwt__Audience: "RusalProject-Client"
       Jwt__AccessTokenExpirationMinutes: "60"
       Jwt__RefreshTokenExpirationDays: "30"
+      Email__EnableEmailSending: "true"
+      Email__FromName: "DDOCS Project"
+      Email__FromAddress: "keramomarraci@gmail.com"
+      Email__SmtpHost: "smtp.gmail.com"
+      Email__SmtpPort: "587"
+      Email__SmtpUsername: "keramomarraci@gmail.com"
+      Email__SmtpPassword: "extw xouf cltn ydfj"
     ports:
       - "5159:5159"
     depends_on:

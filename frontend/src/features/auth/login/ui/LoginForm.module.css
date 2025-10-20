@@ -6,23 +6,21 @@
 }
 
 .title {
-	font-size: 32px;
+	font-size: 28px;
 	font-weight: 700;
 	text-align: center;
 	margin: 0 0 8px 0;
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	-webkit-background-clip: text;
-	-webkit-text-fill-color: transparent;
-	background-clip: text;
+	color: #e4e4e7;
+	letter-spacing: -0.02em;
 }
 
 .apiError {
 	padding: 12px;
-	background: rgba(245, 101, 101, 0.1);
-	border: 1px solid rgba(245, 101, 101, 0.3);
+	background: rgba(239, 68, 68, 0.1);
+	border: 1px solid rgba(239, 68, 68, 0.2);
 	border-radius: 8px;
-	color: #f56565;
-	font-size: 14px;
+	color: #f87171;
+	font-size: 13px;
 	text-align: center;
 	animation: shake 0.3s ease;
 }

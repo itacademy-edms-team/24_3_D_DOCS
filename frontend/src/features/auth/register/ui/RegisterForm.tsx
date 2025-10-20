@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@entities';
-import { Button, Input } from '@ui';
+import { Button, Input, CodeInput } from '@ui';
 import styles from './RegisterForm.module.css';
 
 export const RegisterForm = () => {
@@ -165,24 +165,23 @@ export const RegisterForm = () => {
 			) : (
 				<>
 					<p className={styles.codeHint}>
-						Мы отправили код подтверждения на <strong>{email}</strong>
+						Мы отправили код подтверждения на<br />
+						<strong>{email}</strong>
 					</p>
-					<form onSubmit={handleVerifyCode}>
-						<Input
-							type="text"
-							placeholder="Код из email (6 цифр)"
-							value={code}
-							onChange={(e) => {
-								const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-								setCode(value);
-								if (codeError && value) validateCode(value);
-							}}
-							onBlur={(e) => validateCode(e.target.value)}
-							error={codeError}
-							maxLength={6}
-							autoFocus
-						/>
-
+					<form onSubmit={handleVerifyCode} className={styles.codeForm}>
+						<div className={styles.codeInputWrapper}>
+							<CodeInput
+								length={6}
+								value={code}
+								onChange={(value) => {
+									setCode(value);
+									if (codeError && value) validateCode(value);
+								}}
+								onComplete={(value) => validateCode(value)}
+								autoFocus
+							/>
+						</div>
+						{codeError && <p className={styles.error}>{codeError}</p>}
 						{error && <p className={styles.error}>{error}</p>}
 
 						<Button type="submit" loading={isLoading} fullWidth disabled={code.length !== 6}>

@@ -6,7 +6,7 @@ import { AppLayout } from './layouts';
 import { ProtectedRoute } from './providers';
 
 const AuthPage = lazy(() => import("../pages/auth"));
-const DashboardPage = lazy(() => import("../pages/dashboard"));
+const MainPage = lazy(() => import("../pages/main"));
 
 const router = createBrowserRouter([
   {
@@ -26,7 +26,7 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <PreloadPage>
-              <DashboardPage />
+              <MainPage />
             </PreloadPage>
           </ProtectedRoute>
         ),
@@ -36,7 +36,7 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <PreloadPage>
-              <DashboardPage />
+              <MainPage />
             </PreloadPage>
           </ProtectedRoute>
         ),
