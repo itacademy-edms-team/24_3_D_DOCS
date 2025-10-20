@@ -23,7 +23,23 @@ class HttpClient {
       baseURL: options?.baseURL || BASE_URI || '/api/v1',
       headers: options?.headers,
     });
+
+    // Request interceptor: Add Authorization header
+    this.instance.interceptors.request.use(
+      (config) => {
+        const authData = localStorage.getItem('auth-storage');
+        if (authData) {
+          const { state } = JSON.parse(authData);
+          if (state?.accessToken) {
+            config.headers.Authorization = `Bearer ${state.accessToken}`;
+          }
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
     
+    // Response interceptor: Handle errors
     this.instance.interceptors.response.use(
       (response: AxiosResponse) => response,
       (error: AxiosError) => this.errorHandler(error)

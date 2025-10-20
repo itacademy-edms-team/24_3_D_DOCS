@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -60,6 +58,20 @@ services:
     networks:
       - rusal_network
     restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rusal_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - rusal_network
+    environment:
+      - NODE_ENV=production
 
 networks:
   rusal_network:

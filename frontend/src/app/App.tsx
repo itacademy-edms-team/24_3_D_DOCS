@@ -2,18 +2,17 @@ import React from "react";
 import { RouterProvider } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 
-import { ThemeProvider } from '@gravity-ui/uikit';
-
+import { AuthProvider } from './providers';
 import router from "./routes";
 
 export const App = (): React.JSX.Element => {
 	return (
 		<React.StrictMode>
-			<ThemeProvider>
-				<HelmetProvider>
+			<HelmetProvider>
+				<AuthProvider>
 					<RouterProvider router={router} />
-				</HelmetProvider>
-			</ThemeProvider>
+				</AuthProvider>
+			</HelmetProvider>
 		</React.StrictMode>
 	);
 };
