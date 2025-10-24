@@ -111,19 +111,31 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Apply migrations automatically
+// Apply migrations automatically & warm-up connections
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
+        // Apply migrations
         var context = services.GetRequiredService<ApplicationDbContext>();
         context.Database.Migrate();
         Console.WriteLine("Database migrations applied successfully.");
+        
+        // Warm-up database connection (prevents cold start delay)
+        var userCount = context.Users.Count();
+        Console.WriteLine($"Database warm-up completed. Users count: {userCount}");
+        
+        // Warm-up Redis connection
+        var redisService = services.GetRequiredService<IRedisService>();
+        redisService.SetAsync("warmup:check", "ready", TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+        var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
+        redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
+        Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"An error occurred while migrating the database: {ex.Message}");
+        Console.WriteLine($"An error occurred during startup: {ex.Message}");
     }
 }
 

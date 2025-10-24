@@ -5,6 +5,13 @@
 	width: 100%;
 }
 
+.form form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	width: 100%;
+}
+
 .title {
 	font-size: 28px;
 	font-weight: 700;
