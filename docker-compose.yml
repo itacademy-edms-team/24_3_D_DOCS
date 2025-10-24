@@ -41,20 +41,6 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5159
-      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=rusal_db;Username=rusal_user;Password=rusal_password"
-      ConnectionStrings__Redis: "redis:6379"
-      Jwt__SecretKey: "your-super-secret-jwt-key-change-this-in-production-minimum-32-characters"
-      Jwt__Issuer: "RusalProject"
-      Jwt__Audience: "RusalProject-Client"
-      Jwt__AccessTokenExpirationMinutes: "60"
-      Jwt__RefreshTokenExpirationDays: "30"
-      Email__EnableEmailSending: "true"
-      Email__FromName: "DDOCS Project"
-      Email__FromAddress: "keramomarraci@gmail.com"
-      Email__SmtpHost: "smtp.gmail.com"
-      Email__SmtpPort: "587"
-      Email__SmtpUsername: "keramomarraci@gmail.com"
-      Email__SmtpPassword: "extw xouf cltn ydfj"
     ports:
       - "5159:5159"
     depends_on:

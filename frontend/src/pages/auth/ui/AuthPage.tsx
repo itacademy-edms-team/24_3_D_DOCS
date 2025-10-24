@@ -8,15 +8,10 @@ type Tab = 'login' | 'register';
 
 export const AuthPage = () => {
 	const [activeTab, setActiveTab] = useState<Tab>('login');
-	const [isAnimating, setIsAnimating] = useState(false);
 
 	const handleTabChange = (tab: Tab) => {
 		if (tab === activeTab) return;
-		setIsAnimating(true);
-		setTimeout(() => {
-			setActiveTab(tab);
-			setTimeout(() => setIsAnimating(false), 50);
-		}, 150);
+		setActiveTab(tab);
 	};
 
 	return (
@@ -58,9 +53,9 @@ export const AuthPage = () => {
 						/>
 					</div>
 
-					<div className={`${styles.formContainer} ${isAnimating ? styles.animating : ''}`}>
-						{activeTab === 'login' ? <LoginForm /> : <RegisterForm />}
-					</div>
+				<div className={styles.formContainer} key={activeTab}>
+					{activeTab === 'login' ? <LoginForm /> : <RegisterForm />}
+				</div>
 				</Card>
 			</div>
 		</>
