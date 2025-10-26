@@ -8,6 +8,7 @@ using RusalProject.Provider.Redis;
 using RusalProject.Services.Auth;
 using RusalProject.Services.Email;
 using RusalProject.Services.Storage;
+using RusalProject.Services.Pandoc;
 using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -74,6 +75,9 @@ builder.Services.AddSingleton<IMinioClient>(sp => new MinioClient()
     .Build());
 
 builder.Services.AddScoped<IMinioService, MinioService>();
+
+// Pandoc Service
+builder.Services.AddScoped<IPandocService, PandocService>();
 
 // Auth Services
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();

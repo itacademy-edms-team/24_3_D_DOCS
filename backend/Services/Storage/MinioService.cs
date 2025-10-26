@@ -12,6 +12,7 @@ public interface IMinioService
     Task<string> GetPresignedUrlAsync(string bucketName, string objectName, int expirySeconds = 3600);
     Task DeleteFileAsync(string bucketName, string objectName);
     Task<bool> FileExistsAsync(string bucketName, string objectName);
+    Task<string> GetFileContentAsync(string bucketName, string objectName);
 }
 
 public class MinioService : IMinioService
@@ -157,6 +158,21 @@ public class MinioService : IMinioService
         catch
         {
             return false;
+        }
+    }
+
+    public async Task<string> GetFileContentAsync(string bucketName, string objectName)
+    {
+        try
+        {
+            using var stream = await DownloadFileAsync(bucketName, objectName);
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting file content for {BucketName}/{ObjectName}", bucketName, objectName);
+            throw;
         }
     }
 }

@@ -5,6 +5,7 @@ using RusalProject.Models.DTOs;
 using RusalProject.Models.Entities;
 using RusalProject.Provider.Database;
 using RusalProject.Services.Storage;
+using RusalProject.Services.Pandoc;
 using System.Security.Claims;
 
 namespace RusalProject.Controllers;
@@ -16,15 +17,18 @@ public class DocumentLinksController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IMinioService _minioService;
+    private readonly IPandocService _pandocService;
     private readonly ILogger<DocumentLinksController> _logger;
 
     public DocumentLinksController(
         ApplicationDbContext context, 
         IMinioService minioService, 
+        IPandocService pandocService,
         ILogger<DocumentLinksController> logger)
     {
         _context = context;
         _minioService = minioService;
+        _pandocService = pandocService;
         _logger = logger;
     }
 
@@ -191,12 +195,73 @@ public class DocumentLinksController : ControllerBase
         if (documentLink == null)
             return NotFound();
 
-        // TODO: Implement Pandoc conversion logic
-        // For now, just update status
-        documentLink.Status = "processing";
-        await _context.SaveChangesAsync();
+        try
+        {
+            // Update status to processing
+            documentLink.Status = "processing";
+            documentLink.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
 
-        return Ok(new { message = "Conversion started", status = "processing" });
+            // Get template
+            var schemaLink = await _context.SchemaLinks
+                .Where(s => s.Id == dto.SchemaLinkId && (s.CreatorId == userId || s.IsPublic))
+                .FirstOrDefaultAsync();
+
+            if (schemaLink == null)
+            {
+                documentLink.Status = "failed";
+                documentLink.ConversionLog = "Template not found";
+                documentLink.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return BadRequest("Template not found");
+            }
+
+            // Get markdown content
+            var markdownContent = await _minioService.GetFileContentAsync("documents", documentLink.MdMinioPath);
+            
+            // Get template content
+            var templateContent = await _minioService.GetFileContentAsync("templates", schemaLink.MinioPath);
+
+            // Convert to PDF
+            var pdfPath = await _pandocService.ConvertMarkdownToPdfAsync(markdownContent, templateContent, documentLink.Name);
+
+            // Upload PDF to MinIO
+            var pdfFileName = $"{documentLink.Id}.pdf";
+            var pdfMinioPath = $"users/{userId}/documents/{pdfFileName}";
+
+            using var pdfStream = System.IO.File.OpenRead(pdfPath);
+            await _minioService.UploadFileAsync("documents", pdfMinioPath, pdfStream, "application/pdf");
+
+            // Update document with PDF path
+            documentLink.PdfMinioPath = pdfMinioPath;
+            documentLink.Status = "completed";
+            documentLink.ConversionLog = null;
+            documentLink.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            // Clean up temporary PDF file
+            try
+            {
+                System.IO.File.Delete(pdfPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Failed to clean up temporary PDF file: {ex.Message}");
+            }
+
+            return Ok(new { message = "Conversion completed successfully", status = "completed" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error converting document {DocumentId} to PDF", id);
+            
+            documentLink.Status = "failed";
+            documentLink.ConversionLog = ex.Message;
+            documentLink.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return BadRequest(new { message = "Conversion failed", error = ex.Message });
+        }
     }
 
     [HttpDelete("{id}")]
@@ -229,6 +294,77 @@ public class DocumentLinksController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    [HttpPost("test-pandoc")]
+    [AllowAnonymous]
+    public async Task<ActionResult> TestPandoc()
+    {
+        try
+        {
+            var markdownContent = @"# Test Document
+
+This is a test document for Markdown to PDF conversion.
+
+## Section 1
+
+Here is some text with **bold** and *italic* formatting.
+
+### Subsection
+
+- List item 1
+- List item 2
+- List item 3
+
+## Section 2
+
+This is a simple paragraph without code blocks.
+
+## Conclusion
+
+Document successfully converted from Markdown to PDF!";
+
+            var templateContent = @"\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{fontspec}
+\usepackage{longtable}
+\usepackage{booktabs}
+
+% Настройка шрифтов
+\setmainfont{Liberation Serif}
+\setsansfont{Liberation Sans}
+\setmonofont{Liberation Mono}
+
+\geometry{a4paper, margin=2cm}
+
+% Определение tightlist для pandoc
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+\title{$title$}
+\author{DDOCS Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+$body$
+
+\end{document}";
+
+            var result = await _pandocService.ConvertMarkdownToPdfAsync(markdownContent, templateContent, "Test Document");
+            
+            return Ok(new { message = "Pandoc conversion successful!", outputFile = result });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Pandoc test failed");
+            return BadRequest(new { message = "Pandoc test failed", error = ex.Message });
+        }
     }
 
     private Guid GetCurrentUserId()
