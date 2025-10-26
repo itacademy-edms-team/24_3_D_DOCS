@@ -11,7 +11,8 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<User> Users { get; set; }
-    public DbSet<Schema> Schemas { get; set; }
+    public DbSet<SchemaLink> SchemaLinks { get; set; }
+    public DbSet<DocumentLink> DocumentLinks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,8 +31,13 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Role)
                   .HasDatabaseName("IX_Users_Role");
 
-            // One-to-many relationship: User -> Schemas
-            entity.HasMany(e => e.Schemas)
+            // One-to-many relationships: User -> SchemaLinks, User -> DocumentLinks
+            entity.HasMany(e => e.SchemaLinks)
+                  .WithOne(e => e.Creator)
+                  .HasForeignKey(e => e.CreatorId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(e => e.DocumentLinks)
                   .WithOne(e => e.Creator)
                   .HasForeignKey(e => e.CreatorId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -47,13 +53,37 @@ public class ApplicationDbContext : DbContext
                   .HasDefaultValueSql("NOW()");
         });
 
-        // Configure Schema entity
-        modelBuilder.Entity<Schema>(entity =>
+        // Configure SchemaLink entity
+        modelBuilder.Entity<SchemaLink>(entity =>
         {
             entity.HasKey(e => e.Id);
             
             entity.HasIndex(e => e.CreatorId)
-                  .HasDatabaseName("IX_Schemas_CreatorId");
+                  .HasDatabaseName("IX_SchemaLinks_CreatorId");
+
+            entity.HasIndex(e => e.IsPublic)
+                  .HasDatabaseName("IX_SchemaLinks_IsPublic");
+
+            entity.Property(e => e.CreatedAt)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.Property(e => e.UpdatedAt)
+                  .HasDefaultValueSql("NOW()");
+        });
+
+        // Configure DocumentLink entity
+        modelBuilder.Entity<DocumentLink>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.CreatorId)
+                  .HasDatabaseName("IX_DocumentLinks_CreatorId");
+
+            entity.HasIndex(e => e.Status)
+                  .HasDatabaseName("IX_DocumentLinks_Status");
+
+            entity.Property(e => e.Status)
+                  .HasDefaultValue("draft");
 
             entity.Property(e => e.CreatedAt)
                   .HasDefaultValueSql("NOW()");
@@ -87,9 +117,13 @@ public class ApplicationDbContext : DbContext
             {
                 user.UpdatedAt = DateTime.UtcNow;
             }
-            else if (entry.Entity is Schema schema)
+            else if (entry.Entity is SchemaLink schemaLink)
             {
-                schema.UpdatedAt = DateTime.UtcNow;
+                schemaLink.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is DocumentLink documentLink)
+            {
+                documentLink.UpdatedAt = DateTime.UtcNow;
             }
         }
     }

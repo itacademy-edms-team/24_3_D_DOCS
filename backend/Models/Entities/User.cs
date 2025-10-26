@@ -35,7 +35,8 @@ public class User
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    // Navigation property
-    public virtual ICollection<Schema> Schemas { get; set; } = new List<Schema>();
+    // Navigation properties
+    public virtual ICollection<SchemaLink> SchemaLinks { get; set; } = new List<SchemaLink>();
+    public virtual ICollection<DocumentLink> DocumentLinks { get; set; } = new List<DocumentLink>();
 }
 
