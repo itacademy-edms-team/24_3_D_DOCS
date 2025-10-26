@@ -1,6 +1,6 @@
 .container {
 	display: grid;
-	grid-template-columns: 280px 1fr 400px;
+	grid-template-columns: 280px 1fr 800px;
 	height: 100vh;
 	background: #0a0a0a;
 	overflow: hidden;
@@ -53,6 +53,47 @@
 	background: #4f46e5;
 }
 
+/* Переключатель типа контента */
+.contentTypeSwitcher {
+	display: flex;
+	gap: 4px;
+	margin-top: 12px;
+	background: #1c1c1f;
+	border-radius: 8px;
+	padding: 4px;
+}
+
+.switcherButton {
+	flex: 1;
+	padding: 8px 12px;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	color: #71717a;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+}
+
+.switcherButton:hover {
+	background: #27272a;
+	color: #a1a1aa;
+}
+
+.switcherButton.active {
+	background: #6366f1;
+	color: white;
+}
+
+.switcherButton.active:hover {
+	background: #4f46e5;
+}
+
 .documentList {
 	padding: 12px;
 	display: flex;
@@ -69,11 +110,16 @@
 	cursor: pointer;
 	transition: all 0.2s;
 	border: 1px solid transparent;
+	position: relative;
 }
 
 .documentItem:hover {
 	background: #1c1c1f;
 	border-color: #27272a;
+}
+
+.documentItem:hover .deleteButton {
+	opacity: 1;
 }
 
 .documentItem.active {
@@ -106,6 +152,48 @@
 .documentDate {
 	font-size: 12px;
 	color: #71717a;
+}
+
+/* Кнопка удаления */
+.deleteButton {
+	position: absolute;
+	right: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 24px;
+	height: 24px;
+	background: transparent;
+	border: none;
+	border-radius: 4px;
+	color: #ef4444;
+	font-size: 14px;
+	cursor: pointer;
+	opacity: 0;
+	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10;
+}
+
+.deleteButton:hover {
+	background: rgba(239, 68, 68, 0.1);
+	color: #dc2626;
+	opacity: 1 !important;
+}
+
+/* Плейсхолдеры */
+.loadingPlaceholder,
+.emptyPlaceholder {
+	padding: 20px;
+	text-align: center;
+	color: #71717a;
+	font-size: 14px;
+	font-style: italic;
+}
+
+.loadingPlaceholder {
+	color: #6366f1;
 }
 
 /* Футер сайдбара - Пользователь */
@@ -204,16 +292,49 @@
 	align-items: center;
 }
 
+/* Контейнер заголовка */
+.titleContainer {
+	flex: 1;
+	margin-right: 16px;
+}
+
+.titleInput {
+	background: transparent;
+	border: 1px solid #6366f1;
+	border-radius: 6px;
+	padding: 8px 12px;
+	color: #e4e4e7;
+	font-size: 16px;
+	font-weight: 600;
+	width: 100%;
+	outline: none;
+}
+
+.titleInput:focus {
+	border-color: #4f46e5;
+}
+
 .editorTitle {
 	font-size: 16px;
 	font-weight: 600;
 	color: #e4e4e7;
 	margin: 0;
+	cursor: pointer;
+	padding: 8px 12px;
+	border-radius: 6px;
+	transition: all 0.2s;
+	border: 1px solid transparent;
+}
+
+.editorTitle:hover {
+	background: #1c1c1f;
+	border-color: #27272a;
 }
 
 .editorActions {
 	display: flex;
 	gap: 10px;
+	justify-content: center;
 }
 
 .actionButton {
@@ -232,6 +353,17 @@
 	background: #18181b;
 	border-color: #3f3f46;
 	color: #e4e4e7;
+}
+
+.actionButton:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.actionButton:disabled:hover {
+	background: transparent;
+	border-color: #27272a;
+	color: #a1a1aa;
 }
 
 .markdownArea {
@@ -361,4 +493,162 @@
 	.markdownArea {
 		padding: 20px;
 	}
+}
+
+/* Модальные окна */
+.modalOverlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.8);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	backdrop-filter: blur(4px);
+}
+
+.modal {
+	background: #18181b;
+	border-radius: 12px;
+	border: 1px solid #27272a;
+	min-width: 400px;
+	max-width: 90vw;
+	max-height: 90vh;
+	overflow: hidden;
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.modalHeader {
+	padding: 20px 24px;
+	border-bottom: 1px solid #27272a;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.modalHeader h3 {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 600;
+	color: #e4e4e7;
+}
+
+.modalClose {
+	background: transparent;
+	border: none;
+	color: #71717a;
+	font-size: 24px;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	transition: all 0.2s;
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.modalClose:hover {
+	background: #27272a;
+	color: #e4e4e7;
+}
+
+.modalBody {
+	padding: 24px;
+}
+
+.modalBody label {
+	display: block;
+	margin-bottom: 8px;
+	font-size: 14px;
+	font-weight: 500;
+	color: #e4e4e7;
+}
+
+.modalInput,
+.modalSelect {
+	width: 100%;
+	padding: 12px;
+	background: #0a0a0a;
+	border: 1px solid #27272a;
+	border-radius: 8px;
+	color: #e4e4e7;
+	font-size: 14px;
+	outline: none;
+	transition: border-color 0.2s;
+}
+
+.modalInput:focus,
+.modalSelect:focus {
+	border-color: #6366f1;
+}
+
+.modalHint {
+	margin-top: 12px;
+	font-size: 13px;
+	color: #71717a;
+	line-height: 1.5;
+}
+
+.modalFooter {
+	padding: 20px 24px;
+	border-top: 1px solid #27272a;
+	display: flex;
+	justify-content: flex-end;
+	gap: 12px;
+}
+
+.modalButton {
+	padding: 10px 20px;
+	border: 1px solid #27272a;
+	border-radius: 8px;
+	background: transparent;
+	color: #a1a1aa;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.modalButton:hover {
+	background: #1c1c1f;
+	border-color: #3f3f46;
+	color: #e4e4e7;
+}
+
+.modalButtonPrimary {
+	background: #6366f1;
+	border-color: #6366f1;
+	color: white;
+}
+
+.modalButtonPrimary:hover {
+	background: #4f46e5;
+	border-color: #4f46e5;
+}
+
+.modalButtonDanger {
+	background: #ef4444;
+	border-color: #ef4444;
+	color: white;
+}
+
+.modalButtonDanger:hover {
+	background: #dc2626;
+	border-color: #dc2626;
+}
+
+.modalButton:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.modalButton:disabled:hover {
+	background: transparent;
+	border-color: #27272a;
+	color: #a1a1aa;
 }

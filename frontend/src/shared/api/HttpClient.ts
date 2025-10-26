@@ -20,7 +20,7 @@ class HttpClient {
   
   constructor(options?: HttpClientOptions) {
     this.instance = axios.create({
-      baseURL: options?.baseURL || BASE_URI || '/api/v1',
+      baseURL: options?.baseURL || (typeof BASE_URI !== 'undefined' ? BASE_URI : 'http://localhost:5159'),
       headers: options?.headers,
     });
 
@@ -60,6 +60,31 @@ class HttpClient {
 
   protected async _delete<T,>(uri: string, config?: AxiosRequestConfig): Promise<T> {
     return this.instance.delete<T>(uri, config).then((res: AxiosResponse<T>) => res.data);
+  }
+
+  // Public methods
+  async get<T>(uri: string, config?: AxiosRequestConfig): Promise<T> {
+    return this._get<T>(uri, config);
+  }
+
+  async post<T, D = any>(uri: string, data?: D, config?: AxiosRequestConfig): Promise<T> {
+    return this._post<T, D>(uri, data, config);
+  }
+
+  async put<T, D = any>(uri: string, data?: D, config?: AxiosRequestConfig): Promise<T> {
+    return this._put<T, D>(uri, data, config);
+  }
+
+  async delete<T>(uri: string, config?: AxiosRequestConfig): Promise<T> {
+    return this._delete<T>(uri, config);
+  }
+
+  async getBlob(uri: string, config?: AxiosRequestConfig): Promise<Blob> {
+    const response = await this.instance.get(uri, { 
+      ...config, 
+      responseType: 'blob' 
+    });
+    return response.data;
   }
 
   private errorHandler(error: AxiosError) {
