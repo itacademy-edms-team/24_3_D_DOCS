@@ -1,8 +1,0 @@
-meta-info:
-  1. regs refresh token + OAuth
-
-c#-api:
-  1. jwt refresh token
-  2. jwt base token
-  3. храним в cookie
-  4. обращение к бд + создание пользователя

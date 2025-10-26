@@ -18,6 +18,22 @@ services:
       timeout: 5s
       retries: 5
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: rusal_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rusal_network
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: rusal_redis
@@ -32,6 +48,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: rusal_redis_commander
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - rusal_network
+    restart: unless-stopped
 
   minio:
     image: minio/minio:latest
