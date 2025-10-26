@@ -36,7 +36,7 @@ export class DocumentLinksAPI {
     return this.httpClient.getBlob(`/api/DocumentLinks/${id}/pdf`);
   }
 
-  async convertDocument(id: string, schemaLinkId: string): Promise<void> {
+  async convertDocument(id: string, schemaLinkId: string): Promise<{ message: string; status: string }> {
     const convertData: ConvertDocumentDTO = { schemaLinkId };
     return this.httpClient.post(`/api/DocumentLinks/${id}/convert`, convertData);
   }

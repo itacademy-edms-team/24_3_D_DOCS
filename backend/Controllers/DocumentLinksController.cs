@@ -220,7 +220,7 @@ public class DocumentLinksController : ControllerBase
             var markdownContent = await _minioService.GetFileContentAsync("documents", documentLink.MdMinioPath);
             
             // Get template content
-            var templateContent = await _minioService.GetFileContentAsync("templates", schemaLink.MinioPath);
+            var templateContent = await _minioService.GetFileContentAsync("documents", schemaLink.MinioPath);
 
             // Convert to PDF
             var pdfPath = await _pandocService.ConvertMarkdownToPdfAsync(markdownContent, templateContent, documentLink.Name);

@@ -405,6 +405,29 @@
 	margin: 0;
 }
 
+.previewHeader {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.downloadPdfButton {
+	background: transparent;
+	border: 1px solid #27272a;
+	border-radius: 6px;
+	color: #a1a1aa;
+	font-size: 16px;
+	cursor: pointer;
+	padding: 6px 10px;
+	transition: all 0.2s;
+}
+
+.downloadPdfButton:hover {
+	background: #1c1c1f;
+	border-color: #6366f1;
+	color: #6366f1;
+}
+
 .previewContent {
 	flex: 1;
 	overflow-y: auto;
@@ -432,6 +455,20 @@
 	font-size: 14px;
 	line-height: 1.6;
 	margin: 0;
+}
+
+.previewHint {
+	font-size: 12px;
+	color: #71717a;
+	margin-top: 8px;
+}
+
+.pdfPreview {
+	width: 100%;
+	height: 100%;
+	border: none;
+	border-radius: 8px;
+	background: white;
 }
 
 /* Scrollbar */
@@ -651,4 +688,46 @@
 	background: transparent;
 	border-color: #27272a;
 	color: #a1a1aa;
+}
+
+/* Стили для конвертации */
+.conversionProgress {
+	margin-top: 16px;
+}
+
+.progressBar {
+	width: 100%;
+	height: 8px;
+	background: #27272a;
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 8px;
+}
+
+.progressFill {
+	height: 100%;
+	background: linear-gradient(90deg, #6366f1, #4f46e5);
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.progressText {
+	font-size: 13px;
+	color: #a1a1aa;
+	margin: 0;
+	text-align: center;
+}
+
+.conversionError {
+	margin-top: 16px;
+	padding: 12px;
+	background: rgba(239, 68, 68, 0.1);
+	border: 1px solid #ef4444;
+	border-radius: 8px;
+}
+
+.conversionError p {
+	margin: 0;
+	font-size: 13px;
+	color: #ef4444;
 }

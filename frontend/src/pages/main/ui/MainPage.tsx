@@ -22,7 +22,6 @@ const MainPage = (): React.JSX.Element => {
   // Состояние для модальных окон
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
-  const [showDownloadPdfModal, setShowDownloadPdfModal] = useState(false);
   const [showDeleteDocumentModal, setShowDeleteDocumentModal] = useState(false);
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
   const [showDeleteTemplateModal, setShowDeleteTemplateModal] = useState(false);
@@ -32,6 +31,13 @@ const MainPage = (): React.JSX.Element => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<DocumentLinkDTO | null>(null);
   const [templateToDelete, setTemplateToDelete] = useState<SchemaLinkDTO | null>(null);
+  
+  // Состояние конвертации
+  const [isConverting, setIsConverting] = useState(false);
+  const [conversionProgress, setConversionProgress] = useState(0);
+  const [selectedTemplateForConversion, setSelectedTemplateForConversion] = useState<string>('');
+  const [conversionError, setConversionError] = useState<string | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
   // Загрузка документов
   const loadDocuments = async () => {
@@ -176,8 +182,10 @@ const MainPage = (): React.JSX.Element => {
       
       setDocuments(prev => prev.map(doc => doc.id === selectedDocument.id ? updatedDoc : doc));
       setSelectedDocument(updatedDoc);
+      alert('✅ Документ успешно сохранен!');
     } catch (error) {
       console.error('Failed to save document:', error);
+      alert('❌ Ошибка при сохранении документа: ' + (error as Error).message);
     }
   };
 
@@ -187,19 +195,21 @@ const MainPage = (): React.JSX.Element => {
 
     try {
       const formData = new FormData();
-      formData.append('Name', selectedTemplate.name || '');
+      formData.append('Name', editableTitle);
       formData.append('Description', selectedTemplate.description || '');
       formData.append('IsPublic', selectedTemplate.isPublic.toString());
-      formData.append('file', new Blob([templateContent], { type: 'text/plain' }), selectedTemplate.name + '.tex');
+      formData.append('file', new Blob([templateContent], { type: 'text/plain' }), editableTitle + '.tex');
 
-      // Обновляем существующий шаблон
+      // Обновляем существующий шаблон (удаляем и создаем новый)
       await schemaLinksAPI.deleteSchema(selectedTemplate.id);
       const updatedTemplate = await schemaLinksAPI.createSchema(formData);
       
       setTemplates(prev => prev.map(tmpl => tmpl.id === selectedTemplate.id ? updatedTemplate : tmpl));
       setSelectedTemplate(updatedTemplate);
+      alert('✅ Шаблон успешно сохранен!');
     } catch (error) {
       console.error('Failed to save template:', error);
+      alert('❌ Ошибка при сохранении шаблона: ' + (error as Error).message);
     }
   };
 
@@ -297,14 +307,92 @@ const MainPage = (): React.JSX.Element => {
       return;
     }
     
+    setSelectedTemplateForConversion('');
+    setConversionError(null);
     setShowConvertModal(true);
+  };
+
+  // Выполнение конвертации
+  const handleExecuteConversion = async () => {
+    if (!selectedDocument || !selectedTemplateForConversion) {
+      setConversionError('Выберите шаблон для конвертации');
+      return;
+    }
+
+    try {
+      setIsConverting(true);
+      setConversionProgress(0);
+      setConversionError(null);
+
+      // Симуляция прогресса
+      const progressInterval = setInterval(() => {
+        setConversionProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      const result = await documentLinksAPI.convertDocument(selectedDocument.id, selectedTemplateForConversion);
+      
+      clearInterval(progressInterval);
+      setConversionProgress(100);
+
+      // Обновляем статус документа
+      const updatedDocuments = documents.map(doc => 
+        doc.id === selectedDocument.id 
+          ? { ...doc, status: result.status, pdfMinioPath: result.status === 'completed' ? 'generated' : null }
+          : doc
+      );
+      setDocuments(updatedDocuments);
+
+      if (result.status === 'completed') {
+        // Создаем URL для превью PDF
+        try {
+          const pdfBlob = await documentLinksAPI.downloadPdf(selectedDocument.id);
+          const pdfUrl = URL.createObjectURL(pdfBlob);
+          setPdfPreviewUrl(pdfUrl);
+        } catch (error) {
+          console.error('Failed to load PDF preview:', error);
+        }
+        
+        setTimeout(() => {
+          setShowConvertModal(false);
+          setIsConverting(false);
+          setConversionProgress(0);
+        }, 1000);
+      } else {
+        setConversionError(result.message || 'Ошибка конвертации');
+        setIsConverting(false);
+        setConversionProgress(0);
+      }
+    } catch (error: any) {
+      setConversionError(error.message || 'Ошибка при конвертации документа');
+      setIsConverting(false);
+      setConversionProgress(0);
+    }
   };
 
   // Скачивание PDF
   const handleDownloadPdf = async () => {
     if (!selectedDocument) return;
     
-    setShowDownloadPdfModal(true);
+    try {
+      const blob = await documentLinksAPI.downloadPdf(selectedDocument.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (selectedDocument.name || 'document') + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download PDF:', error);
+      alert('Ошибка при скачивании PDF. Убедитесь, что документ был сконвертирован.');
+    }
   };
 
   // Обработка изменения заголовка
@@ -531,12 +619,35 @@ const MainPage = (): React.JSX.Element => {
         <aside className={style.preview}>
           <div className={style.previewHeader}>
             <h3 className={style.previewTitle}>Превью PDF</h3>
+            {pdfPreviewUrl && (
+              <button 
+                className={style.downloadPdfButton}
+                onClick={handleDownloadPdf}
+                type="button"
+                title="Скачать PDF"
+              >
+                📄
+              </button>
+            )}
           </div>
           <div className={style.previewContent}>
-            <div className={style.previewPlaceholder}>
-              <div className={style.previewIcon}>📋</div>
-              <p>Здесь будет отображаться<br />PDF-превью документа</p>
-            </div>
+            {pdfPreviewUrl ? (
+              <iframe
+                src={pdfPreviewUrl}
+                className={style.pdfPreview}
+                title="PDF Preview"
+              />
+            ) : (
+              <div className={style.previewPlaceholder}>
+                <div className={style.previewIcon}>📋</div>
+                <p>Здесь будет отображаться<br />PDF-превью документа</p>
+                {selectedDocument && (
+                  <p className={style.previewHint}>
+                    Нажмите "Преобразовать" для генерации PDF
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </aside>
       </div>
@@ -596,15 +707,28 @@ const MainPage = (): React.JSX.Element => {
               <h3>Преобразовать в PDF</h3>
               <button 
                 className={style.modalClose}
-                onClick={() => setShowConvertModal(false)}
+                onClick={() => {
+                  if (!isConverting) {
+                    setShowConvertModal(false);
+                    setConversionError(null);
+                    setConversionProgress(0);
+                  }
+                }}
                 type="button"
+                disabled={isConverting}
               >
                 ×
               </button>
             </div>
             <div className={style.modalBody}>
               <label htmlFor="templateSelect">Выберите шаблон:</label>
-              <select id="templateSelect" className={style.modalSelect}>
+              <select 
+                id="templateSelect" 
+                className={style.modalSelect}
+                value={selectedTemplateForConversion}
+                onChange={(e) => setSelectedTemplateForConversion(e.target.value)}
+                disabled={isConverting}
+              >
                 <option value="">Выберите шаблон...</option>
                 {templates.map(template => (
                   <option key={template.id} value={template.id}>
@@ -615,72 +739,57 @@ const MainPage = (): React.JSX.Element => {
               {templates.length === 0 && (
                 <p className={style.modalHint}>Нет доступных шаблонов. Создайте шаблон в разделе "Шаблоны".</p>
               )}
+              
+              {/* Прогресс-бар конвертации */}
+              {isConverting && (
+                <div className={style.conversionProgress}>
+                  <div className={style.progressBar}>
+                    <div 
+                      className={style.progressFill}
+                      style={{ width: `${conversionProgress}%` }}
+                    />
+                  </div>
+                  <p className={style.progressText}>
+                    Конвертация в PDF... {conversionProgress}%
+                  </p>
+                </div>
+              )}
+              
+              {/* Ошибка конвертации */}
+              {conversionError && (
+                <div className={style.conversionError}>
+                  <p>❌ {conversionError}</p>
+                </div>
+              )}
             </div>
             <div className={style.modalFooter}>
               <button 
                 className={style.modalButton}
-                onClick={() => setShowConvertModal(false)}
+                onClick={() => {
+                  if (!isConverting) {
+                    setShowConvertModal(false);
+                    setConversionError(null);
+                    setConversionProgress(0);
+                  }
+                }}
                 type="button"
+                disabled={isConverting}
               >
                 Отмена
               </button>
               <button 
                 className={`${style.modalButton} ${style.modalButtonPrimary}`}
-                onClick={() => {
-                  // TODO: Реализовать конвертацию через Pandoc
-                  alert('Конвертация будет реализована позже с Pandoc');
-                  setShowConvertModal(false);
-                }}
+                onClick={handleExecuteConversion}
+                disabled={!selectedTemplateForConversion || isConverting}
                 type="button"
               >
-                Преобразовать
+                {isConverting ? 'Конвертация...' : 'Преобразовать'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Модальное окно скачивания PDF */}
-      {showDownloadPdfModal && (
-        <div className={style.modalOverlay}>
-          <div className={style.modal}>
-            <div className={style.modalHeader}>
-              <h3>Скачать PDF</h3>
-              <button 
-                className={style.modalClose}
-                onClick={() => setShowDownloadPdfModal(false)}
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-            <div className={style.modalBody}>
-              <p>Скачать PDF версию документа "{editableTitle}"?</p>
-              <p className={style.modalHint}>PDF будет сгенерирован из текущего содержимого документа.</p>
-            </div>
-            <div className={style.modalFooter}>
-              <button 
-                className={style.modalButton}
-                onClick={() => setShowDownloadPdfModal(false)}
-                type="button"
-              >
-                Отмена
-              </button>
-              <button 
-                className={`${style.modalButton} ${style.modalButtonPrimary}`}
-                onClick={() => {
-                  // TODO: Реализовать скачивание PDF
-                  alert('Скачивание PDF будет реализовано позже');
-                  setShowDownloadPdfModal(false);
-                }}
-                type="button"
-              >
-                Скачать PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Модальное окно удаления документа */}
       {showDeleteDocumentModal && documentToDelete && (

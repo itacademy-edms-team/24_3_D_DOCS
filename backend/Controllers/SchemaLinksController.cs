@@ -129,6 +129,64 @@ public class SchemaLinksController : ControllerBase
         return CreatedAtAction(nameof(GetSchemaLink), new { id = schemaLink.Id }, result);
     }
 
+    [HttpPut("{id}")]
+    public async Task<ActionResult<SchemaLinkDTO>> UpdateSchemaLink(Guid id, [FromForm] CreateSchemaLinkDTO dto, IFormFile file)
+    {
+        var userId = GetCurrentUserId();
+        var schemaLink = await _context.SchemaLinks
+            .Where(s => s.Id == id && s.CreatorId == userId)
+            .FirstOrDefaultAsync();
+
+        if (schemaLink == null)
+            return NotFound();
+
+        // Update file if provided
+        if (file != null && file.Length > 0)
+        {
+            // Delete old file
+            try
+            {
+                await _minioService.DeleteFileAsync("documents", schemaLink.MinioPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error deleting old file for schema {SchemaId}", id);
+            }
+
+            // Upload new file
+            var fileName = $"{schemaLink.Id}.tex";
+            var minioPath = $"users/{userId}/schemas/{fileName}";
+            
+            using var stream = file.OpenReadStream();
+            await _minioService.UploadFileAsync("documents", minioPath, stream, "text/plain");
+            schemaLink.MinioPath = minioPath;
+        }
+
+        // Update database record
+        schemaLink.Name = dto.Name;
+        schemaLink.Description = dto.Description;
+        schemaLink.PandocOptions = dto.PandocOptions;
+        schemaLink.IsPublic = dto.IsPublic;
+        schemaLink.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        var result = new SchemaLinkDTO
+        {
+            Id = schemaLink.Id,
+            CreatorId = schemaLink.CreatorId,
+            Name = schemaLink.Name,
+            Description = schemaLink.Description,
+            MinioPath = schemaLink.MinioPath,
+            PandocOptions = schemaLink.PandocOptions,
+            IsPublic = schemaLink.IsPublic,
+            CreatedAt = schemaLink.CreatedAt,
+            UpdatedAt = schemaLink.UpdatedAt
+        };
+
+        return Ok(result);
+    }
+
     [HttpGet("{id}/download")]
     public async Task<IActionResult> DownloadSchemaLink(Guid id)
     {

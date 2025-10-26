@@ -24,6 +24,12 @@ export class SchemaLinksAPI {
     });
   }
 
+  async updateSchema(id: string, formData: FormData): Promise<SchemaLinkDTO> {
+    return this.httpClient.put<SchemaLinkDTO>(`/api/SchemaLinks/${id}`, formData, {
+      'Content-Type': 'multipart/form-data',
+    });
+  }
+
   async deleteSchema(id: string): Promise<void> {
     return this.httpClient.delete(`/api/SchemaLinks/${id}`);
   }
