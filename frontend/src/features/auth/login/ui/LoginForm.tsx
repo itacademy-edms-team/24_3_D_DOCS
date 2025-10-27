@@ -79,6 +79,7 @@ export const LoginForm = () => {
 				error={errors.password}
 				fullWidth
 				autoComplete="current-password"
+				showPasswordToggle
 			/>
 
 			{apiError && <div className={styles.apiError}>{apiError}</div>}

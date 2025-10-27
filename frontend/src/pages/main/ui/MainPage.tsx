@@ -15,8 +15,8 @@ const MainPage = (): React.JSX.Element => {
   const [templates, setTemplates] = useState<SchemaLinkDTO[]>([]);
   const [selectedDocument, setSelectedDocument] = useState<DocumentLinkDTO | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<SchemaLinkDTO | null>(null);
-  const [markdownContent, setMarkdownContent] = useState('# Заголовок документа\n\nНачните печатать ваш документ здесь...');
-  const [templateContent, setTemplateContent] = useState('\\documentclass{article}\n\\begin{document}\n\n\\end{document}');
+  const [markdownContent, setMarkdownContent] = useState('');
+  const [templateContent, setTemplateContent] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Состояние для модальных окон
@@ -25,6 +25,8 @@ const MainPage = (): React.JSX.Element => {
   const [showDeleteDocumentModal, setShowDeleteDocumentModal] = useState(false);
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
   const [showDeleteTemplateModal, setShowDeleteTemplateModal] = useState(false);
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
+  const [saveConfirmType, setSaveConfirmType] = useState<'document' | 'template'>('document');
   const [newDocumentName, setNewDocumentName] = useState('');
   const [newTemplateName, setNewTemplateName] = useState('');
   const [editableTitle, setEditableTitle] = useState('Новый документ');
@@ -76,6 +78,11 @@ const MainPage = (): React.JSX.Element => {
     setContentType(type);
     setSelectedDocument(null);
     setSelectedTemplate(null);
+    // Очистка всего при переключении - пустые строки, не дефолтные значения
+    setMarkdownContent('');
+    setTemplateContent('');
+    setPdfPreviewUrl(null);
+    setEditableTitle('Новый ' + (type === 'documents' ? 'документ' : 'шаблон'));
   };
 
   // Выбор документа
@@ -84,9 +91,24 @@ const MainPage = (): React.JSX.Element => {
     setSelectedTemplate(null);
     setEditableTitle(document.name || 'Без названия');
     try {
+      // Загружаем markdown
       const blob = await documentLinksAPI.downloadDocument(document.id);
       const text = await blob.text();
       setMarkdownContent(text);
+      
+      // Загружаем PDF если он существует
+      if (document.pdfMinioPath) {
+        try {
+          const pdfBlob = await documentLinksAPI.downloadPdf(document.id);
+          const pdfUrl = URL.createObjectURL(pdfBlob);
+          setPdfPreviewUrl(pdfUrl);
+        } catch (error) {
+          console.error('Failed to load PDF:', error);
+          setPdfPreviewUrl(null);
+        }
+      } else {
+        setPdfPreviewUrl(null);
+      }
     } catch (error) {
       console.error('Failed to load document content:', error);
     }
@@ -96,6 +118,7 @@ const MainPage = (): React.JSX.Element => {
   const handleTemplateSelect = async (template: SchemaLinkDTO) => {
     setSelectedTemplate(template);
     setSelectedDocument(null);
+    setPdfPreviewUrl(null); // Очищаем PDF при выборе шаблона
     setEditableTitle(template.name || 'Без названия');
     try {
       const blob = await schemaLinksAPI.downloadSchema(template.id);
@@ -127,6 +150,7 @@ const MainPage = (): React.JSX.Element => {
       setSelectedDocument(newDoc);
       setEditableTitle(newDoc.name || 'Без названия');
       setMarkdownContent('# ' + newDoc.name + '\n\nНачните печатать ваш документ здесь...');
+      setPdfPreviewUrl(null); // Очищаем PDF для нового документа
       setShowSaveModal(false);
     } catch (error) {
       console.error('Failed to create document:', error);
@@ -182,9 +206,16 @@ const MainPage = (): React.JSX.Element => {
       
       setDocuments(prev => prev.map(doc => doc.id === selectedDocument.id ? updatedDoc : doc));
       setSelectedDocument(updatedDoc);
-      alert('✅ Документ успешно сохранен!');
+      
+      // Очищаем PDF после обновления (поскольку текст изменился)
+      setPdfPreviewUrl(null);
+      
+      // Показываем модальное окно успешного сохранения
+      setSaveConfirmType('document');
+      setShowSaveConfirmModal(true);
     } catch (error) {
       console.error('Failed to save document:', error);
+      // Можно добавить модальное окно для ошибок, но пока оставим alert для ошибок
       alert('❌ Ошибка при сохранении документа: ' + (error as Error).message);
     }
   };
@@ -206,9 +237,13 @@ const MainPage = (): React.JSX.Element => {
       
       setTemplates(prev => prev.map(tmpl => tmpl.id === selectedTemplate.id ? updatedTemplate : tmpl));
       setSelectedTemplate(updatedTemplate);
-      alert('✅ Шаблон успешно сохранен!');
+      
+      // Показываем модальное окно успешного сохранения
+      setSaveConfirmType('template');
+      setShowSaveConfirmModal(true);
     } catch (error) {
       console.error('Failed to save template:', error);
+      // Можно добавить модальное окно для ошибок, но пока оставим alert для ошибок
       alert('❌ Ошибка при сохранении шаблона: ' + (error as Error).message);
     }
   };
@@ -262,8 +297,9 @@ const MainPage = (): React.JSX.Element => {
       
       if (selectedDocument?.id === documentToDelete.id) {
         setSelectedDocument(null);
-        setMarkdownContent('# Заголовок документа\n\nНачните печатать ваш документ здесь...');
+        setMarkdownContent('');
         setEditableTitle('Новый документ');
+        setPdfPreviewUrl(null);
       }
       setShowDeleteDocumentModal(false);
       setDocumentToDelete(null);
@@ -288,7 +324,7 @@ const MainPage = (): React.JSX.Element => {
       
       if (selectedTemplate?.id === templateToDelete.id) {
         setSelectedTemplate(null);
-        setTemplateContent('\\documentclass{article}\n\\begin{document}\n\n\\end{document}');
+        setTemplateContent('');
         setEditableTitle('Новый шаблон');
       }
       setShowDeleteTemplateModal(false);
@@ -566,27 +602,19 @@ const MainPage = (): React.JSX.Element => {
                 className={style.actionButton} 
                 type="button"
                 onClick={contentType === 'documents' ? handleSaveDocument : handleSaveTemplate}
+                disabled={contentType === 'documents' ? !selectedDocument : !selectedTemplate}
               >
                 💾 Сохранить
               </button>
               {contentType === 'documents' && (
-                <>
-                  <button 
-                    className={style.actionButton} 
-                    type="button"
-                    onClick={handleConvertDocument}
-                  >
-                    🔄 Преобразовать
-                  </button>
-                  <button 
-                    className={style.actionButton} 
-                    type="button"
-                    onClick={handleDownloadPdf}
-                    disabled={!selectedDocument}
-                  >
-                    📄 Скачать PDF
-                  </button>
-                </>
+                <button 
+                  className={style.actionButton} 
+                  type="button"
+                  onClick={handleConvertDocument}
+                  disabled={!selectedDocument}
+                >
+                  🔄 Преобразовать
+                </button>
               )}
               <button 
                 className={style.actionButton} 
@@ -594,7 +622,7 @@ const MainPage = (): React.JSX.Element => {
                 onClick={handleDownloadFile}
                 disabled={contentType === 'documents' ? !selectedDocument : !selectedTemplate}
               >
-                📤 Скачать MD
+                📤 Скачать {contentType === 'documents' ? 'MD' : 'TEX'}
               </button>
             </div>
           </div>
@@ -609,17 +637,20 @@ const MainPage = (): React.JSX.Element => {
               }
             }}
             placeholder={contentType === 'documents' 
-              ? "Начните печатать markdown..." 
-              : "Начните печатать LaTeX..."
+              ? (selectedDocument ? "Начните печатать markdown..." : "Выберите документ из списка слева")
+              : (selectedTemplate ? "Начните печатать LaTeX..." : "Выберите шаблон из списка слева")
             }
+            disabled={contentType === 'documents' ? !selectedDocument : !selectedTemplate}
           />
         </main>
 
         {/* Правая панель - Превью PDF */}
         <aside className={style.preview}>
           <div className={style.previewHeader}>
-            <h3 className={style.previewTitle}>Превью PDF</h3>
-            {pdfPreviewUrl && (
+            <h3 className={style.previewTitle}>
+              {contentType === 'documents' ? 'Превью PDF' : 'Превью PDF (недоступно)'}
+            </h3>
+            {contentType === 'documents' && pdfPreviewUrl && (
               <button 
                 className={style.downloadPdfButton}
                 onClick={handleDownloadPdf}
@@ -631,7 +662,7 @@ const MainPage = (): React.JSX.Element => {
             )}
           </div>
           <div className={style.previewContent}>
-            {pdfPreviewUrl ? (
+            {contentType === 'documents' && pdfPreviewUrl ? (
               <iframe
                 src={pdfPreviewUrl}
                 className={style.pdfPreview}
@@ -639,12 +670,25 @@ const MainPage = (): React.JSX.Element => {
               />
             ) : (
               <div className={style.previewPlaceholder}>
-                <div className={style.previewIcon}>📋</div>
-                <p>Здесь будет отображаться<br />PDF-превью документа</p>
-                {selectedDocument && (
-                  <p className={style.previewHint}>
-                    Нажмите "Преобразовать" для генерации PDF
-                  </p>
+                <div className={style.previewIcon}>
+                  {contentType === 'documents' ? '📄' : '📋'}
+                </div>
+                {contentType === 'documents' ? (
+                  <>
+                    <p>Здесь будет отображаться<br />PDF-превью документа</p>
+                    {selectedDocument && (
+                      <p className={style.previewHint}>
+                        Нажмите "Преобразовать" для генерации PDF
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p>Выберите шаблон из списка слева</p>
+                    <p className={style.previewHint}>
+                      Шаблоны используются при конвертации документов в PDF
+                    </p>
+                  </>
                 )}
               </div>
             )}
@@ -909,6 +953,40 @@ const MainPage = (): React.JSX.Element => {
                 type="button"
               >
                 Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно подтверждения сохранения */}
+      {showSaveConfirmModal && (
+        <div className={style.modalOverlay}>
+          <div className={style.modal}>
+            <div className={style.modalHeader}>
+              <h3>Успешно сохранено!</h3>
+              <button 
+                className={style.modalClose}
+                onClick={() => setShowSaveConfirmModal(false)}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            <div className={style.modalBody}>
+              <p>
+                {saveConfirmType === 'document' 
+                  ? 'Документ успешно сохранен!' 
+                  : 'Шаблон успешно сохранен!'}
+              </p>
+            </div>
+            <div className={style.modalFooter}>
+              <button 
+                className={`${style.modalButton} ${style.modalButtonPrimary}`}
+                onClick={() => setShowSaveConfirmModal(false)}
+                type="button"
+              >
+                OK
               </button>
             </div>
           </div>

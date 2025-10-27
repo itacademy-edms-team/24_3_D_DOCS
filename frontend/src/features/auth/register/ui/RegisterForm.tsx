@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@entities';
 import { Button, Input, CodeInput } from '@ui';
@@ -18,6 +18,19 @@ export const RegisterForm = () => {
 	// Шаг 2: code
 	const [code, setCode] = useState('');
 	const [codeError, setCodeError] = useState('');
+	const [resendTimer, setResendTimer] = useState(0);
+	const [isResending, setIsResending] = useState(false);
+
+	// Таймер для повторной отправки кода
+	useEffect(() => {
+		let interval: NodeJS.Timeout;
+		if (resendTimer > 0) {
+			interval = setInterval(() => {
+				setResendTimer(prev => prev - 1);
+			}, 1000);
+		}
+		return () => clearInterval(interval);
+	}, [resendTimer]);
 
 	const validateEmail = (value: string): boolean => {
 		if (!value) {
@@ -86,8 +99,24 @@ export const RegisterForm = () => {
 			clearError();
 			await sendVerification({ email, password, name });
 			setStep('code');
+			setResendTimer(60); // Запускаем таймер на 60 секунд
 		} catch (err) {
 			console.error('Ошибка отправки кода:', err);
+		}
+	};
+
+	const handleResendCode = async () => {
+		if (resendTimer > 0 || isResending) return;
+		
+		setIsResending(true);
+		try {
+			clearError();
+			await sendVerification({ email, password, name });
+			setResendTimer(60); // Запускаем таймер на 60 секунд
+		} catch (err) {
+			console.error('Ошибка повторной отправки кода:', err);
+		} finally {
+			setIsResending(false);
 		}
 	};
 
@@ -111,6 +140,8 @@ export const RegisterForm = () => {
 		setStep('email');
 		setCode('');
 		setCodeError('');
+		setResendTimer(0);
+		setIsResending(false);
 		clearError();
 	};
 
@@ -143,6 +174,7 @@ export const RegisterForm = () => {
 						}}
 						onBlur={(e) => validatePassword(e.target.value)}
 						error={errors.password}
+						showPasswordToggle
 					/>
 					<Input
 						type="text"
@@ -188,6 +220,20 @@ export const RegisterForm = () => {
 							Подтвердить
 						</Button>
 					</form>
+					
+					<div className={styles.resendSection}>
+						<button
+							type="button"
+							className={styles.resendButton}
+							onClick={handleResendCode}
+							disabled={resendTimer > 0 || isResending}
+						>
+							{isResending ? 'Отправляем...' : 
+							 resendTimer > 0 ? `Отправить заново (${resendTimer}с)` : 
+							 'Отправить код заново'}
+						</button>
+					</div>
+					
 					<button
 						type="button"
 						className={styles.backButton}

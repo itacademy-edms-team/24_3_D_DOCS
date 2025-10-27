@@ -52,7 +52,7 @@ public class EmailService : IEmailService
                     <html>
                         <body style='font-family: Arial, sans-serif; line-height: 1.6;'>
                             <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-                                <h2 style='color: #667eea;'>Добро пожаловать в Rusal Project!</h2>
+                                <h2 style='color: #667eea;'>Добро пожаловать в D_DOCS Project!</h2>
                                 <p>Ваш код подтверждения регистрации:</p>
                                 <div style='background: #f5f7fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;'>
                                     <h1 style='color: #667eea; font-size: 36px; margin: 0; letter-spacing: 8px;'>{code}</h1>
