@@ -42,10 +42,12 @@ export const useAuthStore = create<AuthState>()(
 						refreshToken: response.refreshToken,
 						isAuth: true,
 						isLoading: false,
+						error: null,
 					});
 				} catch (error: any) {
+					const errorMessage = error?.message || 'Ошибка при входе';
 					set({
-						error: error.message || 'Ошибка при входе',
+						error: errorMessage,
 						isLoading: false,
 					});
 					throw error;

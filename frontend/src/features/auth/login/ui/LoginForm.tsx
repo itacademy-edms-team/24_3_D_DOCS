@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useAuthStore } from '@entities';
@@ -12,12 +12,15 @@ const loginSchema = z.object({
 
 export const LoginForm = () => {
 	const navigate = useNavigate();
-	const login = useAuthStore((state) => state.login);
-	const isLoading = useAuthStore((state) => state.isLoading);
+	const { login, isLoading, error, clearError } = useAuthStore();
 
 	const [formData, setFormData] = useState({ email: '', password: '' });
 	const [errors, setErrors] = useState<Record<string, string>>({});
-	const [apiError, setApiError] = useState('');
+
+	// Очищаем ошибку при монтировании компонента
+	useEffect(() => {
+		clearError();
+	}, [clearError]);
 
 	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const { name, value } = e.target;
@@ -26,30 +29,38 @@ export const LoginForm = () => {
 		if (errors[name]) {
 			setErrors((prev) => ({ ...prev, [name]: '' }));
 		}
-		setApiError('');
+		if (error) {
+			clearError();
+		}
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		setErrors({});
-		setApiError('');
+		clearError();
 
 		// Validate form data
 		const result = loginSchema.safeParse(formData);
 		if (!result.success) {
 			const fieldErrors: Record<string, string> = {};
-			for (const error of result.error.errors) {
-				fieldErrors[error.path[0] as string] = error.message;
+			if (result.error && result.error.errors && Array.isArray(result.error.errors)) {
+				for (const error of result.error.errors) {
+					if (error.path && error.path.length > 0) {
+						fieldErrors[error.path[0] as string] = error.message;
+					}
+				}
 			}
 			setErrors(fieldErrors);
 			return;
 		}
 
 		try {
+			clearError();
 			await login(formData);
 			navigate('/dashboard');
 		} catch (error: any) {
-			setApiError(error.message || 'Ошибка входа');
+			console.error('Login error:', error);
+			// Ошибка уже установлена в store через login функцию
 		}
 	};
 
@@ -82,7 +93,7 @@ export const LoginForm = () => {
 				showPasswordToggle
 			/>
 
-			{apiError && <div className={styles.apiError}>{apiError}</div>}
+			{error && <div className={styles.apiError}>{error}</div>}
 
 			<Button
 				type="submit"

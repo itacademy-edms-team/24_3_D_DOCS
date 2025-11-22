@@ -83,22 +83,6 @@ services:
       timeout: 20s
       retries: 3
 
-  pandoc:
-    build:
-      context: ./pandoc
-      dockerfile: Dockerfile
-    container_name: rusal_pandoc
-    volumes:
-      - pandoc_workspace:/workspace
-    networks:
-      - rusal_network
-    command: ["tail", "-f", "/dev/null"]
-    healthcheck:
-      test: ["CMD", "pandoc", "--version"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   backend:
     build:
       context: ./backend
@@ -109,17 +93,12 @@ services:
       ASPNETCORE_URLS: http://+:5159
     ports:
       - "5159:5159"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - pandoc_workspace:/workspace
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
-        condition: service_healthy
-      pandoc:
         condition: service_healthy
     networks:
       - rusal_network
@@ -142,10 +121,12 @@ services:
 networks:
   rusal_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
-  pandoc_workspace:
 

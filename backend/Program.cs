@@ -7,14 +7,17 @@ using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
 using RusalProject.Services.Auth;
 using RusalProject.Services.Email;
-using RusalProject.Services.Storage;
-using RusalProject.Services.Pandoc;
-using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Отключаем автоматическую обработку ошибок валидации
+        // Будем обрабатывать вручную в контроллерах
+        options.SuppressModelStateInvalidFilter = true;
+    });
 
 // Swagger Configuration
 builder.Services.AddEndpointsApiExplorer();
@@ -62,22 +65,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Redis Configuration
 var redisConnection = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
 builder.Services.AddSingleton<IRedisService>(sp => new RedisService(redisConnection));
-
-// MinIO Configuration
-var minioEndpoint = builder.Configuration["MinIO:Endpoint"] ?? "localhost:9000";
-var minioAccessKey = builder.Configuration["MinIO:AccessKey"] ?? "minioadmin";
-var minioSecretKey = builder.Configuration["MinIO:SecretKey"] ?? "minioadmin123";
-
-builder.Services.AddSingleton<IMinioClient>(sp => new MinioClient()
-    .WithEndpoint(minioEndpoint)
-    .WithCredentials(minioAccessKey, minioSecretKey)
-    .WithSSL(false)
-    .Build());
-
-builder.Services.AddScoped<IMinioService, MinioService>();
-
-// Pandoc Service
-builder.Services.AddScoped<IPandocService, PandocService>();
 
 // Auth Services
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();

@@ -89,11 +89,31 @@ class HttpClient {
 
   private errorHandler(error: AxiosError) {
     const status = error.response?.status || error.status;
+    const responseData = error.response?.data as any;
+    
     // Получаем сообщение с бэкенда
-    const backendMessage = (error.response?.data as any)?.message;
-    const message = backendMessage || error.message;
+    let message = responseData?.message || error.message;
+    
+    // Если есть ошибки валидации ASP.NET Core, объединяем их в одно сообщение
+    if (responseData?.errors && typeof responseData.errors === 'object') {
+      const validationErrors: string[] = [];
+      for (const key in responseData.errors) {
+        if (Array.isArray(responseData.errors[key])) {
+          validationErrors.push(...responseData.errors[key]);
+        } else {
+          validationErrors.push(String(responseData.errors[key]));
+        }
+      }
+      if (validationErrors.length > 0) {
+        message = validationErrors.join(', ');
+      }
+    }
 
     switch (status) {
+      case 401:
+      case 403:
+        // Для 401/403 используем HttpError, но с правильным сообщением
+        return Promise.reject(new HttpError(status, message || 'Неверный email или пароль'));
       case 404:
         return Promise.reject(new NotFoundError(message));
       case 400:

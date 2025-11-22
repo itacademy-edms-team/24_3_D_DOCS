@@ -1,18 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@ui';
 import { LoginForm, RegisterForm } from '@features';
 import { Meta } from '@ui';
+import { useAuthStore } from '@entities';
 import styles from './AuthPage.module.css';
 
 type Tab = 'login' | 'register';
 
 export const AuthPage = () => {
 	const [activeTab, setActiveTab] = useState<Tab>('login');
+	const clearError = useAuthStore((state) => state.clearError);
 
 	const handleTabChange = (tab: Tab) => {
 		if (tab === activeTab) return;
+		clearError(); // Очищаем ошибку при переключении вкладок
 		setActiveTab(tab);
 	};
+
+	// Очищаем ошибку при монтировании компонента
+	useEffect(() => {
+		clearError();
+	}, [clearError]);
 
 	return (
 		<>
