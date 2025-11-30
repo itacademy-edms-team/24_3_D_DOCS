@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useRef, DragEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import 'katex/dist/katex.min.css';
 import type { Document, Profile } from '../../../../shared/src/types';
-import { DEFAULT_PAGE_SETTINGS } from '../../../../shared/src/types';
 import { documentApi, profileApi } from '../../infrastructure/api';
 import { renderDocument } from '../../application/services/documentRenderer';
+import { DocumentPreview } from '../components/DocumentPreview';
 
 export function DocumentEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +54,7 @@ export function DocumentEditorPage() {
     setSaving(true);
     try {
       await documentApi.update(id, {
+        name: document.name,
         content: document.content,
         profileId: document.profileId,
       });
@@ -64,6 +65,11 @@ export function DocumentEditorPage() {
     }
   }
 
+  function handleNameChange(name: string) {
+    if (!document) return;
+    setDocument({ ...document, name });
+  }
+
   async function handleGeneratePdf() {
     if (!id || !document) return;
 
@@ -71,6 +77,7 @@ export function DocumentEditorPage() {
     try {
       // Save first
       await documentApi.update(id, {
+        name: document.name,
         content: document.content,
         profileId: document.profileId,
       });
@@ -181,13 +188,6 @@ export function DocumentEditorPage() {
     });
   }, [document?.content, document?.overrides, profile]);
 
-  const pageStyle = useMemo(() => {
-    const page = profile?.page || DEFAULT_PAGE_SETTINGS;
-    return {
-      padding: `${page.margins.top}mm ${page.margins.right}mm ${page.margins.bottom}mm ${page.margins.left}mm`,
-    };
-  }, [profile]);
-
   if (loading) {
     return (
       <div className="page flex items-center justify-center">
@@ -213,7 +213,29 @@ export function DocumentEditorPage() {
             ← Назад
           </button>
           <span style={{ color: 'var(--text-muted)' }}>|</span>
-          <h3 style={{ margin: 0, fontSize: '1rem' }}>{document.name}</h3>
+          <input
+            type="text"
+            value={document.name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            className="form-input"
+            style={{
+              width: '200px',
+              padding: '0.25rem 0.5rem',
+              fontSize: '1rem',
+              fontWeight: 600,
+              background: 'transparent',
+              border: '1px solid transparent',
+              borderRadius: 'var(--radius-sm)',
+            }}
+            onFocus={(e) => {
+              e.target.style.background = 'var(--bg-tertiary)';
+              e.target.style.borderColor = 'var(--border-color)';
+            }}
+            onBlur={(e) => {
+              e.target.style.background = 'transparent';
+              e.target.style.borderColor = 'transparent';
+            }}
+          />
 
           <select
             value={document.profileId || ''}
@@ -331,10 +353,8 @@ export function DocumentEditorPage() {
         </div>
 
         {/* Preview */}
-        <div className="split-pane" style={{ background: '#f5f5f5' }}>
-          <div className="document-preview" style={pageStyle}>
-            <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
-          </div>
+        <div className="split-pane">
+          <DocumentPreview html={renderedHtml} profile={profile} />
         </div>
       </div>
     </div>

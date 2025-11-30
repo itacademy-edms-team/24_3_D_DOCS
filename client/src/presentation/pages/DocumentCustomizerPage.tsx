@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import 'katex/dist/katex.min.css';
 import type { Document, Profile, EntityStyle, EntityType } from '../../../../shared/src/types';
-import { DEFAULT_PAGE_SETTINGS, ENTITY_LABELS } from '../../../../shared/src/types';
+import { ENTITY_LABELS } from '../../../../shared/src/types';
 import { documentApi, profileApi } from '../../infrastructure/api';
 import { renderDocument } from '../../application/services/documentRenderer';
 import { getBaseStyle, computeStyleDelta, isDeltaEmpty } from '../../application/services/styleEngine';
-import { EntityStyleEditor } from '../components/EntityStyleEditor';
+import { EntityStyleEditor, DocumentPreview } from '../components';
 
 export function DocumentCustomizerPage() {
   const { id } = useParams<{ id: string }>();
@@ -113,13 +113,6 @@ export function DocumentCustomizerPage() {
     });
   }, [document?.content, document?.overrides, profile]);
 
-  const pageStyle = useMemo(() => {
-    const page = profile?.page || DEFAULT_PAGE_SETTINGS;
-    return {
-      padding: `${page.margins.top}mm ${page.margins.right}mm ${page.margins.bottom}mm ${page.margins.left}mm`,
-    };
-  }, [profile]);
-
   const currentStyle = useMemo(() => {
     if (!selectedElementId || !selectedElementType) return null;
 
@@ -169,14 +162,12 @@ export function DocumentCustomizerPage() {
       {/* Split view */}
       <div className="split-view">
         {/* Document Preview */}
-        <div className="split-pane split-pane-left" style={{ background: '#f5f5f5' }}>
-          <div
-            className="document-preview"
-            style={pageStyle}
+        <div className="split-pane split-pane-left">
+          <DocumentPreview 
+            html={renderedHtml} 
+            profile={profile} 
             onClick={handleElementClick}
-          >
-            <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
-          </div>
+          />
         </div>
 
         {/* Style Editor Panel */}

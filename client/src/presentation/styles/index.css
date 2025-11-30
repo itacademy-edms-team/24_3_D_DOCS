@@ -283,10 +283,22 @@ body {
 }
 
 /* ==================== DOCUMENT PREVIEW ==================== */
+.document-preview-container {
+  background: #525659;
+  min-height: 100%;
+  overflow: auto;
+}
+
+.document-page {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  margin: 20px auto;
+  position: relative;
+}
+
 .document-preview {
   background: white;
   color: #1a1a1a;
-  min-height: 100%;
   font-family: 'Times New Roman', Times, serif;
   font-size: 14pt;
   line-height: 1.5;
