@@ -1,0 +1,2 @@
+export { EntityStyleEditor } from './EntityStyleEditor';
+
