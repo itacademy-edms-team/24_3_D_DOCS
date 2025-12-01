@@ -98,8 +98,8 @@ export function TitlePageEditorPage() {
       type,
       x,
       y,
-      ...(type === 'text' && { content: 'Новый текст', fontSize: 14, fontFamily: 'Times New Roman', fontWeight: 'normal', textAlign: 'left' }),
-      ...(type === 'variable' && { variableKey: '', fontSize: 14, fontFamily: 'Times New Roman', fontWeight: 'normal', textAlign: 'left' }),
+      ...(type === 'text' && { content: 'Новый текст', fontSize: 14, fontFamily: 'Times New Roman', fontWeight: 'normal', fontStyle: 'normal', lineHeight: 1.2, textAlign: 'left' }),
+      ...(type === 'variable' && { variableKey: '', fontSize: 14, fontFamily: 'Times New Roman', fontWeight: 'normal', fontStyle: 'normal', lineHeight: 1.2, textAlign: 'left' }),
       ...(type === 'line' && { length: 100, thickness: 1 }),
     };
 

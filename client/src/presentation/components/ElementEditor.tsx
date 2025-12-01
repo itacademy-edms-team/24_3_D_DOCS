@@ -142,6 +142,32 @@ export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProp
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Стиль</label>
+            <select
+              value={localElement.fontStyle || 'normal'}
+              onChange={(e) => handleChange({ fontStyle: e.target.value as 'normal' | 'italic' })}
+              style={{ width: '100%', padding: '0.25rem' }}
+            >
+              <option value="normal">Обычный</option>
+              <option value="italic">Курсив</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Междустрочный интервал</label>
+            <input
+              type="number"
+              value={localElement.lineHeight || 1.2}
+              onChange={(e) => handleChange({ lineHeight: parseFloat(e.target.value) || 1.2 })}
+              style={{ width: '100%', padding: '0.25rem' }}
+              min="0.5"
+              max="3"
+              step="0.1"
+            />
+            <small style={{ color: '#666', fontSize: '0.75rem' }}>Множитель (например, 1.2 = 120%)</small>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Выравнивание</label>
             <select
               value={localElement.textAlign || 'left'}

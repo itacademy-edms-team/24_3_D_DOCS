@@ -1,33 +1,6 @@
 {
   "elements": [
     {
-      "id": "c5c236ca-14b7-442e-bfdc-4ea041d51fd6",
-      "type": "text",
-      "x": 55.22174873671795,
-      "y": 25.676609848179904,
-      "content": "Федеральный Муниципальный Универ СФУ",
-      "fontSize": 14,
-      "fontFamily": "Times New Roman",
-      "fontWeight": "normal",
-      "textAlign": "left"
-    },
-    {
-      "id": "68a7c6a7-8db1-467d-8068-ab231bfd92e2",
-      "type": "line",
-      "x": 52.916666666038275,
-      "y": 31.749999999623025,
-      "length": 100,
-      "thickness": 0.2
-    },
-    {
-      "id": "8899729c-2fb9-4d4c-b750-a79a1e7e24ec",
-      "type": "line",
-      "x": 49.6093749994109,
-      "y": 67.24826388809034,
-      "length": 125,
-      "thickness": 1
-    },
-    {
       "id": "169063c2-4aae-4d25-b14d-79c8e4f48cc7",
       "type": "text",
       "x": 81.80034722125085,
@@ -36,6 +9,49 @@
       "fontSize": 14,
       "fontFamily": "Times New Roman",
       "fontWeight": "normal",
+      "textAlign": "left"
+    },
+    {
+      "id": "90692245-0189-4d66-bb52-a7e310e75d36",
+      "type": "text",
+      "x": 53.3977272720932,
+      "y": 46.18181818126986,
+      "content": "«СИБИРСКИЙ ФЕДЕРАЛЬНЫЙ УНИВЕРСИТЕТ»",
+      "fontSize": 14,
+      "fontFamily": "Times New Roman",
+      "fontWeight": "bold",
+      "textAlign": "left"
+    },
+    {
+      "id": "169375ef-e7b1-42ac-a8f8-cb73a4ae216a",
+      "type": "line",
+      "x": 55.32196969631273,
+      "y": 54.1193181811755,
+      "length": 119,
+      "thickness": 0.3
+    },
+    {
+      "id": "780a3ed4-aa94-43bf-9867-76ad80b66188",
+      "type": "text",
+      "x": 96.4526515140061,
+      "y": 61.81628787805373,
+      "content": "Новый текст",
+      "fontSize": 14,
+      "fontFamily": "Times New Roman",
+      "fontWeight": "normal",
+      "textAlign": "left"
+    },
+    {
+      "id": "6469f633-b596-41e2-afec-fa0470d8f423",
+      "type": "text",
+      "x": 59.89204545383418,
+      "y": 30.306818181458276,
+      "content": "Министерство науки и высшего образования РФ\nФедеральное государственное автономное\nобразовательное учреждение высшего образование",
+      "fontSize": 14,
+      "fontFamily": "Times New Roman",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "lineHeight": 1.2,
       "textAlign": "left"
     }
   ],

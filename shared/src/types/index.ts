@@ -340,6 +340,8 @@ export interface TitlePageElement {
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  lineHeight?: number;  // multiplier
   textAlign?: 'left' | 'center' | 'right';
   // For variable
   variableKey?: string;

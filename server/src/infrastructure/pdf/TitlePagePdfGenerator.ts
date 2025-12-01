@@ -125,6 +125,12 @@ export class TitlePagePdfGenerator {
     if (element.fontWeight) {
       styles.push(`font-weight: ${element.fontWeight}`);
     }
+    if (element.fontStyle) {
+      styles.push(`font-style: ${element.fontStyle}`);
+    }
+    if (element.lineHeight) {
+      styles.push(`line-height: ${element.lineHeight}`);
+    }
     if (element.textAlign) {
       styles.push(`text-align: ${element.textAlign}`);
     }

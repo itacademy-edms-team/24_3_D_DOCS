@@ -78,7 +78,11 @@ export function TitlePageCanvas({
         ctx.fillStyle = '#000000';
         ctx.fillRect(x, y, length, thickness);
       } else if (element.type === 'text' || element.type === 'variable') {
-        ctx.font = `${element.fontWeight || 'normal'} ${element.fontSize || 14}pt ${element.fontFamily || 'Times New Roman'}`;
+        const fontWeight = element.fontWeight || 'normal';
+        const fontStyle = element.fontStyle || 'normal';
+        const fontSize = element.fontSize || 14;
+        const fontFamily = element.fontFamily || 'Times New Roman';
+        ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fontFamily}`;
         ctx.fillStyle = '#000000';
         ctx.textBaseline = 'top';
         
@@ -88,8 +92,7 @@ export function TitlePageCanvas({
         
         const lines = content.split('\n');
         const textAlign = element.textAlign || 'left';
-        const fontSize = element.fontSize || 14;
-        const lineHeight = fontSize * 1.2;
+        const lineHeight = fontSize * (element.lineHeight || 1.2);
         
         lines.forEach((line, i) => {
           // Calculate x position based on alignment
@@ -128,7 +131,7 @@ export function TitlePageCanvas({
             : (element.content || '');
           const lines = content.split('\n');
           const fontSize = element.fontSize || 14;
-          const lineHeight = fontSize * 1.2;
+          const lineHeight = fontSize * (element.lineHeight || 1.2);
           const totalHeight = lines.length * lineHeight;
           
           let maxWidth = 0;
@@ -201,7 +204,8 @@ export function TitlePageCanvas({
         const fontSize = el.fontSize || 14;
         const fontFamily = el.fontFamily || 'Times New Roman';
         const fontWeight = el.fontWeight || 'normal';
-        ctx.font = `${fontWeight} ${fontSize}pt ${fontFamily}`;
+        const fontStyle = el.fontStyle || 'normal';
+        ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fontFamily}`;
         
         const content = el.type === 'variable' 
           ? `{${el.variableKey || ''}}`
@@ -209,7 +213,7 @@ export function TitlePageCanvas({
         
         const lines = content.split('\n');
         const textAlign = el.textAlign || 'left';
-        const lineHeight = fontSize * 1.2;
+        const lineHeight = fontSize * (el.lineHeight || 1.2);
         const totalHeight = lines.length * lineHeight;
         
         // Find max width and calculate bounds
