@@ -9,14 +9,17 @@ const __dirname = path.dirname(__filename);
 // Infrastructure
 import { FileProfileRepository } from './infrastructure/persistence/FileProfileRepository';
 import { FileDocumentRepository } from './infrastructure/persistence/FileDocumentRepository';
+import { FileTitlePageRepository } from './infrastructure/persistence/FileTitlePageRepository';
 import { PdfGenerator } from './infrastructure/pdf/PdfGenerator';
+import { TitlePagePdfGenerator } from './infrastructure/pdf/TitlePagePdfGenerator';
 
 // Application Services
 import { ProfileService } from './application/services/ProfileService';
 import { DocumentService } from './application/services/DocumentService';
+import { TitlePageService } from './application/services/TitlePageService';
 
 // Routes
-import { createProfileRoutes, createDocumentRoutes, createUploadRoutes } from './presentation/routes';
+import { createProfileRoutes, createDocumentRoutes, createUploadRoutes, createTitlePageRoutes } from './presentation/routes';
 
 // Configuration
 const PORT = process.env.PORT || 3001;
@@ -37,19 +40,23 @@ app.use('/uploads', express.static(path.join(DATA_DIR, 'documents')));
 // Repositories
 const profileRepository = new FileProfileRepository(DATA_DIR);
 const documentRepository = new FileDocumentRepository(DATA_DIR);
+const titlePageRepository = new FileTitlePageRepository(DATA_DIR);
 
-// PDF Generator
+// PDF Generators
 const pdfGenerator = new PdfGenerator();
+const titlePagePdfGenerator = new TitlePagePdfGenerator();
 
 // Application Services
 const profileService = new ProfileService(profileRepository);
 const documentService = new DocumentService(documentRepository, profileRepository, pdfGenerator);
+const titlePageService = new TitlePageService(titlePageRepository, titlePagePdfGenerator);
 
 // ==================== Routes ====================
 
 app.use('/api/profiles', createProfileRoutes(profileService));
 app.use('/api/documents', createDocumentRoutes(documentService));
 app.use('/api/upload', createUploadRoutes(documentService));
+app.use('/api/title-pages', createTitlePageRoutes(titlePageService));
 
 // Health check
 app.get('/api/health', (req, res) => {

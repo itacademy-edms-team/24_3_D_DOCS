@@ -1,0 +1,43 @@
+{
+  "elements": [
+    {
+      "id": "c5c236ca-14b7-442e-bfdc-4ea041d51fd6",
+      "type": "text",
+      "x": 55.22174873671795,
+      "y": 25.676609848179904,
+      "content": "Федеральный Муниципальный Универ СФУ",
+      "fontSize": 14,
+      "fontFamily": "Times New Roman",
+      "fontWeight": "normal",
+      "textAlign": "left"
+    },
+    {
+      "id": "68a7c6a7-8db1-467d-8068-ab231bfd92e2",
+      "type": "line",
+      "x": 52.916666666038275,
+      "y": 31.749999999623025,
+      "length": 100,
+      "thickness": 0.2
+    },
+    {
+      "id": "8899729c-2fb9-4d4c-b750-a79a1e7e24ec",
+      "type": "line",
+      "x": 49.6093749994109,
+      "y": 67.24826388809034,
+      "length": 125,
+      "thickness": 1
+    },
+    {
+      "id": "169063c2-4aae-4d25-b14d-79c8e4f48cc7",
+      "type": "text",
+      "x": 81.80034722125085,
+      "y": 127.88194444292586,
+      "content": "Красноярск 2025",
+      "fontSize": 14,
+      "fontFamily": "Times New Roman",
+      "fontWeight": "normal",
+      "textAlign": "left"
+    }
+  ],
+  "variables": {}
+}

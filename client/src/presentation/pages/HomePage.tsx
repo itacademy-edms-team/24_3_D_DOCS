@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Profile, DocumentMeta } from '../../../../shared/src/types';
+import type { Profile, DocumentMeta, TitlePageMeta } from '../../../../shared/src/types';
 import { profileApi, documentApi } from '../../infrastructure/api';
+import { titlePageApi } from '../../infrastructure/api/titlePageApi';
 
 export function HomePage() {
   const navigate = useNavigate();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [documents, setDocuments] = useState<DocumentMeta[]>([]);
+  const [titlePages, setTitlePages] = useState<TitlePageMeta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'documents' | 'profiles'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'profiles' | 'title-pages'>('documents');
 
   useEffect(() => {
     loadData();
@@ -16,12 +18,14 @@ export function HomePage() {
 
   async function loadData() {
     try {
-      const [profilesData, documentsData] = await Promise.all([
+      const [profilesData, documentsData, titlePagesData] = await Promise.all([
         profileApi.getAll(),
         documentApi.getAll(),
+        titlePageApi.getAll(),
       ]);
       setProfiles(profilesData);
       setDocuments(documentsData);
+      setTitlePages(titlePagesData);
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -47,6 +51,25 @@ export function HomePage() {
       navigate(`/document/${document.id}/edit`);
     } catch (error) {
       console.error('Failed to create document:', error);
+    }
+  }
+
+  async function handleCreateTitlePage() {
+    try {
+      const titlePage = await titlePageApi.create({ name: 'Новый титульный лист' });
+      navigate(`/title-page/${titlePage.id}`);
+    } catch (error) {
+      console.error('Failed to create title page:', error);
+    }
+  }
+
+  async function handleDeleteTitlePage(id: string) {
+    if (!confirm('Удалить титульный лист?')) return;
+    try {
+      await titlePageApi.delete(id);
+      setTitlePages(titlePages.filter((p) => p.id !== id));
+    } catch (error) {
+      console.error('Failed to delete title page:', error);
     }
   }
 
@@ -120,6 +143,12 @@ export function HomePage() {
             onClick={() => setActiveTab('profiles')}
           >
             Профили ({profiles.length})
+          </button>
+          <button
+            className={`tab ${activeTab === 'title-pages' ? 'active' : ''}`}
+            onClick={() => setActiveTab('title-pages')}
+          >
+            Титульные листы ({titlePages.length})
           </button>
         </div>
 
@@ -215,6 +244,53 @@ export function HomePage() {
                     </p>
                     <p className="card-subtitle">
                       Изменён: {formatDate(profile.updatedAt)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Title Pages Tab */}
+        {activeTab === 'title-pages' && (
+          <div>
+            <div className="flex justify-between items-center mb-md">
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Титульные листы</h2>
+              <button className="btn btn-primary" onClick={handleCreateTitlePage}>
+                + Создать титульный лист
+              </button>
+            </div>
+
+            {titlePages.length === 0 ? (
+              <div className="card text-center" style={{ padding: '3rem' }}>
+                <p className="text-muted mb-md">У вас пока нет титульных листов</p>
+                <button className="btn btn-primary" onClick={handleCreateTitlePage}>
+                  Создать первый титульный лист
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-3">
+                {titlePages.map((page) => (
+                  <div
+                    key={page.id}
+                    className="card card-hover"
+                    onClick={() => navigate(`/title-page/${page.id}`)}
+                  >
+                    <div className="card-header">
+                      <h3 className="card-title">{page.name}</h3>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTitlePage(page.id);
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                    <p className="card-subtitle">
+                      Изменён: {formatDate(page.updatedAt)}
                     </p>
                   </div>
                 ))}

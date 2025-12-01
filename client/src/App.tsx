@@ -4,6 +4,7 @@ import {
   ProfileEditorPage,
   DocumentEditorPage,
   DocumentCustomizerPage,
+  TitlePageEditorPage,
 } from './presentation/pages';
 
 export function App() {
@@ -14,6 +15,7 @@ export function App() {
         <Route path="/profile/:id" element={<ProfileEditorPage />} />
         <Route path="/document/:id/edit" element={<DocumentEditorPage />} />
         <Route path="/document/:id/customize" element={<DocumentCustomizerPage />} />
+        <Route path="/title-page/:id" element={<TitlePageEditorPage />} />
       </Routes>
     </BrowserRouter>
   );
