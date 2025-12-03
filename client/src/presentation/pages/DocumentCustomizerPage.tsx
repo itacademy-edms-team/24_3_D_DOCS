@@ -5,7 +5,8 @@ import type { Document, Profile, EntityStyle, EntityType } from '../../../../sha
 import { ENTITY_LABELS } from '../../../../shared/src/types';
 import { documentApi, profileApi } from '../../infrastructure/api';
 import { renderDocument } from '../../application/services/documentRenderer';
-import { getBaseStyle, computeStyleDelta, isDeltaEmpty } from '../../application/services/styleEngine';
+import { getBaseStyle, computeStyleDelta, isDeltaEmpty } from '../../../../shared/src/utils';
+import { parseFrontmatter } from '../../utils/frontmatterUtils';
 import { EntityStyleEditor, DocumentPreview } from '../components';
 
 export function DocumentCustomizerPage() {
@@ -102,16 +103,22 @@ export function DocumentCustomizerPage() {
     setDocument({ ...document, overrides: newOverrides });
   }
 
+  // Extract frontmatter and variables
+  const { variables: documentVariables, content: markdownContent } = useMemo(() => {
+    if (!document) return { variables: {}, content: '' };
+    return parseFrontmatter(document.content);
+  }, [document?.content]);
+
   const renderedHtml = useMemo(() => {
     if (!document) return '';
 
     return renderDocument({
-      markdown: document.content,
+      markdown: markdownContent,
       profile,
       overrides: document.overrides || {},
       selectable: true,
     });
-  }, [document?.content, document?.overrides, profile]);
+  }, [markdownContent, document?.overrides, profile]);
 
   const currentStyle = useMemo(() => {
     if (!selectedElementId || !selectedElementType) return null;
@@ -167,6 +174,7 @@ export function DocumentCustomizerPage() {
             html={renderedHtml} 
             profile={profile} 
             onClick={handleElementClick}
+            documentVariables={documentVariables}
           />
         </div>
 

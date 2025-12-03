@@ -3,15 +3,23 @@ import { marked } from 'marked';
 import katex from 'katex';
 import path from 'path';
 import fs from 'fs';
-import type { Profile, EntityStyle, EntityType } from '../../../../shared/src/types';
+import { PDFDocument } from 'pdf-lib';
+import type { Profile, EntityStyle, EntityType, TitlePage } from '../../../../shared/src/types';
 import { DEFAULT_ENTITY_STYLES, DEFAULT_PAGE_SETTINGS } from '../../../../shared/src/types';
 import { styleToCSS, generateElementId, getPageDimensions } from '../../../../shared/src/utils';
+import { parseFrontmatter } from '../../utils/frontmatterUtils';
+import { TitlePagePdfGenerator } from './TitlePagePdfGenerator';
 
 /**
  * PDF Generator Service
  * Converts Markdown to PDF with profile-based styling
  */
 export class PdfGenerator {
+  private readonly titlePagePdfGenerator: TitlePagePdfGenerator;
+
+  constructor() {
+    this.titlePagePdfGenerator = new TitlePagePdfGenerator();
+  }
   /**
    * Get base style (DEFAULT + Profile)
    */
@@ -89,14 +97,18 @@ export class PdfGenerator {
     markdown: string,
     profile: Profile | null,
     overrides: Record<string, EntityStyle>,
-    docDir: string
+    docDir: string,
+    titlePage?: TitlePage | null
   ): Promise<Buffer> {
+    // Extract frontmatter and get document variables
+    const { variables: documentVariables, content: markdownContent } = parseFrontmatter(markdown);
+    
     const pageSettings = profile?.page || DEFAULT_PAGE_SETTINGS;
     const pageSize = getPageDimensions(pageSettings.size, pageSettings.orientation);
     const pageNumbers = pageSettings.pageNumbers;
 
     // 1. Process LaTeX formulas
-    const contentWithFormulas = this.renderLatex(markdown);
+    const contentWithFormulas = this.renderLatex(markdownContent);
 
     // 2. Markdown -> HTML
     let html = await marked.parse(contentWithFormulas);
@@ -374,7 +386,8 @@ export class PdfGenerator {
 
     // 7. Generate PDF with Puppeteer
     const browser = await puppeteer.launch({
-      headless: true,
+      executablePath: '/usr/bin/chromium',
+      headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
@@ -414,8 +427,30 @@ export class PdfGenerator {
         }
       }
 
-      const pdfBuffer = await page.pdf(pdfOptions);
-      return Buffer.from(pdfBuffer);
+      const documentPdfBuffer = await page.pdf(pdfOptions);
+      
+      // If title page is provided, merge it with document PDF
+      if (titlePage) {
+        const titlePagePdfBuffer = await this.titlePagePdfGenerator.generate(titlePage, documentVariables);
+        
+        // Merge PDFs using pdf-lib
+        const mergedPdf = await PDFDocument.create();
+        
+        // Add title page
+        const titlePagePdf = await PDFDocument.load(titlePagePdfBuffer);
+        const titlePagePages = await mergedPdf.copyPages(titlePagePdf, titlePagePdf.getPageIndices());
+        titlePagePages.forEach((page) => mergedPdf.addPage(page));
+        
+        // Add document pages
+        const documentPdf = await PDFDocument.load(documentPdfBuffer);
+        const documentPages = await mergedPdf.copyPages(documentPdf, documentPdf.getPageIndices());
+        documentPages.forEach((page) => mergedPdf.addPage(page));
+        
+        const mergedPdfBytes = await mergedPdf.save();
+        return Buffer.from(mergedPdfBytes);
+      }
+      
+      return Buffer.from(documentPdfBuffer);
     } finally {
       await browser.close();
     }

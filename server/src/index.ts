@@ -48,7 +48,7 @@ const titlePagePdfGenerator = new TitlePagePdfGenerator();
 
 // Application Services
 const profileService = new ProfileService(profileRepository);
-const documentService = new DocumentService(documentRepository, profileRepository, pdfGenerator);
+const documentService = new DocumentService(documentRepository, profileRepository, titlePageRepository, pdfGenerator);
 const titlePageService = new TitlePageService(titlePageRepository, titlePagePdfGenerator);
 
 // ==================== Routes ====================

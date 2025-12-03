@@ -10,9 +10,22 @@ interface ElementEditorProps {
 
 export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProps) {
   const [localElement, setLocalElement] = useState<TitlePageElement | null>(element);
+  // String values for numeric inputs to allow clearing
+  const [stringValues, setStringValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setLocalElement(element);
+    // Reset string values when element changes
+    if (element) {
+      setStringValues({
+        x: element.x != null ? element.x.toFixed(1) : '',
+        y: element.y != null ? element.y.toFixed(1) : '',
+        fontSize: element.fontSize?.toString() ?? '',
+        lineHeight: element.lineHeight?.toString() ?? '',
+        length: element.length?.toString() ?? '',
+        thickness: element.thickness?.toString() ?? '',
+      });
+    }
   }, [element]);
 
   if (!localElement) {
@@ -27,6 +40,35 @@ export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProp
     const updated = { ...localElement, ...updates };
     setLocalElement(updated);
     onUpdate(updated);
+  };
+
+  const handleNumericChange = (field: string, value: string, defaultValue: number) => {
+    setStringValues({ ...stringValues, [field]: value });
+    // Only update if value is valid number
+    const numValue = parseFloat(value);
+    if (value === '' || !isNaN(numValue)) {
+      handleChange({ [field]: value === '' ? undefined : numValue } as Partial<TitlePageElement>);
+    }
+  };
+
+  const handleNumericBlur = (field: string, defaultValue: number) => {
+    const stringValue = stringValues[field] ?? '';
+    if (stringValue === '') {
+      // Apply default value on blur if empty
+      const numValue = defaultValue;
+      setStringValues({ ...stringValues, [field]: numValue.toString() });
+      handleChange({ [field]: numValue } as Partial<TitlePageElement>);
+    } else {
+      const numValue = parseFloat(stringValue);
+      if (isNaN(numValue)) {
+        // Invalid value, restore default
+        setStringValues({ ...stringValues, [field]: defaultValue.toString() });
+        handleChange({ [field]: defaultValue } as Partial<TitlePageElement>);
+      } else {
+        // Ensure string value matches parsed value
+        setStringValues({ ...stringValues, [field]: numValue.toString() });
+      }
+    }
   };
 
   return (
@@ -59,17 +101,41 @@ export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProp
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <input
             type="number"
-            value={localElement.x}
-            onChange={(e) => handleChange({ x: parseFloat(e.target.value) || 0 })}
+            value={stringValues.x ?? (localElement.x != null ? localElement.x.toFixed(1) : '')}
+            onChange={(e) => handleNumericChange('x', e.target.value, 0)}
+            onBlur={() => {
+              const numValue = parseFloat(stringValues.x ?? '');
+              if (!isNaN(numValue)) {
+                // Round to 1 decimal place on blur
+                const rounded = parseFloat(numValue.toFixed(1));
+                setStringValues({ ...stringValues, x: rounded.toString() });
+                handleChange({ x: rounded });
+              } else {
+                handleNumericBlur('x', 0);
+              }
+            }}
             style={{ width: '100px', padding: '0.25rem' }}
             placeholder="X"
+            step="0.1"
           />
           <input
             type="number"
-            value={localElement.y}
-            onChange={(e) => handleChange({ y: parseFloat(e.target.value) || 0 })}
+            value={stringValues.y ?? (localElement.y != null ? localElement.y.toFixed(1) : '')}
+            onChange={(e) => handleNumericChange('y', e.target.value, 0)}
+            onBlur={() => {
+              const numValue = parseFloat(stringValues.y ?? '');
+              if (!isNaN(numValue)) {
+                // Round to 1 decimal place on blur
+                const rounded = parseFloat(numValue.toFixed(1));
+                setStringValues({ ...stringValues, y: rounded.toString() });
+                handleChange({ y: rounded });
+              } else {
+                handleNumericBlur('y', 0);
+              }
+            }}
             style={{ width: '100px', padding: '0.25rem' }}
             placeholder="Y"
+            step="0.1"
           />
         </div>
       </div>
@@ -106,8 +172,9 @@ export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProp
             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Размер шрифта (pt)</label>
             <input
               type="number"
-              value={localElement.fontSize || 14}
-              onChange={(e) => handleChange({ fontSize: parseFloat(e.target.value) || 14 })}
+              value={stringValues.fontSize ?? localElement.fontSize?.toString() ?? ''}
+              onChange={(e) => handleNumericChange('fontSize', e.target.value, 14)}
+              onBlur={() => handleNumericBlur('fontSize', 14)}
               style={{ width: '100%', padding: '0.25rem' }}
               min="8"
               max="72"
@@ -157,8 +224,9 @@ export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProp
             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Междустрочный интервал</label>
             <input
               type="number"
-              value={localElement.lineHeight || 1.2}
-              onChange={(e) => handleChange({ lineHeight: parseFloat(e.target.value) || 1.2 })}
+              value={stringValues.lineHeight ?? localElement.lineHeight?.toString() ?? ''}
+              onChange={(e) => handleNumericChange('lineHeight', e.target.value, 1.2)}
+              onBlur={() => handleNumericBlur('lineHeight', 1.2)}
               style={{ width: '100%', padding: '0.25rem' }}
               min="0.5"
               max="3"
@@ -189,8 +257,9 @@ export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProp
             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Длина (мм)</label>
             <input
               type="number"
-              value={localElement.length || 100}
-              onChange={(e) => handleChange({ length: parseFloat(e.target.value) || 100 })}
+              value={stringValues.length ?? localElement.length?.toString() ?? ''}
+              onChange={(e) => handleNumericChange('length', e.target.value, 100)}
+              onBlur={() => handleNumericBlur('length', 100)}
               style={{ width: '100%', padding: '0.25rem' }}
               min="1"
             />
@@ -200,8 +269,9 @@ export function ElementEditor({ element, onUpdate, onDelete }: ElementEditorProp
             <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Толщина (мм)</label>
             <input
               type="number"
-              value={localElement.thickness || 1}
-              onChange={(e) => handleChange({ thickness: parseFloat(e.target.value) || 1 })}
+              value={stringValues.thickness ?? localElement.thickness?.toString() ?? ''}
+              onChange={(e) => handleNumericChange('thickness', e.target.value, 1)}
+              onBlur={() => handleNumericBlur('thickness', 1)}
               style={{ width: '100%', padding: '0.25rem' }}
               min="0.1"
               step="0.1"

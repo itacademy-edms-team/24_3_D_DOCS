@@ -1,6 +1,7 @@
 import type { Document, DocumentMeta, CreateDocumentDTO, UpdateDocumentDTO } from '../../../../shared/src/types';
 import type { IDocumentRepository } from '../../domain/repositories/DocumentRepository';
 import type { IProfileRepository } from '../../domain/repositories/ProfileRepository';
+import type { ITitlePageRepository } from '../../domain/repositories/TitlePageRepository';
 import type { PdfGenerator } from '../../infrastructure/pdf/PdfGenerator';
 
 /**
@@ -11,6 +12,7 @@ export class DocumentService {
   constructor(
     private readonly documentRepository: IDocumentRepository,
     private readonly profileRepository: IProfileRepository,
+    private readonly titlePageRepository: ITitlePageRepository,
     private readonly pdfGenerator: PdfGenerator
   ) {}
 
@@ -34,7 +36,7 @@ export class DocumentService {
     return this.documentRepository.delete(id);
   }
 
-  async generatePdf(id: string): Promise<Buffer> {
+  async generatePdf(id: string, titlePageId?: string | null): Promise<Buffer> {
     const document = await this.documentRepository.findById(id);
     
     if (!document) {
@@ -45,13 +47,18 @@ export class DocumentService {
       ? await this.profileRepository.findById(document.profileId)
       : null;
 
+    const titlePage = titlePageId
+      ? await this.titlePageRepository.findById(titlePageId)
+      : null;
+
     const docDir = this.documentRepository.getDocumentPath(id);
 
     return this.pdfGenerator.generate(
       document.content,
       profile,
       document.overrides,
-      docDir
+      docDir,
+      titlePage
     );
   }
 

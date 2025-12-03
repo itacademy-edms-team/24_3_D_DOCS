@@ -6,5 +6,5 @@ export {
   isDeltaEmpty,
   styleToCSS,
   generateElementId,
-} from './styleEngine';
+} from '../../../../shared/src/utils';
 

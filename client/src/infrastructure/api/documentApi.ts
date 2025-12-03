@@ -61,8 +61,17 @@ export const documentApi = {
   /**
    * Generate PDF
    */
-  async generatePdf(id: string): Promise<Blob> {
-    const res = await fetch(`${API_BASE}/${id}/pdf`, { method: 'POST' });
+  async generatePdf(id: string, titlePageId?: string | null): Promise<Blob> {
+    const body: { titlePageId?: string } = {};
+    if (titlePageId) {
+      body.titlePageId = titlePageId;
+    }
+    
+    const res = await fetch(`${API_BASE}/${id}/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     if (!res.ok) throw new Error('Failed to generate PDF');
     return res.blob();
   },

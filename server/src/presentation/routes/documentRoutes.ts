@@ -96,8 +96,11 @@ export function createDocumentRoutes(documentService: DocumentService): Router {
         return res.status(404).json({ error: 'Document not found' });
       }
       
-      console.log('Generating PDF...');
-      const pdfBuffer = await documentService.generatePdf(req.params.id);
+      // Get titlePageId from request body
+      const { titlePageId } = req.body;
+      
+      console.log('Generating PDF...', titlePageId ? `with title page: ${titlePageId}` : 'without title page');
+      const pdfBuffer = await documentService.generatePdf(req.params.id, titlePageId);
       console.log('PDF generated, size:', pdfBuffer.length);
       
       res.setHeader('Content-Type', 'application/pdf');

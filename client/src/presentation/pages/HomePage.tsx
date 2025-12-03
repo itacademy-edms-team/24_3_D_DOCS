@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Profile, DocumentMeta, TitlePageMeta } from '../../../../shared/src/types';
 import { profileApi, documentApi } from '../../infrastructure/api';
 import { titlePageApi } from '../../infrastructure/api/titlePageApi';
+import { getDefaultTitlePageId, setDefaultTitlePageId } from '../../utils/storageUtils';
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -11,9 +12,12 @@ export function HomePage() {
   const [titlePages, setTitlePages] = useState<TitlePageMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'documents' | 'profiles' | 'title-pages'>('documents');
+  const [selectedTitlePageId, setSelectedTitlePageId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
+    // Load selected title page from localStorage
+    setSelectedTitlePageId(getDefaultTitlePageId());
   }, []);
 
   async function loadData() {
@@ -68,9 +72,21 @@ export function HomePage() {
     try {
       await titlePageApi.delete(id);
       setTitlePages(titlePages.filter((p) => p.id !== id));
+      // If deleted title page was selected, clear selection
+      if (selectedTitlePageId === id) {
+        setSelectedTitlePageId(null);
+        setDefaultTitlePageId(null);
+      }
     } catch (error) {
       console.error('Failed to delete title page:', error);
     }
+  }
+
+  function handleSelectTitlePage(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const newSelectedId = selectedTitlePageId === id ? null : id;
+    setSelectedTitlePageId(newSelectedId);
+    setDefaultTitlePageId(newSelectedId);
   }
 
   async function handleDeleteProfile(id: string) {
@@ -271,29 +287,51 @@ export function HomePage() {
               </div>
             ) : (
               <div className="grid grid-3">
-                {titlePages.map((page) => (
-                  <div
-                    key={page.id}
-                    className="card card-hover"
-                    onClick={() => navigate(`/title-page/${page.id}`)}
-                  >
-                    <div className="card-header">
-                      <h3 className="card-title">{page.name}</h3>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteTitlePage(page.id);
-                        }}
-                      >
-                        🗑️
-                      </button>
+                {titlePages.map((page) => {
+                  const isSelected = selectedTitlePageId === page.id;
+                  return (
+                    <div
+                      key={page.id}
+                      className="card card-hover"
+                      onClick={() => navigate(`/title-page/${page.id}`)}
+                      style={{
+                        border: isSelected ? '2px solid var(--accent-primary)' : undefined,
+                        background: isSelected ? 'rgba(122, 162, 247, 0.05)' : undefined,
+                      }}
+                    >
+                      <div className="card-header">
+                        <h3 className="card-title">{page.name}</h3>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={(e) => handleSelectTitlePage(page.id, e)}
+                            title={isSelected ? 'Снять выбор' : 'Выбрать по умолчанию'}
+                            style={{
+                              color: isSelected ? 'var(--accent-primary)' : undefined,
+                            }}
+                          >
+                            {isSelected ? '✓' : '○'}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTitlePage(page.id);
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                      <p className="card-subtitle">
+                        {isSelected && <span style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>✓ Выбран по умолчанию</span>}
+                      </p>
+                      <p className="card-subtitle">
+                        Изменён: {formatDate(page.updatedAt)}
+                      </p>
                     </div>
-                    <p className="card-subtitle">
-                      Изменён: {formatDate(page.updatedAt)}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
