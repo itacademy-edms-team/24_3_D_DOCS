@@ -41,15 +41,17 @@ export const LoginForm = () => {
 
 		// Validate form data
 		const result = loginSchema.safeParse(formData);
+
 		if (!result.success) {
 			const fieldErrors: Record<string, string> = {};
-			if (result.error && result.error.errors && Array.isArray(result.error.errors)) {
-				for (const error of result.error.errors) {
-					if (error.path && error.path.length > 0) {
-						fieldErrors[error.path[0] as string] = error.message;
-					}
+			// Zod v4 использует .issues вместо .errors
+			const issues = result.error?.issues || [];
+			for (const issue of issues) {
+				if (issue.path && issue.path.length > 0) {
+					fieldErrors[issue.path[0] as string] = issue.message;
 				}
 			}
+
 			setErrors(fieldErrors);
 			return;
 		}

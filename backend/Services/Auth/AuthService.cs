@@ -55,18 +55,17 @@ public class AuthService : IAuthService
         // Сохраняем код в Redis (на 10 минут)
         await _redisService.SaveVerificationCodeAsync(request.Email, code, TimeSpan.FromMinutes(10));
         
-        // Отправляем email асинхронно (fire-and-forget) чтобы не блокировать ответ клиенту
-        _ = Task.Run(async () =>
+        // Отправляем email
+        try
         {
-            try
-            {
-                await _emailService.SendVerificationCodeAsync(request.Email, code);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send verification email to {Email}", request.Email);
-            }
-        });
+            await _emailService.SendVerificationCodeAsync(request.Email, code);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send verification email to {Email}", request.Email);
+            // Не выбрасываем исключение - код уже сохранен в Redis,
+            // пользователь может попробовать запросить повторно
+        }
     }
 
     public async Task<LoginResponseDTO> RegisterAsync(VerifyEmailRequestDTO request)
@@ -210,19 +209,23 @@ public class AuthService : IAuthService
     public async Task LogoutAsync(string accessToken, string refreshToken)
     {
         // Получаем userId из access token
-        // Примечание: если токен expired, logout всё равно должен работать
-        Guid? userId;
-        try
+        Guid? userId = _jwtService.GetUserIdFromToken(accessToken);
+        
+        // Если токен expired или невалиден, извлекаем userId напрямую без валидации
+        if (userId == null)
         {
-            userId = _jwtService.GetUserIdFromToken(accessToken);
-        }
-        catch
-        {
-            // Если токен expired, пытаемся извлечь userId напрямую без валидации
-            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
-            var jwtToken = handler.ReadJwtToken(accessToken);
-            var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            userId = Guid.TryParse(userIdClaim, out var id) ? id : null;
+            try
+            {
+                var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                var jwtToken = handler.ReadJwtToken(accessToken);
+                // Ищем claim "sub" (JwtRegisteredClaimNames.Sub)
+                var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+                userId = Guid.TryParse(userIdClaim, out var id) ? id : null;
+            }
+            catch
+            {
+                // Если не удалось прочитать токен
+            }
         }
 
         if (userId == null)

@@ -102,7 +102,7 @@ public class RedisService : IRedisService
         return await _database.KeyDeleteAsync(key);
     }
 
-    public async Task<List<string>> GetAllRefreshTokensByUserIdAsync(Guid userId)
+    public Task<List<string>> GetAllRefreshTokensByUserIdAsync(Guid userId)
     {
         var pattern = $"refresh_token:{userId}:*";
         var server = _redis.GetServer(_redis.GetEndPoints().First());
@@ -120,7 +120,7 @@ public class RedisService : IRedisService
             }
         }
         
-        return tokens;
+        return Task.FromResult(tokens);
     }
 
     #endregion

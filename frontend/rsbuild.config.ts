@@ -42,11 +42,7 @@ export default defineConfig({
 
 	server: {
 		port: process.env.PORT ? Number(process.env.PORT) : 8080,
-		proxy: {
-			'/api/v1': {
-				target: process.env.BASE_URL,
-				pathRewrite: { '^/api/v1': '' },
-			},
-		}
+		// Proxy настраивается только для dev-сервера
+		// В production nginx проксирует запросы
 	},
 });

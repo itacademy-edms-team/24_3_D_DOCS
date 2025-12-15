@@ -17,8 +17,8 @@ public class EmailService : IEmailService
 
     public string GenerateVerificationCode()
     {
-        var random = new Random();
-        return random.Next(100000, 999999).ToString();
+        // Используем криптографически безопасный генератор
+        return System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
     }
 
     public async Task SendVerificationCodeAsync(string toEmail, string code)

@@ -190,8 +190,8 @@ export const RegisterForm = () => {
 
 					{error && <p className={styles.error}>{error}</p>}
 
-					<Button type="submit" loading={isLoading} fullWidth>
-						Отправить код
+					<Button type="submit" isLoading={isLoading} fullWidth>
+						{isLoading ? 'Отправляем код...' : 'Отправить код'}
 					</Button>
 				</form>
 			) : (
@@ -216,7 +216,7 @@ export const RegisterForm = () => {
 						{codeError && <p className={styles.error}>{codeError}</p>}
 						{error && <p className={styles.error}>{error}</p>}
 
-						<Button type="submit" loading={isLoading} fullWidth disabled={code.length !== 6}>
+						<Button type="submit" isLoading={isLoading} fullWidth disabled={code.length !== 6}>
 							Подтвердить
 						</Button>
 					</form>

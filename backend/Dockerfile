@@ -14,13 +14,6 @@ RUN dotnet publish -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Install Docker CLI
-RUN apt-get update && \
-    apt-get install -y curl && \
-    curl -fsSL https://get.docker.com | sh && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 # Copy published app
 COPY --from=build /app/publish .
 
