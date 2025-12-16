@@ -14,8 +14,9 @@ RUN pnpm install
 # Копируем исходный код
 COPY . .
 
-# Устанавливаем переменную окружения для API URL
-ENV BASE_URI=http://localhost:5159
+# Принимаем BASE_URI как build arg (по умолчанию для dev)
+ARG BASE_URI=http://localhost:5159
+ENV BASE_URI=${BASE_URI}
 
 # Билдим приложение
 RUN pnpm run build

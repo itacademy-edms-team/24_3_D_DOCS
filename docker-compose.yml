@@ -109,6 +109,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        BASE_URI: http://localhost:5159
     container_name: rusal_frontend
     ports:
       - "3000:80"

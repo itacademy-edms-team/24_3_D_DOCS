@@ -1,51 +1,26 @@
 {
 	"name": "frontend",
-	"type": "module",
 	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
-	"keywords": [
-		"pnpm",
-		"react",
-		"gitlab"
-	],
-	"author": "",
-	"license": "ISC",
-	"packageManager": "pnpm@10.17.1",
+	"type": "module",
 	"scripts": {
-		"build": "rsbuild build --mode production",
-		"dev": "rsbuild dev --open",
-		"preview": "rsbuild preview",
-		"biome:format": "biome format --write src",
-		"biome:lint": "biome lint --fix src",
-		"biome:check": "biome check src",
-		"docker:build": "docker build --force-rm --no-cache -t frontend -f ./docker/Dockerfile .",
-		"docker:start": "docker run -p 80:80 --name frontend -d frontend",
-		"docker:stop": "docker stop frontend",
-		"docker:rm": "docker rm frontend",
-		"docker:rmi": "docker rmi frontend"
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
+		"lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore"
 	},
 	"dependencies": {
-		"@bem-react/classname": "^1.7.0",
+		"vue": "^3.5.13",
+		"vue-router": "^4.5.0",
+		"pinia": "^2.2.8",
+		"pinia-plugin-persistedstate": "^3.2.1",
 		"axios": "^1.12.2",
-		"react": "^18.3.1",
-		"react-dom": "^18.3.1",
-		"react-helmet-async": "^2.0.5",
-		"react-router-dom": "^7.9.4",
-		"zod": "^4.1.12",
-		"zustand": "^5.0.8"
+		"zod": "^4.1.12"
 	},
 	"devDependencies": {
-		"@gravity-ui/browserslist-config": "^4.3.0",
-		"@gravity-ui/tsconfig": "^1.0.0",
-		"@biomejs/biome": "2.2.5",
-		"@rsbuild/core": "^1.5.6",
-		"@rsbuild/plugin-css-minimizer": "^1.0.3",
-		"@rsbuild/plugin-react": "^1.4.0",
-		"@types/node": "^24.7.1",
-		"@types/react": "^19.1.13",
-		"@types/react-dom": "^19.1.9",
-		"lightningcss": "^1.30.2",
-		"typescript": "^5.9.2"
-	}
+		"@vitejs/plugin-vue": "^5.2.1",
+		"typescript": "^5.9.2",
+		"vite": "^6.0.7",
+		"@types/node": "^24.7.1"
+	},
+	"packageManager": "pnpm@10.17.1"
 }
