@@ -10,8 +10,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - rusal_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rusal_user -d rusal_db"]
       interval: 10s
@@ -30,8 +28,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - rusal_network
     restart: unless-stopped
 
   redis:
@@ -41,8 +37,6 @@ services:
       - "6380:6379"
     volumes:
       - redis_data:/data
-    networks:
-      - rusal_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -59,8 +53,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    networks:
-      - rusal_network
     restart: unless-stopped
 
   # MinIO - S3-совместимое хранилище (раскомментировать при необходимости)
@@ -75,8 +67,6 @@ services:
   #     - "9001:9001"  # Console
   #   volumes:
   #     - minio_data:/data
-  #   networks:
-  #     - rusal_network
   #   command: server /data --console-address ":9001"
   #   healthcheck:
   #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -101,8 +91,6 @@ services:
         condition: service_healthy
       # minio: # Раскомментировать когда будет использоваться
       #   condition: service_healthy
-    networks:
-      - rusal_network
     restart: unless-stopped
 
   frontend:
@@ -116,17 +104,8 @@ services:
       - "3000:80"
     depends_on:
       - backend
-    networks:
-      - rusal_network
     environment:
       - NODE_ENV=production
-
-networks:
-  rusal_network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.25.0.0/16
 
 volumes:
   postgres_data:
