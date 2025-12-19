@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Minio;
+using Minio.DataModel.Args;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
 using RusalProject.Services.Auth;
@@ -158,18 +159,18 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
         
         // Warm-up MinIO - ensure default bucket exists
-        var minioClient = services.GetRequiredService<IMinioClient>();
+        var minio = services.GetRequiredService<IMinioClient>();
         var defaultBucket = builder.Configuration["MinIO:DefaultBucket"] ?? "documents";
         try
         {
-            var bucketExistsArgs = new Minio.DataModel.Args.BucketExistsArgs()
-                .WithBucket(defaultBucket);
-            var exists = minioClient.BucketExistsAsync(bucketExistsArgs).GetAwaiter().GetResult();
+            var exists = minio.BucketExistsAsync(
+                new BucketExistsArgs()
+                    .WithBucket(defaultBucket)).GetAwaiter().GetResult();
             if (!exists)
             {
-                var makeBucketArgs = new Minio.DataModel.Args.MakeBucketArgs()
-                    .WithBucket(defaultBucket);
-                minioClient.MakeBucketAsync(makeBucketArgs).GetAwaiter().GetResult();
+                minio.MakeBucketAsync(
+                    new MakeBucketArgs()
+                        .WithBucket(defaultBucket)).GetAwaiter().GetResult();
                 Console.WriteLine($"MinIO bucket '{defaultBucket}' created.");
             }
             else

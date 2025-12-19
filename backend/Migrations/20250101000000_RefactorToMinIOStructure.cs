@@ -11,11 +11,36 @@ namespace RusalProject.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Drop old tables
-            migrationBuilder.DropTable(name: "document_links");
-            migrationBuilder.DropTable(name: "schema_links");
+            // Create users table (if not exists)
+            migrationBuilder.CreateTable(
+                name: "users",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    email = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    password_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    role = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "User"),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "NOW()"),
+                    updated_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "NOW()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_users", x => x.id);
+                });
 
-            // Create new profiles table
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_Email",
+                table: "users",
+                column: "email",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_Role",
+                table: "users",
+                column: "role");
+
+            // Create profiles table
             migrationBuilder.CreateTable(
                 name: "profiles",
                 columns: table => new
@@ -81,6 +106,7 @@ namespace RusalProject.Migrations
         {
             migrationBuilder.DropTable(name: "documents");
             migrationBuilder.DropTable(name: "profiles");
+            migrationBuilder.DropTable(name: "users");
         }
     }
 }

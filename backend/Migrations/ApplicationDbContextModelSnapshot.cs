@@ -22,16 +22,12 @@ namespace RusalProject.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("RusalProject.Models.Entities.DocumentLink", b =>
+            modelBuilder.Entity("RusalProject.Models.Entities.Document", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
-
-                    b.Property<string>("ConversionLog")
-                        .HasColumnType("text")
-                        .HasColumnName("conversion_log");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -43,35 +39,15 @@ namespace RusalProject.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("creator_id");
 
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("description");
-
-                    b.Property<string>("MdMinioPath")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("md_minio_path");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
-                    b.Property<string>("PdfMinioPath")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("pdf_minio_path");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("draft")
-                        .HasColumnName("status");
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("profile_id");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -82,15 +58,15 @@ namespace RusalProject.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatorId")
-                        .HasDatabaseName("IX_DocumentLinks_CreatorId");
+                        .HasDatabaseName("IX_Documents_CreatorId");
 
-                    b.HasIndex("Status")
-                        .HasDatabaseName("IX_DocumentLinks_Status");
+                    b.HasIndex("ProfileId")
+                        .HasDatabaseName("IX_Documents_ProfileId");
 
-                    b.ToTable("document_links");
+                    b.ToTable("documents");
                 });
 
-            modelBuilder.Entity("RusalProject.Models.Entities.SchemaLink", b =>
+            modelBuilder.Entity("RusalProject.Models.Entities.Profile", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -107,30 +83,11 @@ namespace RusalProject.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("creator_id");
 
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsPublic")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_public");
-
-                    b.Property<string>("MinioPath")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("minio_path");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("name");
-
-                    b.Property<string>("PandocOptions")
-                        .HasColumnType("text")
-                        .HasColumnName("pandoc_options");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -141,12 +98,9 @@ namespace RusalProject.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatorId")
-                        .HasDatabaseName("IX_SchemaLinks_CreatorId");
+                        .HasDatabaseName("IX_Profiles_CreatorId");
 
-                    b.HasIndex("IsPublic")
-                        .HasDatabaseName("IX_SchemaLinks_IsPublic");
-
-                    b.ToTable("schema_links");
+                    b.ToTable("profiles");
                 });
 
             modelBuilder.Entity("RusalProject.Models.Entities.User", b =>
@@ -206,10 +160,10 @@ namespace RusalProject.Migrations
                     b.ToTable("users");
                 });
 
-            modelBuilder.Entity("RusalProject.Models.Entities.DocumentLink", b =>
+            modelBuilder.Entity("RusalProject.Models.Entities.Document", b =>
                 {
                     b.HasOne("RusalProject.Models.Entities.User", "Creator")
-                        .WithMany("DocumentLinks")
+                        .WithMany("Documents")
                         .HasForeignKey("CreatorId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -217,10 +171,10 @@ namespace RusalProject.Migrations
                     b.Navigation("Creator");
                 });
 
-            modelBuilder.Entity("RusalProject.Models.Entities.SchemaLink", b =>
+            modelBuilder.Entity("RusalProject.Models.Entities.Profile", b =>
                 {
                     b.HasOne("RusalProject.Models.Entities.User", "Creator")
-                        .WithMany("SchemaLinks")
+                        .WithMany("Profiles")
                         .HasForeignKey("CreatorId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -230,9 +184,9 @@ namespace RusalProject.Migrations
 
             modelBuilder.Entity("RusalProject.Models.Entities.User", b =>
                 {
-                    b.Navigation("DocumentLinks");
+                    b.Navigation("Documents");
 
-                    b.Navigation("SchemaLinks");
+                    b.Navigation("Profiles");
                 });
 #pragma warning restore 612, 618
         }
