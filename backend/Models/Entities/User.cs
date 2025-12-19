@@ -36,7 +36,7 @@ public class User
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public virtual ICollection<SchemaLink> SchemaLinks { get; set; } = new List<SchemaLink>();
-    public virtual ICollection<DocumentLink> DocumentLinks { get; set; } = new List<DocumentLink>();
+    public virtual ICollection<Profile> Profiles { get; set; } = new List<Profile>();
+    public virtual ICollection<Document> Documents { get; set; } = new List<Document>();
 }
 

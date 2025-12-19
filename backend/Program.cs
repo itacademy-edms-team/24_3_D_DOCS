@@ -156,6 +156,31 @@ using (var scope = app.Services.CreateScope())
         var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
         redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
         Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
+        
+        // Warm-up MinIO - ensure default bucket exists
+        var minioClient = services.GetRequiredService<IMinioClient>();
+        var defaultBucket = builder.Configuration["MinIO:DefaultBucket"] ?? "documents";
+        try
+        {
+            var bucketExistsArgs = new Minio.DataModel.Args.BucketExistsArgs()
+                .WithBucket(defaultBucket);
+            var exists = minioClient.BucketExistsAsync(bucketExistsArgs).GetAwaiter().GetResult();
+            if (!exists)
+            {
+                var makeBucketArgs = new Minio.DataModel.Args.MakeBucketArgs()
+                    .WithBucket(defaultBucket);
+                minioClient.MakeBucketAsync(makeBucketArgs).GetAwaiter().GetResult();
+                Console.WriteLine($"MinIO bucket '{defaultBucket}' created.");
+            }
+            else
+            {
+                Console.WriteLine($"MinIO bucket '{defaultBucket}' already exists.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"MinIO warm-up error: {ex.Message}");
+        }
     }
     catch (Exception ex)
     {
