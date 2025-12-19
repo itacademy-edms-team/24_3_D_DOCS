@@ -11,9 +11,4 @@ pinia.use(piniaPluginPersistedstate);
 
 app.use(pinia);
 app.use(router);
-
-// Инициализируем auth store сразу после создания pinia, чтобы данные восстановились из localStorage
-import { useAuthStore } from './entities/auth/store/authStore';
-const authStore = useAuthStore();
-
 app.mount('#app');

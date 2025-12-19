@@ -24,23 +24,16 @@ const router = createRouter({
 	],
 });
 
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
 	const authStore = useAuthStore();
 
-	// Если есть токен, проверяем его валидность
 	if (authStore.isAuth) {
-		try {
-			await authStore.checkAuth();
-		} catch {
-			// Токен невалиден, но не редиректим сразу - может быть это не защищенный маршрут
-		}
+		await authStore.checkAuth();
 	}
 
-	if (to.meta.requiresAuth) {
-		if (!authStore.isAuth) {
-			next('/auth');
-			return;
-		}
+	if (to.meta.requiresAuth && !authStore.isAuth) {
+		next('/auth');
+		return;
 	}
 
 	if (to.path === '/auth' && authStore.isAuth) {
