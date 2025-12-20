@@ -47,7 +47,16 @@ public class DocumentsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<DocumentDTO>> Create([FromBody] CreateDocumentDTO dto)
     {
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentsController.cs:47\",\"message\":\"Create endpoint called\",\"data\":{{\"dtoName\":\"{dto.Name}\",\"dtoProfileId\":\"{dto.ProfileId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run2\",\"hypothesisId\":\"A\"}}");
+        // #endregion
+
         var userId = GetUserId();
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentsController.cs:50\",\"message\":\"User ID extracted\",\"data\":{{\"userId\":\"{userId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run2\",\"hypothesisId\":\"A\"}}");
+        // #endregion
+
         var document = await _documentService.CreateDocumentAsync(dto, userId);
         return CreatedAtAction(nameof(GetById), new { id = document.Id }, document);
     }

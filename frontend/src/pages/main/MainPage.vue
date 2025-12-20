@@ -23,6 +23,8 @@
 				:items="filteredItems"
 				:is-loading="isLoading"
 				@item-click="handleItemClick"
+				@delete="handleDelete"
+				@update="handleUpdate"
 			/>
 
 			<div class="table-footer">
@@ -70,19 +72,50 @@ function handleItemClick(item: ProfileMeta | DocumentMeta) {
 	}
 }
 
-function handleNewProject() {
-	if (activeTab.value === 'profiles') {
-		ProfileAPI.create({ name: 'Новый шаблон' })
-			.then((profile) => {
-				router.push(`/profile/${profile.id}`);
-			})
-			.catch(console.error);
-	} else {
-		DocumentAPI.create({ name: 'Новый документ' })
-			.then((doc) => {
-				router.push(`/document/${doc.id}`);
-			})
-			.catch(console.error);
+async function handleNewProject() {
+	try {
+		if (activeTab.value === 'profiles') {
+			await ProfileAPI.create({ name: 'Новый шаблон' });
+		} else {
+			await DocumentAPI.create({ name: 'Новый документ' });
+		}
+		// Reload data to show new item
+		await loadData();
+	} catch (error) {
+		console.error('Failed to create item:', error);
+		alert('Ошибка при создании элемента: ' + (error instanceof Error ? error.message : String(error)));
+	}
+}
+
+async function handleDelete(item: ProfileMeta | DocumentMeta) {
+	if (!confirm(`Вы уверены, что хотите удалить "${item.name || 'элемент'}"?`)) {
+		return;
+	}
+
+	try {
+		if (activeTab.value === 'profiles') {
+			await ProfileAPI.delete(item.id);
+		} else {
+			await DocumentAPI.delete(item.id);
+		}
+		await loadData();
+	} catch (error) {
+		console.error('Failed to delete item:', error);
+		alert('Ошибка при удалении элемента');
+	}
+}
+
+async function handleUpdate(item: ProfileMeta | DocumentMeta, name: string) {
+	try {
+		if (activeTab.value === 'profiles') {
+			await ProfileAPI.update(item.id, { name });
+		} else {
+			await DocumentAPI.update(item.id, { name });
+		}
+		await loadData();
+	} catch (error) {
+		console.error('Failed to update item:', error);
+		alert('Ошибка при обновлении названия');
 	}
 }
 

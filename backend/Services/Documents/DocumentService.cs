@@ -18,6 +18,16 @@ public class DocumentService : IDocumentService
     private readonly IConfiguration _configuration;
     private readonly ILogger<DocumentService> _logger;
 
+    // Internal class for deserializing meta.json
+    private class DocumentMetaJson
+    {
+        public string id { get; set; } = string.Empty;
+        public string name { get; set; } = string.Empty;
+        public string? profileId { get; set; }
+        public DateTime createdAt { get; set; }
+        public DateTime updatedAt { get; set; }
+    }
+
     public DocumentService(
         ApplicationDbContext context,
         IMinioClient minioClient,
@@ -39,20 +49,42 @@ public class DocumentService : IDocumentService
 
     public async Task<List<DocumentMetaDTO>> GetAllDocumentsAsync(Guid userId)
     {
-        var documents = await _context.Documents
+        // Get documents from DB (only id and updatedAt for sorting)
+        var dbDocuments = await _context.Documents
             .Where(d => d.CreatorId == userId)
             .OrderByDescending(d => d.UpdatedAt)
-            .Select(d => new DocumentMetaDTO
-            {
-                Id = d.Id,
-                Name = d.Name,
-                ProfileId = d.ProfileId,
-                CreatedAt = d.CreatedAt,
-                UpdatedAt = d.UpdatedAt
-            })
+            .Select(d => new { d.Id, d.UpdatedAt })
             .ToListAsync();
 
-        return documents;
+        var bucketName = GetBucketName(userId);
+        await EnsureBucketExistsAsync(bucketName);
+
+        // Read meta.json for each document in parallel
+        var metaTasks = dbDocuments.Select(async dbDoc =>
+        {
+            try
+            {
+                var metaJson = await ReadJsonAsync<DocumentMetaJson>(bucketName, GetMetaPath(dbDoc.Id));
+                if (metaJson == null) return null;
+
+                return new DocumentMetaDTO
+                {
+                    Id = Guid.Parse(metaJson.id),
+                    Name = metaJson.name,
+                    ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
+                    CreatedAt = metaJson.createdAt,
+                    UpdatedAt = metaJson.updatedAt
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read meta.json for document {DocumentId}", dbDoc.Id);
+                return null;
+            }
+        });
+
+        var metas = await Task.WhenAll(metaTasks);
+        return metas.Where(m => m != null).Cast<DocumentMetaDTO>().ToList();
     }
 
     public async Task<DocumentDTO?> GetDocumentByIdAsync(Guid id, Guid userId)
@@ -65,62 +97,143 @@ public class DocumentService : IDocumentService
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
+        var metaJson = await ReadJsonAsync<DocumentMetaJson>(bucketName, GetMetaPath(id));
+        if (metaJson == null) return null;
+
         var content = await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
         var overrides = await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
 
         return new DocumentDTO
         {
-            Id = document.Id,
-            Name = document.Name,
-            ProfileId = document.ProfileId,
+            Id = Guid.Parse(metaJson.id),
+            Name = metaJson.name,
+            ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
             Content = content,
             Overrides = overrides,
-            CreatedAt = document.CreatedAt,
-            UpdatedAt = document.UpdatedAt
+            CreatedAt = metaJson.createdAt,
+            UpdatedAt = metaJson.updatedAt
         };
     }
 
     public async Task<DocumentDTO> CreateDocumentAsync(CreateDocumentDTO dto, Guid userId)
     {
+        try
+        {
+            // #region agent log
+            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:118\",\"message\":\"CreateDocumentAsync started\",\"data\":{{\"userId\":\"{userId}\",\"dtoName\":\"{dto.Name}\",\"dtoProfileId\":\"{dto.ProfileId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run2\",\"hypothesisId\":\"A\"}}");
+            // #endregion
+
+            var documentId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+        
         var document = new Document
         {
-            Id = Guid.NewGuid(),
+            Id = documentId,
             CreatorId = userId,
-            Name = dto.Name,
-            ProfileId = dto.ProfileId
+            UpdatedAt = now
         };
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:130\",\"message\":\"About to save document to DB\",\"data\":{{\"documentId\":\"{documentId}\",\"userId\":\"{userId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"A\"}}");
+        // #endregion
 
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
 
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:131\",\"message\":\"Document saved to DB successfully\",\"data\":{{\"documentId\":\"{documentId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"A\"}}");
+        // #endregion
+
         var bucketName = GetBucketName(userId);
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:133\",\"message\":\"About to ensure bucket exists\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
+        // #endregion
+
         await EnsureBucketExistsAsync(bucketName);
 
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:134\",\"message\":\"Bucket ensured successfully\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
+        // #endregion
+
         var configPath = Path.Combine(AppContext.BaseDirectory, "Config", "DefaultContent.md");
-        var defaultContent = await File.ReadAllTextAsync(configPath);
-        var meta = new
+        var defaultContent = string.Empty;
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:136\",\"message\":\"Checking default content file\",\"data\":{{\"configPath\":\"{configPath}\",\"fileExists\":\"{File.Exists(configPath)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"C\"}}");
+        // #endregion
+
+        if (File.Exists(configPath))
         {
-            id = document.Id.ToString(),
-            name = document.Name,
-            profileId = document.ProfileId?.ToString(),
-            createdAt = document.CreatedAt,
-            updatedAt = document.UpdatedAt
+            defaultContent = await File.ReadAllTextAsync(configPath);
+
+            // #region agent log
+            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:140\",\"message\":\"Default content loaded\",\"data\":{{\"contentLength\":\"{defaultContent.Length}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"C\"}}");
+            // #endregion
+        }
+
+        var meta = new DocumentMetaJson
+        {
+            id = documentId.ToString(),
+            name = dto.Name ?? "Новый документ",
+            profileId = dto.ProfileId?.ToString(),
+            createdAt = now,
+            updatedAt = now
         };
 
-        await WriteFileAsync(bucketName, GetContentPath(document.Id), defaultContent);
-        await WriteJsonAsync(bucketName, GetMetaPath(document.Id), meta);
-        await WriteJsonAsync(bucketName, GetOverridesPath(document.Id), new Dictionary<string, object>());
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:152\",\"message\":\"About to write content file to MinIO\",\"data\":{{\"path\":\"{GetContentPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
 
-        return new DocumentDTO
+        await WriteFileAsync(bucketName, GetContentPath(documentId), defaultContent);
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:152\",\"message\":\"Content file written successfully\",\"data\":{{\"path\":\"{GetContentPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:153\",\"message\":\"About to write meta.json to MinIO\",\"data\":{{\"path\":\"{GetMetaPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
+
+        await WriteJsonAsync(bucketName, GetMetaPath(documentId), meta);
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:153\",\"message\":\"Meta.json written successfully\",\"data\":{{\"path\":\"{GetMetaPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:154\",\"message\":\"About to write overrides.json to MinIO\",\"data\":{{\"path\":\"{GetOverridesPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
+
+        await WriteJsonAsync(bucketName, GetOverridesPath(documentId), new Dictionary<string, object>());
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:154\",\"message\":\"Overrides.json written successfully\",\"data\":{{\"path\":\"{GetOverridesPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:225\",\"message\":\"CreateDocumentAsync completed successfully\",\"data\":{{\"documentId\":\"{documentId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"A\"}}");
+        // #endregion
+
+            return new DocumentDTO
+            {
+                Id = documentId,
+                Name = meta.name,
+                ProfileId = dto.ProfileId,
+                Content = defaultContent,
+                Overrides = new Dictionary<string, object>(),
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+        }
+        catch (Exception ex)
         {
-            Id = document.Id,
-            Name = document.Name,
-            ProfileId = document.ProfileId,
-            Content = defaultContent,
-            Overrides = new Dictionary<string, object>(),
-            CreatedAt = document.CreatedAt,
-            UpdatedAt = document.UpdatedAt
-        };
+            // #region agent log
+            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:242\",\"message\":\"CreateDocumentAsync failed with exception\",\"data\":{{\"userId\":\"{userId}\",\"error\":\"{ex.Message}\",\"stackTrace\":\"{ex.StackTrace}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"E\"}}");
+            // #endregion
+
+            throw;
+        }
     }
 
     public async Task<DocumentDTO?> UpdateDocumentAsync(Guid id, UpdateDocumentDTO dto, Guid userId)
@@ -130,13 +243,20 @@ public class DocumentService : IDocumentService
 
         if (document == null) return null;
 
-        if (dto.Name != null) document.Name = dto.Name;
-        if (dto.ProfileId != null) document.ProfileId = dto.ProfileId;
-
+        document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
+
+        // Read existing meta
+        var metaJson = await ReadJsonAsync<DocumentMetaJson>(bucketName, GetMetaPath(id));
+        if (metaJson == null) return null;
+
+        // Update meta if needed
+        if (dto.Name != null) metaJson.name = dto.Name;
+        if (dto.ProfileId != null) metaJson.profileId = dto.ProfileId.ToString();
+        metaJson.updatedAt = document.UpdatedAt;
 
         if (dto.Content != null)
         {
@@ -148,28 +268,20 @@ public class DocumentService : IDocumentService
             await WriteJsonAsync(bucketName, GetOverridesPath(id), dto.Overrides);
         }
 
-        var meta = new
-        {
-            id = document.Id.ToString(),
-            name = document.Name,
-            profileId = document.ProfileId?.ToString(),
-            createdAt = document.CreatedAt,
-            updatedAt = document.UpdatedAt
-        };
-        await WriteJsonAsync(bucketName, GetMetaPath(id), meta);
+        await WriteJsonAsync(bucketName, GetMetaPath(id), metaJson);
 
         var content = dto.Content ?? await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
         var overrides = dto.Overrides ?? await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
 
         return new DocumentDTO
         {
-            Id = document.Id,
-            Name = document.Name,
-            ProfileId = document.ProfileId,
+            Id = id,
+            Name = metaJson.name,
+            ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
             Content = content,
             Overrides = overrides,
-            CreatedAt = document.CreatedAt,
-            UpdatedAt = document.UpdatedAt
+            CreatedAt = metaJson.createdAt,
+            UpdatedAt = metaJson.updatedAt
         };
     }
 
@@ -298,12 +410,29 @@ public class DocumentService : IDocumentService
 
     private async Task EnsureBucketExistsAsync(string bucketName)
     {
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:414\",\"message\":\"EnsureBucketExistsAsync checking bucket\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
+        // #endregion
+
         var bucketExistsArgs = new BucketExistsArgs().WithBucket(bucketName);
         var exists = await _minioClient.BucketExistsAsync(bucketExistsArgs);
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:414\",\"message\":\"Bucket exists check result\",\"data\":{{\"bucketName\":\"{bucketName}\",\"exists\":\"{exists}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
+        // #endregion
+
         if (!exists)
         {
+            // #region agent log
+            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:419\",\"message\":\"Creating bucket\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
+            // #endregion
+
             var makeBucketArgs = new MakeBucketArgs().WithBucket(bucketName);
             await _minioClient.MakeBucketAsync(makeBucketArgs);
+
+            // #region agent log
+            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:421\",\"message\":\"Bucket created successfully\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
+            // #endregion
         }
     }
 
@@ -329,17 +458,26 @@ public class DocumentService : IDocumentService
 
     private async Task WriteFileAsync(string bucketName, string objectName, string content)
     {
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:466\",\"message\":\"WriteFileAsync starting\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\",\"contentLength\":\"{content.Length}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
+
         var bytes = Encoding.UTF8.GetBytes(content);
-        var stream = new MemoryStream(bytes);
+        using var stream = new MemoryStream(bytes);
+        stream.Position = 0;
 
         var putArgs = new PutObjectArgs()
             .WithBucket(bucketName)
             .WithObject(objectName)
             .WithStreamData(stream)
-            .WithObjectSize(bytes.Length)
+            .WithObjectSize((long)bytes.Length)
             .WithContentType("text/markdown");
 
         await _minioClient.PutObjectAsync(putArgs);
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:479\",\"message\":\"WriteFileAsync completed\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
     }
 
     private async Task<T?> ReadJsonAsync<T>(string bucketName, string objectName)
@@ -352,17 +490,26 @@ public class DocumentService : IDocumentService
 
     private async Task WriteJsonAsync<T>(string bucketName, string objectName, T data)
     {
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:500\",\"message\":\"WriteJsonAsync starting\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\",\"type\":\"{typeof(T).Name}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
+
         var json = JsonSerializer.Serialize(data);
         var bytes = Encoding.UTF8.GetBytes(json);
-        var stream = new MemoryStream(bytes);
+        using var stream = new MemoryStream(bytes);
+        stream.Position = 0;
 
         var putArgs = new PutObjectArgs()
             .WithBucket(bucketName)
             .WithObject(objectName)
             .WithStreamData(stream)
-            .WithObjectSize(bytes.Length)
+            .WithObjectSize((long)bytes.Length)
             .WithContentType("application/json");
 
         await _minioClient.PutObjectAsync(putArgs);
+
+        // #region agent log
+        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:514\",\"message\":\"WriteJsonAsync completed\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
+        // #endregion
     }
 }

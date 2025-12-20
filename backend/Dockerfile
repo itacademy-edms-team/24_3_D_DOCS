@@ -17,6 +17,9 @@ WORKDIR /app
 # Copy published app
 COPY --from=build /app/publish .
 
+# Copy configuration files
+COPY appsettings*.json ./
+
 # Expose port
 EXPOSE 5159
 

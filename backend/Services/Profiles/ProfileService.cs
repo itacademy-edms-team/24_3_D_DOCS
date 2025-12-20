@@ -35,19 +35,41 @@ public class ProfileService : IProfileService
 
     public async Task<List<ProfileMetaDTO>> GetAllProfilesAsync(Guid userId)
     {
-        var profiles = await _context.Profiles
+        // Get profiles from DB (only id and updatedAt for sorting)
+        var dbProfiles = await _context.Profiles
             .Where(p => p.CreatorId == userId)
             .OrderByDescending(p => p.UpdatedAt)
-            .Select(p => new ProfileMetaDTO
-            {
-                Id = p.Id,
-                Name = p.Name,
-                CreatedAt = p.CreatedAt,
-                UpdatedAt = p.UpdatedAt
-            })
+            .Select(p => new { p.Id, p.UpdatedAt })
             .ToListAsync();
 
-        return profiles;
+        var bucketName = GetBucketName(userId);
+        await EnsureBucketExistsAsync(bucketName);
+
+        // Read Profile/{id}.json for each profile in parallel
+        var metaTasks = dbProfiles.Select(async dbProfile =>
+        {
+            try
+            {
+                var profileData = await ReadJsonAsync<ProfileDTO>(bucketName, GetProfilePath(dbProfile.Id));
+                if (profileData == null) return null;
+
+                return new ProfileMetaDTO
+                {
+                    Id = profileData.Id,
+                    Name = profileData.Name,
+                    CreatedAt = profileData.CreatedAt,
+                    UpdatedAt = profileData.UpdatedAt
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read profile JSON for profile {ProfileId}", dbProfile.Id);
+                return null;
+            }
+        });
+
+        var metas = await Task.WhenAll(metaTasks);
+        return metas.Where(m => m != null).Cast<ProfileMetaDTO>().ToList();
     }
 
     public async Task<ProfileDTO?> GetProfileByIdAsync(Guid id, Guid userId)
@@ -61,23 +83,19 @@ public class ProfileService : IProfileService
         await EnsureBucketExistsAsync(bucketName);
 
         var profileData = await ReadJsonAsync<ProfileDTO>(bucketName, GetProfilePath(id));
-        if (profileData == null) return null;
-
-        profileData.Id = profile.Id;
-        profileData.Name = profile.Name;
-        profileData.CreatedAt = profile.CreatedAt;
-        profileData.UpdatedAt = profile.UpdatedAt;
-
         return profileData;
     }
 
     public async Task<ProfileDTO> CreateProfileAsync(CreateProfileDTO dto, Guid userId)
     {
+        var profileId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
         var profile = new Profile
         {
-            Id = Guid.NewGuid(),
+            Id = profileId,
             CreatorId = userId,
-            Name = dto.Name
+            UpdatedAt = now
         };
 
         _context.Profiles.Add(profile);
@@ -87,15 +105,19 @@ public class ProfileService : IProfileService
         await EnsureBucketExistsAsync(bucketName);
 
         var defaultProfilePath = Path.Combine(AppContext.BaseDirectory, "Config", "DefaultProfile.json");
-        var defaultProfileJson = await File.ReadAllTextAsync(defaultProfilePath);
-        var defaultProfile = JsonSerializer.Deserialize<ProfileDTO>(defaultProfileJson) ?? new ProfileDTO();
+        var defaultProfile = new ProfileDTO();
+        if (File.Exists(defaultProfilePath))
+        {
+            var defaultProfileJson = await File.ReadAllTextAsync(defaultProfilePath);
+            defaultProfile = JsonSerializer.Deserialize<ProfileDTO>(defaultProfileJson) ?? new ProfileDTO();
+        }
 
-        defaultProfile.Id = profile.Id;
-        defaultProfile.Name = profile.Name;
-        defaultProfile.CreatedAt = profile.CreatedAt;
-        defaultProfile.UpdatedAt = profile.UpdatedAt;
+        defaultProfile.Id = profileId;
+        defaultProfile.Name = dto.Name;
+        defaultProfile.CreatedAt = now;
+        defaultProfile.UpdatedAt = now;
 
-        await WriteJsonAsync(bucketName, GetProfilePath(profile.Id), defaultProfile);
+        await WriteJsonAsync(bucketName, GetProfilePath(profileId), defaultProfile);
 
         return defaultProfile;
     }
@@ -107,21 +129,26 @@ public class ProfileService : IProfileService
 
         if (profile == null) return null;
 
-        if (dto.Name != null) profile.Name = dto.Name;
-
+        profile.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        var profileData = await ReadJsonAsync<ProfileDTO>(bucketName, GetProfilePath(id)) ?? new ProfileDTO();
+        var profileData = await ReadJsonAsync<ProfileDTO>(bucketName, GetProfilePath(id));
+        if (profileData == null) return null;
 
         if (dto.Name != null) profileData.Name = dto.Name;
-        if (dto.Page != null) profileData.Page = dto.Page;
+        if (dto.Page != null)
+        {
+            if (profileData.Page == null) profileData.Page = new ProfilePageDTO();
+            if (dto.Page.Size != null) profileData.Page.Size = dto.Page.Size;
+            if (dto.Page.Orientation != null) profileData.Page.Orientation = dto.Page.Orientation;
+            if (dto.Page.Margins != null) profileData.Page.Margins = dto.Page.Margins;
+            if (dto.Page.PageNumbers != null) profileData.Page.PageNumbers = dto.Page.PageNumbers;
+        }
         if (dto.Entities != null) profileData.Entities = dto.Entities;
 
-        profileData.Id = profile.Id;
-        profileData.CreatedAt = profile.CreatedAt;
         profileData.UpdatedAt = profile.UpdatedAt;
 
         await WriteJsonAsync(bucketName, GetProfilePath(id), profileData);

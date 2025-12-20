@@ -61,9 +61,6 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.CreatorId)
                   .HasDatabaseName("IX_Profiles_CreatorId");
 
-            entity.Property(e => e.CreatedAt)
-                  .HasDefaultValueSql("NOW()");
-
             entity.Property(e => e.UpdatedAt)
                   .HasDefaultValueSql("NOW()");
         });
@@ -75,12 +72,6 @@ public class ApplicationDbContext : DbContext
             
             entity.HasIndex(e => e.CreatorId)
                   .HasDatabaseName("IX_Documents_CreatorId");
-
-            entity.HasIndex(e => e.ProfileId)
-                  .HasDatabaseName("IX_Documents_ProfileId");
-
-            entity.Property(e => e.CreatedAt)
-                  .HasDefaultValueSql("NOW()");
 
             entity.Property(e => e.UpdatedAt)
                   .HasDefaultValueSql("NOW()");
