@@ -25,7 +25,7 @@
 			show-password-toggle
 		/>
 
-		<div v-if="authStore.error" class="apiError">{{ authStore.error }}</div>
+		<ErrorMessage :message="authStore.error" />
 
 		<Button type="submit" variant="primary" full-width :is-loading="authStore.isLoading">
 			Войти
@@ -39,6 +39,7 @@ import { useRouter } from 'vue-router';
 import { z } from 'zod';
 import Input from '@/shared/ui/Input/Input.vue';
 import Button from '@/shared/ui/Button/Button.vue';
+import ErrorMessage from '@/shared/ui/ErrorMessage/ErrorMessage.vue';
 import { useAuthStore } from '@/entities/auth/store/authStore';
 
 const router = useRouter();
@@ -102,27 +103,4 @@ async function handleSubmit() {
 	letter-spacing: -0.02em;
 }
 
-.apiError {
-	padding: 12px;
-	background: rgba(239, 68, 68, 0.1);
-	border: 1px solid rgba(239, 68, 68, 0.2);
-	border-radius: 8px;
-	color: #f87171;
-	font-size: 13px;
-	text-align: center;
-	animation: shake 0.3s ease;
-}
-
-@keyframes shake {
-	0%,
-	100% {
-		transform: translateX(0);
-	}
-	25% {
-		transform: translateX(-4px);
-	}
-	75% {
-		transform: translateX(4px);
-	}
-}
 </style>

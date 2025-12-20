@@ -11,7 +11,7 @@
 				v-model="email"
 				:error="errors.email"
 				@update:model-value="handleEmailChange"
-				@blur="validateEmail(email)"
+				@blur="validateField('email', email)"
 			/>
 			<Input
 				type="password"
@@ -20,7 +20,7 @@
 				:error="errors.password"
 				show-password-toggle
 				@update:model-value="handlePasswordChange"
-				@blur="validatePassword(password)"
+				@blur="validateField('password', password)"
 			/>
 			<Input
 				type="text"
@@ -28,10 +28,10 @@
 				v-model="name"
 				:error="errors.name"
 				@update:model-value="handleNameChange"
-				@blur="validateName(name)"
+				@blur="validateField('name', name)"
 			/>
 
-			<p v-if="authStore.error" class="error">{{ authStore.error }}</p>
+			<ErrorMessage :message="authStore.error" />
 
 			<Button type="submit" :is-loading="authStore.isLoading" full-width>
 				{{ authStore.isLoading ? 'Отправляем код...' : 'Отправить код' }}
@@ -53,8 +53,7 @@
 						:auto-focus="true"
 					/>
 				</div>
-				<p v-if="codeError" class="error">{{ codeError }}</p>
-				<p v-if="authStore.error" class="error">{{ authStore.error }}</p>
+				<ErrorMessage :message="codeError || authStore.error" />
 
 				<Button
 					type="submit"
@@ -93,15 +92,25 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { z } from 'zod';
 import Input from '@/shared/ui/Input/Input.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import CodeInput from '@/shared/ui/CodeInput/CodeInput.vue';
+import ErrorMessage from '@/shared/ui/ErrorMessage/ErrorMessage.vue';
 import { useAuthStore } from '@/entities/auth/store/authStore';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
 const step = ref<'email' | 'code'>('email');
+
+const registerSchema = z.object({
+	email: z.string().email('Введите корректный email'),
+	password: z.string().min(6, 'Пароль должен быть минимум 6 символов'),
+	name: z.string().min(2, 'Имя должно быть минимум 2 символа'),
+});
+
+const codeSchema = z.string().length(6, 'Код должен содержать 6 цифр');
 
 const email = ref('');
 const password = ref('');
@@ -125,98 +134,62 @@ onUnmounted(() => {
 	}
 });
 
-function validateEmail(value: string): boolean {
-	if (!value) {
-		errors.value.email = 'Email обязателен';
-		return false;
+function validateField(field: 'email' | 'password' | 'name', value: string) {
+	const result = registerSchema.shape[field].safeParse(value);
+	if (!result.success) {
+		errors.value[field] = result.error.errors[0]?.message;
+	} else {
+		errors.value[field] = undefined;
 	}
-	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-		errors.value.email = 'Введите корректный email';
-		return false;
-	}
-	errors.value.email = undefined;
-	return true;
-}
-
-function validatePassword(value: string): boolean {
-	if (!value) {
-		errors.value.password = 'Пароль обязателен';
-		return false;
-	}
-	if (value.length < 6) {
-		errors.value.password = 'Пароль должен быть минимум 6 символов';
-		return false;
-	}
-	errors.value.password = undefined;
-	return true;
-}
-
-function validateName(value: string): boolean {
-	if (!value) {
-		errors.value.name = 'Имя обязательно';
-		return false;
-	}
-	if (value.length < 2) {
-		errors.value.name = 'Имя должно быть минимум 2 символа';
-		return false;
-	}
-	errors.value.name = undefined;
-	return true;
-}
-
-function validateCode(value: string): boolean {
-	if (!value) {
-		codeError.value = 'Код обязателен';
-		return false;
-	}
-	if (value.length !== 6) {
-		codeError.value = 'Код должен содержать 6 цифр';
-		return false;
-	}
-	codeError.value = '';
-	return true;
 }
 
 function handleEmailChange() {
 	if (errors.value.email) {
-		validateEmail(email.value);
+		validateField('email', email.value);
 	}
 }
 
 function handlePasswordChange() {
 	if (errors.value.password) {
-		validatePassword(password.value);
+		validateField('password', password.value);
 	}
 }
 
 function handleNameChange() {
 	if (errors.value.name) {
-		validateName(name.value);
+		validateField('name', name.value);
 	}
 }
 
 function handleCodeChange() {
 	if (codeError.value && code.value) {
-		validateCode(code.value);
+		const result = codeSchema.safeParse(code.value);
+		codeError.value = result.success ? '' : result.error.errors[0]?.message || '';
 	}
 }
 
 async function handleSendVerification() {
-	const emailValid = validateEmail(email.value);
-	const passwordValid = validatePassword(password.value);
-	const nameValid = validateName(name.value);
+	errors.value = {};
+	const result = registerSchema.safeParse({
+		email: email.value,
+		password: password.value,
+		name: name.value,
+	});
 
-	if (!emailValid || !passwordValid || !nameValid) {
+	if (!result.success) {
+		const fieldErrors: Record<string, string> = {};
+		result.error.issues.forEach((issue) => {
+			if (issue.path[0]) {
+				fieldErrors[issue.path[0] as string] = issue.message;
+			}
+		});
+		errors.value = fieldErrors;
 		return;
 	}
 
 	try {
 		authStore.clearError();
-		await authStore.sendVerification({
-			email: email.value,
-			password: password.value,
-			name: name.value,
-		});
+		await authStore.sendVerification(result.data);
 		step.value = 'code';
 		resendTimer.value = 60;
 		startTimer();
@@ -262,7 +235,9 @@ async function handleResendCode() {
 }
 
 async function handleVerifyCode() {
-	if (!validateCode(code.value)) {
+	const result = codeSchema.safeParse(code.value);
+	if (!result.success) {
+		codeError.value = result.error.errors[0]?.message || '';
 		return;
 	}
 
@@ -313,16 +288,6 @@ function handleBackToEmail() {
 	letter-spacing: -0.02em;
 }
 
-.error {
-	color: #f87171;
-	text-align: center;
-	font-size: 13px;
-	padding: 10px;
-	background: rgba(239, 68, 68, 0.1);
-	border: 1px solid rgba(239, 68, 68, 0.2);
-	border-radius: 8px;
-	animation: shake 0.3s ease;
-}
 
 .codeForm {
 	display: flex;
@@ -398,16 +363,4 @@ function handleBackToEmail() {
 	cursor: not-allowed;
 }
 
-@keyframes shake {
-	0%,
-	100% {
-		transform: translateX(0);
-	}
-	25% {
-		transform: translateX(-4px);
-	}
-	75% {
-		transform: translateX(4px);
-	}
-}
 </style>

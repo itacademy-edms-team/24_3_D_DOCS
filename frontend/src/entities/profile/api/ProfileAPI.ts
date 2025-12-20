@@ -7,23 +7,23 @@ class ProfileAPI extends HttpClient {
 	}
 
 	async getAll(): Promise<Profile[]> {
-		return this.get<Profile[]>('/api/profiles');
+		return this._get<Profile[]>('/api/profiles');
 	}
 
 	async getById(id: string): Promise<Profile> {
-		return this.get<Profile>(`/api/profiles/${id}`);
+		return this._get<Profile>(`/api/profiles/${id}`);
 	}
 
 	async create(data: CreateProfileDTO): Promise<Profile> {
-		return this.post<Profile, CreateProfileDTO>('/api/profiles', data);
+		return this._post<Profile, CreateProfileDTO>('/api/profiles', data);
 	}
 
 	async update(id: string, data: UpdateProfileDTO): Promise<Profile> {
-		return this.put<Profile, UpdateProfileDTO>(`/api/profiles/${id}`, data);
+		return this._put<Profile, UpdateProfileDTO>(`/api/profiles/${id}`, data);
 	}
 
 	async delete(id: string): Promise<void> {
-		return this.delete<void>(`/api/profiles/${id}`);
+		return this._delete<void>(`/api/profiles/${id}`);
 	}
 }
 
