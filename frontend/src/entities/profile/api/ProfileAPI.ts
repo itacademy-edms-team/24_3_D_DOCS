@@ -1,13 +1,13 @@
 import HttpClient from '@/shared/api/HttpClient';
-import type { Profile, CreateProfileDTO, UpdateProfileDTO } from '../types';
+import type { Profile, ProfileMeta, CreateProfileDTO, UpdateProfileDTO } from '../types';
 
 class ProfileAPI extends HttpClient {
 	constructor() {
 		super();
 	}
 
-	async getAll(): Promise<Profile[]> {
-		return this._get<Profile[]>('/api/profiles');
+	async getAll(): Promise<ProfileMeta[]> {
+		return this._get<ProfileMeta[]>('/api/profiles');
 	}
 
 	async getById(id: string): Promise<Profile> {

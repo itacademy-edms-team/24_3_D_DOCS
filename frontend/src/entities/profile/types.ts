@@ -1,8 +1,11 @@
-export interface Profile {
+export interface ProfileMeta {
 	id: string;
 	name: string;
 	createdAt: string;
 	updatedAt: string;
+}
+
+export interface Profile extends ProfileMeta {
 	page: {
 		size: string;
 		orientation: 'portrait' | 'landscape';

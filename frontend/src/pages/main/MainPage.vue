@@ -45,7 +45,7 @@ import Header from '@/widgets/main/Header/Header.vue';
 import SearchBar from '@/widgets/main/SearchBar/SearchBar.vue';
 import DataTable from '@/widgets/main/DataTable/DataTable.vue';
 import { useMainPage } from '@/widgets/main/useMainPage';
-import type { Profile } from '@/entities/profile/types';
+import type { ProfileMeta } from '@/entities/profile/types';
 import type { DocumentMeta } from '@/entities/document/types';
 
 const router = useRouter();
@@ -62,7 +62,7 @@ const {
 	loadData,
 } = useMainPage();
 
-function handleItemClick(item: Profile | DocumentMeta) {
+function handleItemClick(item: ProfileMeta | DocumentMeta) {
 	if (activeTab.value === 'profiles') {
 		router.push(`/profile/${item.id}`);
 	} else {

@@ -1,6 +1,6 @@
 <template>
 	<div class="table-container">
-		<table class="projects-table">
+		<table v-if="items.length > 0" class="projects-table">
 			<thead>
 				<tr>
 					<th class="title-col">Название</th>
@@ -19,23 +19,23 @@
 					</td>
 					<td class="modified-col">{{ formatDate(item.updatedAt) }}</td>
 				</tr>
-				<tr v-if="items.length === 0" class="empty-row">
-					<td colspan="2" class="empty-message">
-						{{ isLoading ? 'Загрузка...' : 'Нет элементов для отображения' }}
-					</td>
-				</tr>
 			</tbody>
 		</table>
+		<div v-else class="empty-state">
+			<p class="empty-message">
+				{{ isLoading ? 'Загрузка...' : 'Нет элементов для отображения' }}
+			</p>
+		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
 import { formatDate } from '@/shared/utils/date';
-import type { Profile } from '@/entities/profile/types';
+import type { ProfileMeta } from '@/entities/profile/types';
 import type { DocumentMeta } from '@/entities/document/types';
 
 interface Props {
-	items: (Profile | DocumentMeta)[];
+	items: (ProfileMeta | DocumentMeta)[];
 	isLoading?: boolean;
 }
 
@@ -44,7 +44,7 @@ withDefaults(defineProps<Props>(), {
 });
 
 defineEmits<{
-	'item-click': [item: Profile | DocumentMeta];
+	'item-click': [item: ProfileMeta | DocumentMeta];
 }>();
 </script>
 
@@ -112,14 +112,18 @@ defineEmits<{
 	color: #a1a1aa;
 }
 
-.empty-row {
-	pointer-events: none;
+.empty-state {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4rem 2rem;
+	width: 100%;
 }
 
 .empty-message {
 	text-align: center;
-	padding: 3rem;
 	color: #71717a;
 	font-size: 14px;
+	margin: 0;
 }
 </style>

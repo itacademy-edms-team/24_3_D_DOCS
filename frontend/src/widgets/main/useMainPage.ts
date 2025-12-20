@@ -2,7 +2,7 @@ import { ref, computed } from 'vue';
 import { useDebounce } from '@vueuse/core';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
-import type { Profile } from '@/entities/profile/types';
+import type { ProfileMeta } from '@/entities/profile/types';
 import type { DocumentMeta } from '@/entities/document/types';
 
 export type TabType = 'docs' | 'profiles';
@@ -13,7 +13,7 @@ export function useMainPage() {
 	const debouncedSearchQuery = useDebounce(searchQueryInput, 300);
 	const isLoading = ref(false);
 
-	const profiles = ref<Profile[]>([]);
+	const profiles = ref<ProfileMeta[]>([]);
 	const documents = ref<DocumentMeta[]>([]);
 
 	const currentItems = computed(() => {
