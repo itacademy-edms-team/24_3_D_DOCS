@@ -8,7 +8,9 @@ using Minio.DataModel.Args;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
 using RusalProject.Services.Auth;
+using RusalProject.Services.Documents;
 using RusalProject.Services.Email;
+using RusalProject.Services.Profiles;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -90,6 +92,10 @@ builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Document & Profile Services
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IProfileService, ProfileService>();
 
 // JWT Authentication Configuration
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] 
