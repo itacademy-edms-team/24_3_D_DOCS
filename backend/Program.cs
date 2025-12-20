@@ -150,25 +150,47 @@ using (var scope = app.Services.CreateScope())
     {
         // Apply migrations
         var context = services.GetRequiredService<ApplicationDbContext>();
-        context.Database.Migrate();
-        Console.WriteLine("Database migrations applied successfully.");
-        
-        // Warm-up database connection (prevents cold start delay)
-        var userCount = context.Users.Count();
-        Console.WriteLine($"Database warm-up completed. Users count: {userCount}");
-        
-        // Warm-up Redis connection
-        var redisService = services.GetRequiredService<IRedisService>();
-        redisService.SetAsync("warmup:check", "ready", TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-        var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
-        redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
-        Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
-        
-        // Warm-up MinIO - ensure default bucket exists
-        var minio = services.GetRequiredService<IMinioClient>();
-        var defaultBucket = builder.Configuration["MinIO:DefaultBucket"] ?? "documents";
         try
         {
+            context.Database.Migrate();
+            Console.WriteLine("Database migrations applied successfully.");
+        }
+        catch (Exception ex)
+        {
+            throw;
+        }
+        
+        // Warm-up database connection (prevents cold start delay)
+        try
+        {
+            var userCount = context.Users.Count();
+            Console.WriteLine($"Database warm-up completed. Users count: {userCount}");
+        }
+        catch (Exception ex)
+        {
+            throw;
+        }
+        
+        // Warm-up Redis connection (non-blocking)
+        try
+        {
+            var redisService = services.GetRequiredService<IRedisService>();
+            redisService.SetAsync("warmup:check", "ready", TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+            var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
+            redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
+            Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Redis warm-up error: {ex.Message}");
+            // Don't throw - Redis warm-up failure shouldn't prevent app startup
+        }
+        
+        // Warm-up MinIO - ensure default bucket exists (non-blocking)
+        try
+        {
+            var minio = services.GetRequiredService<IMinioClient>();
+            var defaultBucket = builder.Configuration["MinIO:DefaultBucket"] ?? "documents";
             var exists = minio.BucketExistsAsync(
                 new BucketExistsArgs()
                     .WithBucket(defaultBucket)).GetAwaiter().GetResult();
@@ -187,11 +209,18 @@ using (var scope = app.Services.CreateScope())
         catch (Exception ex)
         {
             Console.WriteLine($"MinIO warm-up error: {ex.Message}");
+            // Don't throw - MinIO warm-up failure shouldn't prevent app startup
         }
     }
     catch (Exception ex)
     {
         Console.WriteLine($"An error occurred during startup: {ex.Message}");
+        // Only throw if database migration failed - that's critical
+        if (ex.Message.Contains("migration", StringComparison.OrdinalIgnoreCase) || 
+            ex.Message.Contains("database", StringComparison.OrdinalIgnoreCase))
+        {
+            throw;
+        }
     }
 }
 
