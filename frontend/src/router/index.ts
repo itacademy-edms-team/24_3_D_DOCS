@@ -28,6 +28,12 @@ const router = createRouter({
 			component: ProfileEditorPage,
 			meta: { requiresAuth: true },
 		},
+		{
+			path: '/document/:id',
+			name: 'document-editor',
+			component: () => import('@/pages/document/DocumentEditorPage.vue'),
+			meta: { requiresAuth: true },
+		},
 	],
 });
 
