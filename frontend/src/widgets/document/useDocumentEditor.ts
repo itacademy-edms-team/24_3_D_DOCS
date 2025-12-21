@@ -2,11 +2,12 @@ import { ref, onMounted } from 'vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import type { Document, UpdateDocumentDTO } from '@/entities/document/types';
-import type { Profile } from '@/entities/profile/types';
+import type { Profile, ProfileMeta } from '@/entities/profile/types';
 
 export function useDocumentEditor(documentId: string | undefined) {
 	const document = ref<Document | null>(null);
 	const profile = ref<Profile | null>(null);
+	const profiles = ref<ProfileMeta[]>([]);
 	const loading = ref(true);
 	const saving = ref(false);
 
@@ -16,11 +17,21 @@ export function useDocumentEditor(documentId: string | undefined) {
 		} else {
 			loading.value = false;
 		}
+		loadProfiles();
 	}
 
 	onMounted(() => {
 		init();
 	});
+
+	async function loadProfiles() {
+		try {
+			const profilesData = await ProfileAPI.getAll();
+			profiles.value = profilesData;
+		} catch (error) {
+			console.error('Failed to load profiles:', error);
+		}
+	}
 
 	async function loadDocument(id: string) {
 		try {
@@ -76,13 +87,34 @@ export function useDocumentEditor(documentId: string | undefined) {
 		document.value = { ...document.value, content };
 	}
 
+	async function handleProfileChange(profileId: string) {
+		if (!document.value) return;
+		
+		document.value = { ...document.value, profileId: profileId || undefined };
+		
+		// Load profile if profileId is set
+		if (profileId) {
+			try {
+				const profileData = await ProfileAPI.getById(profileId);
+				profile.value = profileData;
+			} catch (error) {
+				console.error('Failed to load profile:', error);
+				profile.value = null;
+			}
+		} else {
+			profile.value = null;
+		}
+	}
+
 	return {
 		document,
 		profile,
+		profiles,
 		loading,
 		saving,
 		handleSave,
 		handleNameChange,
 		handleContentChange,
+		handleProfileChange,
 	};
 }

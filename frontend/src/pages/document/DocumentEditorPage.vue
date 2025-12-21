@@ -21,6 +21,20 @@
 						:value="document.name"
 						@input="handleNameChange($event)"
 					/>
+					<select
+						class="profile-select"
+						:value="document.profileId || ''"
+						@change="handleProfileChange($event)"
+					>
+						<option value="">Без профиля</option>
+						<option
+							v-for="p in profiles"
+							:key="p.id"
+							:value="p.id"
+						>
+							{{ p.name }}
+						</option>
+					</select>
 				</div>
 				<button class="save-btn" @click="handleSave" :disabled="saving">
 					{{ saving ? 'Сохранение...' : 'Сохранить' }}
@@ -50,11 +64,11 @@
 						</div>
 					</template>
 					<template #right>
-						<div class="preview-pane">
-							<div class="preview-placeholder">
-								Предпросмотр будет добавлен позже
-							</div>
-						</div>
+						<DocumentPreview
+							:html="renderedHtml"
+							:profile="profile"
+							:document-variables="documentVariables"
+						/>
 					</template>
 				</ResizableSplitView>
 			</div>
@@ -63,10 +77,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDocumentEditor } from '@/widgets/document/useDocumentEditor';
 import ResizableSplitView from '@/widgets/document/ResizableSplitView.vue';
+import DocumentPreview from '@/widgets/document/DocumentPreview.vue';
+import { renderDocument } from '@/shared/services/markdown/documentRenderer';
 
 const route = useRoute();
 const router = useRouter();
@@ -74,11 +90,14 @@ const documentId = route.params.id as string;
 
 const {
 	document,
+	profile,
+	profiles,
 	loading,
 	saving,
 	handleSave: handleSaveInternal,
 	handleNameChange: handleNameChangeInternal,
 	handleContentChange: handleContentChangeInternal,
+	handleProfileChange: handleProfileChangeInternal,
 } = useDocumentEditor(documentId);
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -100,6 +119,28 @@ function handleContentChange(event: Event) {
 	const target = event.target as HTMLTextAreaElement;
 	handleContentChangeInternal(target.value);
 }
+
+function handleProfileChange(event: Event) {
+	const target = event.target as HTMLSelectElement;
+	handleProfileChangeInternal(target.value);
+}
+
+const documentVariables = computed(() => {
+	// Extract variables from frontmatter if needed
+	// For now, return empty object
+	return {};
+});
+
+const renderedHtml = computed(() => {
+	if (!document.value) return '';
+	
+	return renderDocument({
+		markdown: document.value.content,
+		profile: profile.value,
+		overrides: {},
+		selectable: false,
+	});
+});
 </script>
 
 <style scoped>
@@ -126,7 +167,8 @@ function handleContentChange(event: Event) {
 .editor-container {
 	display: flex;
 	flex-direction: column;
-	min-height: 100vh;
+	height: 100vh;
+	overflow: hidden;
 }
 
 .editor-header {
@@ -181,6 +223,28 @@ function handleContentChange(event: Event) {
 	border-color: #6366f1;
 }
 
+.profile-select {
+	padding: 0.5rem 0.75rem;
+	background: #18181b;
+	border: 1px solid #27272a;
+	border-radius: 6px;
+	color: #e4e4e7;
+	font-size: 14px;
+	font-family: inherit;
+	outline: none;
+	transition: all 0.2s;
+	cursor: pointer;
+}
+
+.profile-select:hover {
+	border-color: #3f3f46;
+}
+
+.profile-select:focus {
+	border-color: #6366f1;
+	background: #27272a;
+}
+
 .save-btn {
 	padding: 0.75rem 1.5rem;
 	background: #6366f1;
@@ -208,17 +272,21 @@ function handleContentChange(event: Event) {
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
+	min-height: 0;
 }
 
 .editor-pane {
 	height: 100%;
 	display: flex;
 	flex-direction: column;
+	overflow: hidden;
+	min-height: 0;
 }
 
 .markdown-editor {
 	width: 100%;
-	height: 100%;
+	flex: 1;
+	min-height: 0;
 	padding: 1.5rem;
 	background: #0a0a0a;
 	border: none;
@@ -229,23 +297,11 @@ function handleContentChange(event: Event) {
 	resize: none;
 	outline: none;
 	tab-size: 2;
+	box-sizing: border-box;
 }
 
 .markdown-editor::placeholder {
 	color: #71717a;
 }
 
-.preview-pane {
-	height: 100%;
-	background: #18181b;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.preview-placeholder {
-	color: #71717a;
-	font-size: 14px;
-	text-align: center;
-}
 </style>

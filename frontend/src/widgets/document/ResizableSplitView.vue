@@ -89,12 +89,15 @@ onUnmounted(() => {
 	overflow: hidden;
 	position: relative;
 	height: 100%;
+	min-height: 0;
 }
 
 .split-pane {
-	overflow: auto;
+	overflow: hidden;
 	min-width: 0;
 	height: 100%;
+	display: flex;
+	flex-direction: column;
 }
 
 .split-pane-left {
