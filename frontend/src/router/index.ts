@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/entities/auth/store/authStore';
 import AuthPage from '@/pages/auth/AuthPage.vue';
 import MainPage from '@/pages/main/MainPage.vue';
+import ProfileEditorPage from '@/pages/profile/ProfileEditorPage.vue';
 
 const router = createRouter({
 	history: createWebHistory(),
@@ -19,6 +20,12 @@ const router = createRouter({
 			path: '/dashboard',
 			name: 'dashboard',
 			component: MainPage,
+			meta: { requiresAuth: true },
+		},
+		{
+			path: '/profile/:id',
+			name: 'profile-editor',
+			component: ProfileEditorPage,
 			meta: { requiresAuth: true },
 		},
 	],

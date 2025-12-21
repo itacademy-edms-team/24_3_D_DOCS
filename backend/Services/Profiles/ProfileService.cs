@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Minio;
@@ -109,7 +110,12 @@ public class ProfileService : IProfileService
         if (File.Exists(defaultProfilePath))
         {
             var defaultProfileJson = await File.ReadAllTextAsync(defaultProfilePath);
-            defaultProfile = JsonSerializer.Deserialize<ProfileDTO>(defaultProfileJson) ?? new ProfileDTO();
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true
+            };
+            defaultProfile = JsonSerializer.Deserialize<ProfileDTO>(defaultProfileJson, jsonOptions) ?? new ProfileDTO();
         }
 
         defaultProfile.Id = profileId;

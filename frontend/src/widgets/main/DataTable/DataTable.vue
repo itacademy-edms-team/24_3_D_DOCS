@@ -13,8 +13,9 @@
 					v-for="item in items"
 					:key="item.id"
 					class="table-row"
+					@click="handleRowClick(item, $event)"
 				>
-					<td class="title-col" @click.stop="handleItemClick(item)">
+					<td class="title-col">
 						<div v-if="editingId === item.id" class="edit-container">
 							<input
 								ref="editInput"
@@ -23,6 +24,7 @@
 								@blur="handleSaveEdit(item)"
 								@keydown.enter="handleSaveEdit(item)"
 								@keydown.esc="handleCancelEdit"
+								@click.stop
 							/>
 						</div>
 						<span
@@ -33,7 +35,7 @@
 							{{ item.name || 'Без названия' }}
 						</span>
 					</td>
-					<td class="modified-col" @click.stop="handleItemClick(item)">
+					<td class="modified-col">
 						{{ formatDate(item.updatedAt) }}
 					</td>
 					<td class="actions-col">
@@ -130,7 +132,17 @@ function toggleMenu(itemId: string) {
 	}
 }
 
-function handleItemClick(item: ProfileMeta | DocumentMeta) {
+function handleRowClick(item: ProfileMeta | DocumentMeta, event: MouseEvent) {
+	const target = event.target as HTMLElement;
+	// Не обрабатываем клик, если кликнули на элемент для переименования или меню
+	if (
+		target.closest('.item-name') ||
+		target.closest('.edit-container') ||
+		target.closest('.menu-button') ||
+		target.closest('.menu-dropdown')
+	) {
+		return;
+	}
 	emit('item-click', item);
 }
 
