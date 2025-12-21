@@ -17,7 +17,6 @@
 					@click="$emit('entity-select', entityType)"
 				>
 					<span>{{ ENTITY_LABELS[entityType] }}</span>
-					<span v-if="profile.entities[entityType]" class="entity-indicator">●</span>
 				</li>
 			</ul>
 		</div>
@@ -105,10 +104,5 @@ function handleMarginChange(side: 'top' | 'right' | 'bottom' | 'left', value: nu
 	border-left-color: #6366f1;
 	color: #e4e4e7;
 	font-weight: 500;
-}
-
-.entity-indicator {
-	color: #10b981;
-	font-size: 12px;
 }
 </style>

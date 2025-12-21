@@ -109,7 +109,7 @@
 						</div>
 
 						<template
-							v-if="['paragraph', 'ordered-list', 'unordered-list'].includes(entityType)"
+							v-if="['paragraph', 'heading', 'ordered-list', 'unordered-list'].includes(entityType)"
 						>
 							<div class="form-group">
 								<label class="form-label">Красная строка (см)</label>
@@ -262,7 +262,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import type { EntityType } from '@/entities/profile/constants';
 import { ENTITY_LABELS, FONT_FAMILIES } from '@/entities/profile/constants';
 
@@ -292,7 +292,14 @@ watch(
 	{ deep: true },
 );
 
-const displayTitle = props.title || ENTITY_LABELS[props.entityType];
+watch(
+	() => props.entityType,
+	() => {
+		localStyle.value = { ...props.style };
+	},
+);
+
+const displayTitle = computed(() => props.title || ENTITY_LABELS[props.entityType]);
 
 function updateStyle(key: string, event: Event) {
 	const target = event.target as HTMLSelectElement | HTMLInputElement;
