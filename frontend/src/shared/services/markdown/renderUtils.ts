@@ -39,6 +39,7 @@ const DEFAULT_ENTITY_STYLES: Record<EntityType, EntityStyle> = {
 		fontSize: 14,
 		fontWeight: 'normal',
 		fontStyle: 'normal',
+		fontFamily: 'Times New Roman',
 		textAlign: 'justify',
 		textIndent: 1.25,
 		lineHeight: 1.5,
@@ -49,6 +50,7 @@ const DEFAULT_ENTITY_STYLES: Record<EntityType, EntityStyle> = {
 		fontSize: 14,
 		fontWeight: 'bold',
 		fontStyle: 'normal',
+		fontFamily: 'Times New Roman',
 		textAlign: 'left',
 		textIndent: 0,
 		lineHeight: 1.5,
@@ -64,12 +66,14 @@ const DEFAULT_ENTITY_STYLES: Record<EntityType, EntityStyle> = {
 	'image-caption': {
 		fontSize: 12,
 		fontStyle: 'italic',
+		fontFamily: 'Times New Roman',
 		textAlign: 'center',
 		marginTop: 5,
 		marginBottom: 15,
 	},
 	'ordered-list': {
 		fontSize: 14,
+		fontFamily: 'Times New Roman',
 		lineHeight: 1.5,
 		marginTop: 10,
 		marginBottom: 10,
@@ -77,6 +81,7 @@ const DEFAULT_ENTITY_STYLES: Record<EntityType, EntityStyle> = {
 	},
 	'unordered-list': {
 		fontSize: 14,
+		fontFamily: 'Times New Roman',
 		lineHeight: 1.5,
 		marginTop: 10,
 		marginBottom: 10,
@@ -84,6 +89,7 @@ const DEFAULT_ENTITY_STYLES: Record<EntityType, EntityStyle> = {
 	},
 	table: {
 		fontSize: 14,
+		fontFamily: 'Times New Roman',
 		textAlign: 'left',
 		marginTop: 10,
 		marginBottom: 10,
@@ -94,11 +100,13 @@ const DEFAULT_ENTITY_STYLES: Record<EntityType, EntityStyle> = {
 	'table-caption': {
 		fontSize: 12,
 		fontStyle: 'italic',
+		fontFamily: 'Times New Roman',
 		textAlign: 'center',
 		marginTop: 5,
 		marginBottom: 15,
 	},
 	formula: {
+		fontFamily: 'Times New Roman',
 		textAlign: 'center',
 		marginTop: 15,
 		marginBottom: 15,
@@ -106,6 +114,7 @@ const DEFAULT_ENTITY_STYLES: Record<EntityType, EntityStyle> = {
 	'formula-caption': {
 		fontSize: 12,
 		fontStyle: 'italic',
+		fontFamily: 'Times New Roman',
 		textAlign: 'center',
 		marginTop: 5,
 		marginBottom: 15,
@@ -136,6 +145,48 @@ export function getFinalStyle(
 }
 
 /**
+ * Get fallback fonts for a given font family
+ */
+function getFontFallbacks(fontFamily: string): string {
+	// Map of fonts to their fallback families
+	const fontFallbacks: Record<string, string> = {
+		'Times New Roman': 'Times, serif',
+		'Georgia': 'serif',
+		'Arial': 'Helvetica, sans-serif',
+		'Calibri': 'sans-serif',
+		'Verdana': 'sans-serif',
+		'Courier New': 'Courier, monospace',
+	};
+
+	// Check if we have a specific fallback
+	if (fontFallbacks[fontFamily]) {
+		return fontFallbacks[fontFamily];
+	}
+
+	// Default fallback based on common font types
+	if (fontFamily.toLowerCase().includes('serif') || fontFamily.toLowerCase().includes('times') || fontFamily.toLowerCase().includes('georgia')) {
+		return 'serif';
+	}
+	if (fontFamily.toLowerCase().includes('mono') || fontFamily.toLowerCase().includes('courier')) {
+		return 'monospace';
+	}
+	
+	// Default to sans-serif for unknown fonts
+	return 'sans-serif';
+}
+
+/**
+ * Format font family name for CSS (add quotes if needed)
+ */
+function formatFontFamily(fontFamily: string): string {
+	// If font name contains spaces, wrap it in quotes
+	if (fontFamily.includes(' ')) {
+		return `'${fontFamily}'`;
+	}
+	return fontFamily;
+}
+
+/**
  * Convert EntityStyle to CSS string
  */
 export function styleToCSS(style: EntityStyle): string {
@@ -145,7 +196,11 @@ export function styleToCSS(style: EntityStyle): string {
 	if (style.fontSize !== undefined) rules.push(`font-size: ${style.fontSize}pt`);
 	if (style.fontWeight) rules.push(`font-weight: ${style.fontWeight}`);
 	if (style.fontStyle) rules.push(`font-style: ${style.fontStyle}`);
-	if (style.fontFamily) rules.push(`font-family: ${style.fontFamily}`);
+	if (style.fontFamily) {
+		const formattedFont = formatFontFamily(style.fontFamily);
+		const fallbacks = getFontFallbacks(style.fontFamily);
+		rules.push(`font-family: ${formattedFont}, ${fallbacks}`);
+	}
 
 	// Text formatting
 	if (style.textAlign) rules.push(`text-align: ${style.textAlign}`);

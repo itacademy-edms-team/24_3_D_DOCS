@@ -546,7 +546,7 @@ function handleMouseLeave() {
 .page-content {
 	width: 100%;
 	height: 100%;
-	font-family: 'Times New Roman', Times, serif;
+	/* font-family removed - elements use inline styles from profile */
 	font-size: 14pt;
 	line-height: 1.5;
 	color: #1a1a1a;
