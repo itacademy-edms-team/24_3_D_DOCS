@@ -550,8 +550,30 @@ function handleMouseLeave() {
 	font-size: 14pt;
 	line-height: 1.5;
 	color: #1a1a1a;
-	overflow: auto;
+	overflow: visible;
 	box-sizing: border-box;
+}
+
+.page-content :deep(ul.custom-dash-list) {
+	list-style-type: none;
+	padding-left: 1.5em;
+}
+
+.page-content :deep(ul.custom-dash-list > li::before) {
+	content: '– ';
+	margin-left: -1.5em;
+	float: left;
+	width: 1.2em;
+	text-align: right;
+}
+
+.page-content :deep(ol) {
+	list-style-type: decimal;
+	padding-left: 1.5em;
+}
+
+.page-content :deep(li) {
+	margin-left: 0.5em;
 }
 
 .page-footer {

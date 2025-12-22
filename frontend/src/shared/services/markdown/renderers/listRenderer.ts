@@ -18,8 +18,12 @@ export function renderUnorderedLists(
 
 		el.id = elId;
 		el.setAttribute('data-type', 'unordered-list');
-		el.setAttribute('style', styleToCSS(listStyle));
+		const currentStyle = el.getAttribute('style') || '';
+		el.setAttribute('style', `${currentStyle}; ${styleToCSS(listStyle)}; list-style-type: none;`.trim());
 		if (selectable) el.classList.add('element-selectable');
+		
+		// Add custom markers using ::before (we'll style this in CSS)
+		el.classList.add('custom-dash-list');
 
 		if (style.textIndent !== undefined && style.textIndent > 0) {
 			const textIndentPt = style.textIndent * 28.35;

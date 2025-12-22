@@ -38,13 +38,15 @@ export function renderDocument(options: RenderOptions): string {
 	const usedIds = new Set<string>();
 
 	// 4-10. Process all element types using renderers
+	// Process tables and formulas FIRST (they need to find captions before paragraphs remove them)
+	renderTables(doc, usedIds, profile, overrides, selectable);
+	renderFormulas(doc, usedIds, profile, overrides, selectable);
+	// Then process other elements
 	renderParagraphs(doc, usedIds, profile, overrides, selectable);
 	renderHeadings(doc, usedIds, profile, overrides, selectable);
 	renderImages(doc, usedIds, profile, overrides, selectable);
 	renderUnorderedLists(doc, usedIds, profile, overrides, selectable);
 	renderOrderedLists(doc, usedIds, profile, overrides, selectable);
-	renderTables(doc, usedIds, profile, overrides, selectable);
-	renderFormulas(doc, usedIds, profile, overrides, selectable);
 
 	return doc.body.innerHTML;
 }

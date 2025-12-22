@@ -13,7 +13,13 @@ export function renderParagraphs(
 		if (el.closest('figure')) return;
 
 		const text = el.textContent || '';
-		if (text.match(/^\[(TABLE|FORMULA)-CAPTION:/)) return;
+		// Skip TABLE-CAPTION and FORMULA-CAPTION markers (they are processed by tableRenderer and formulaRenderer)
+		// But remove any that weren't processed (orphaned captions)
+		if (text.match(/^\[(TABLE|FORMULA)-CAPTION:\s*.+\]$/)) {
+			// Check if this is still in the document (wasn't processed)
+			el.remove();
+			return;
+		}
 
 		const content = text;
 		const elId = generateElementId('p', content, usedIds);

@@ -24,13 +24,21 @@ export function renderTables(
 		});
 
 		let captionText: string | null = null;
-		const nextSibling = table.nextElementSibling;
-		if (nextSibling && nextSibling.tagName === 'P') {
-			const pText = nextSibling.textContent || '';
-			const match = pText.match(/^\[TABLE-CAPTION:\s*(.+)\]$/);
-			if (match) {
-				captionText = match[1].trim();
-				nextSibling.remove();
+		// Check next sibling for caption
+		const parent = table.parentNode;
+		if (parent) {
+			const children = Array.from(parent.children);
+			const tableIndex = children.indexOf(table);
+			if (tableIndex >= 0 && tableIndex < children.length - 1) {
+				const nextSibling = children[tableIndex + 1];
+				if (nextSibling && nextSibling.tagName === 'P') {
+					const pText = nextSibling.textContent || '';
+					const match = pText.match(/^\[TABLE-CAPTION:\s*(.+)\]$/);
+					if (match) {
+						captionText = match[1].trim();
+						nextSibling.remove();
+					}
+				}
 			}
 		}
 
@@ -39,8 +47,6 @@ export function renderTables(
 		tableWrapper.setAttribute('data-type', 'table');
 		tableWrapper.setAttribute('style', styleToCSS(style));
 		if (selectable) tableWrapper.classList.add('element-selectable');
-
-		const parent = table.parentNode;
 		if (parent) {
 			parent.insertBefore(tableWrapper, table);
 			tableWrapper.appendChild(table);
