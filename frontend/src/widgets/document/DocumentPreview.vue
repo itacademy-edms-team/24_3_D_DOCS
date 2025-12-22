@@ -114,7 +114,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import type { Profile } from '@/entities/profile/types';
 import { PAGE_SIZES, MM_TO_PX } from '@/shared/constants/pageSizes';
 
@@ -375,6 +375,140 @@ function scheduleSplit(callback: () => void) {
 	}
 }
 
+async function loadImageWithAuth(img: HTMLImageElement, src: string): Promise<void> {
+	// Skip if already loaded (blob URL or data URL)
+	if (img.src.startsWith('blob:') || (img.src.startsWith('data:') && !img.src.includes('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'))) {
+		return;
+	}
+	
+	// Skip if already processing
+	if (img.dataset.loading === 'true') {
+		return;
+	}
+	
+	// Store original src to avoid reloading
+	const originalSrc = img.dataset.originalSrc || src;
+	img.dataset.originalSrc = originalSrc;
+	img.dataset.loading = 'true';
+	
+	try {
+		const baseUrl = typeof BASE_URI !== 'undefined' ? BASE_URI : 'http://localhost:5159';
+		
+		// Extract path from URL if it's absolute
+		let path = originalSrc;
+		if (originalSrc.startsWith('http')) {
+			try {
+				const url = new URL(originalSrc);
+				path = url.pathname;
+			} catch {
+				// If URL parsing fails, try to extract path manually
+				const match = originalSrc.match(/\/api\/documents\/[^/]+\/images\/[^/]+/);
+				if (match) {
+					path = match[0];
+				}
+			}
+		}
+		
+		const absoluteUrl = `${baseUrl}${path}`;
+		
+		// Get auth token
+		const authData = localStorage.getItem('auth-storage');
+		let token = '';
+		if (authData) {
+			try {
+				const parsed = JSON.parse(authData);
+				token = parsed?.state?.accessToken || parsed?.accessToken || '';
+			} catch {}
+		}
+		
+		// Fetch image with authorization
+		const response = await fetch(absoluteUrl, {
+			headers: token ? { Authorization: `Bearer ${token}` } : {},
+		});
+		
+		if (!response.ok) {
+			console.error('Failed to load image:', response.status, response.statusText, absoluteUrl);
+			img.dataset.loading = 'false';
+			return;
+		}
+		
+		const blob = await response.blob();
+		const blobUrl = URL.createObjectURL(blob);
+		blobUrls.value.push(blobUrl);
+		img.src = blobUrl;
+		img.dataset.loading = 'false';
+		
+		// Clean up blob URL on error
+		img.onerror = () => {
+			URL.revokeObjectURL(blobUrl);
+			const index = blobUrls.value.indexOf(blobUrl);
+			if (index > -1) {
+				blobUrls.value.splice(index, 1);
+			}
+		};
+	} catch (error) {
+		console.error('Error loading image:', error);
+		img.dataset.loading = 'false';
+	}
+}
+
+function processImagesInPages() {
+	nextTick(() => {
+		const container = scrollContainerRef.value;
+		if (!container) return;
+		
+		// Find all images in the preview container
+		const images = container.querySelectorAll('img');
+		images.forEach((img) => {
+			const imgElement = img as HTMLImageElement;
+			// Get src from attribute first, then from property
+			let src = imgElement.getAttribute('src') || imgElement.src || '';
+			
+			// Check if it's an API image URL (relative or absolute)
+			if (src && src.includes('/api/documents/') && src.includes('/images/')) {
+				// Extract relative path
+				let relativePath = src;
+				
+				if (src.startsWith('http')) {
+					// It's an absolute URL - extract just the path
+					try {
+						const url = new URL(src);
+						relativePath = url.pathname;
+					} catch {
+						// If URL parsing fails, try to extract path manually
+						const match = src.match(/\/api\/documents\/[^/]+\/images\/[^/]+/);
+						if (match) {
+							relativePath = match[0];
+						} else {
+							// Fallback: try to extract from any /api/documents/.../images/... pattern
+							const apiMatch = src.match(/\/api\/documents\/[^"'\s]+/);
+							if (apiMatch) {
+								relativePath = apiMatch[0];
+							}
+						}
+					}
+				} else if (!src.startsWith('/')) {
+					// If it doesn't start with /, it might be a malformed relative path
+					// Try to find the /api/documents/ pattern
+					const match = src.match(/\/api\/documents\/[^"'\s]+/);
+					if (match) {
+						relativePath = match[0];
+					}
+				}
+				
+				// Only process if we have a valid path
+				if (relativePath && relativePath.startsWith('/api/documents/')) {
+					// Prevent browser from loading the image automatically
+					imgElement.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1x1 transparent pixel
+					loadImageWithAuth(imgElement, relativePath);
+				}
+			}
+		});
+	});
+}
+
+const blobUrls = ref<string[]>([]);
+
 watch([() => props.html, contentHeight, contentWidth], () => {
 	if (!props.html) {
 		pages.value = [''];
@@ -401,8 +535,15 @@ watch([() => props.html, contentHeight, contentWidth], () => {
 		isUpdatingPages.value = false;
 		splitTimeout = null;
 		splitIdleCallback = null;
+		
+		// Process images after pages are updated
+		processImagesInPages();
 	});
 }, { immediate: true });
+
+watch(pages, () => {
+	processImagesInPages();
+});
 
 onUnmounted(() => {
 	if (splitTimeout) {
@@ -411,6 +552,9 @@ onUnmounted(() => {
 	if (splitIdleCallback !== null && typeof cancelIdleCallback !== 'undefined') {
 		cancelIdleCallback(splitIdleCallback);
 	}
+	// Clean up blob URLs
+	blobUrls.value.forEach(url => URL.revokeObjectURL(url));
+	blobUrls.value = [];
 });
 
 const totalPages = computed(() => pages.value.length);

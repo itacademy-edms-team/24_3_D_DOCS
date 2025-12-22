@@ -30,6 +30,21 @@ class DocumentAPI extends HttpClient {
 	async delete(id: string): Promise<void> {
 		return this._delete<void>(`/api/documents/${id}`);
 	}
+
+	async uploadImage(id: string, file: File): Promise<{ url: string }> {
+		const formData = new FormData();
+		formData.append('file', file);
+		
+		return this._post<{ url: string }, FormData>(
+			`/api/documents/${id}/images`,
+			formData,
+			{
+				headers: {
+					'Content-Type': 'multipart/form-data',
+				},
+			}
+		);
+	}
 }
 
 export default new DocumentAPI();

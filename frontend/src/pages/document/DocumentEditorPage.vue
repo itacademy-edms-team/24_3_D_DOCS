@@ -45,12 +45,16 @@
 			<div class="editor-content">
 				<ResizableSplitView :initial-left-width="50">
 					<template #left>
-						<div class="editor-pane">
+						<div class="editor-pane" :class="{ 'is-dragging': isDragging }">
 							<textarea
 								ref="textareaRef"
 								class="markdown-editor"
 								:value="document.content"
 								@input="handleContentChange($event)"
+								@dragover="handleDragOver"
+								@dragleave="handleDragLeave"
+								@drop="handleDrop"
+								@paste="handlePaste"
 								placeholder="Введите Markdown...
 
 # Заголовок
@@ -61,6 +65,14 @@
 Перетащите изображение или Ctrl+V"
 								spellcheck="false"
 							/>
+							<div v-if="uploading || isDragging" class="upload-overlay">
+								<div v-if="uploading" class="upload-indicator">
+									⏳ Загрузка изображения...
+								</div>
+								<div v-else-if="isDragging" class="drag-indicator">
+									📷 Отпустите для загрузки
+								</div>
+							</div>
 						</div>
 					</template>
 					<template #right>
@@ -94,13 +106,16 @@ const {
 	profiles,
 	loading,
 	saving,
+	uploading,
+	textareaRef,
 	handleSave: handleSaveInternal,
 	handleNameChange: handleNameChangeInternal,
 	handleContentChange: handleContentChangeInternal,
 	handleProfileChange: handleProfileChangeInternal,
+	handleImageUpload: handleImageUploadInternal,
 } = useDocumentEditor(documentId);
 
-const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const isDragging = ref(false);
 
 function handleBack() {
 	router.push('/dashboard');
@@ -123,6 +138,43 @@ function handleContentChange(event: Event) {
 function handleProfileChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
 	handleProfileChangeInternal(target.value);
+}
+
+function handleDragOver(event: DragEvent) {
+	event.preventDefault();
+	isDragging.value = true;
+}
+
+function handleDragLeave(event: DragEvent) {
+	event.preventDefault();
+	isDragging.value = false;
+}
+
+function handleDrop(event: DragEvent) {
+	event.preventDefault();
+	isDragging.value = false;
+
+	const files = event.dataTransfer?.files;
+	if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+		handleImageUploadInternal(files[0]);
+	}
+}
+
+function handlePaste(event: ClipboardEvent) {
+	const items = event.clipboardData?.items;
+	if (!items) return;
+
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i];
+		if (item.type.startsWith('image/')) {
+			event.preventDefault();
+			const file = item.getAsFile();
+			if (file) {
+				handleImageUploadInternal(file);
+			}
+			break;
+		}
+	}
 }
 
 const documentVariables = computed(() => {
@@ -302,6 +354,41 @@ const renderedHtml = computed(() => {
 
 .markdown-editor::placeholder {
 	color: #71717a;
+}
+
+.editor-pane {
+	position: relative;
+}
+
+.editor-pane.is-dragging .markdown-editor {
+	border-color: #6366f1;
+}
+
+.upload-overlay {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 10;
+}
+
+.upload-indicator,
+.drag-indicator {
+	background: #18181b;
+	padding: 1rem 2rem;
+	border-radius: 8px;
+	border: 2px solid #6366f1;
+	color: #e4e4e7;
+	font-size: 14px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.drag-indicator {
+	background: rgba(99, 102, 241, 0.1);
+	border: 3px dashed #6366f1;
+	font-size: 16px;
 }
 
 </style>

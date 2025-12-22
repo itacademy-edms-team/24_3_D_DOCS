@@ -10,6 +10,8 @@ export function useDocumentEditor(documentId: string | undefined) {
 	const profiles = ref<ProfileMeta[]>([]);
 	const loading = ref(true);
 	const saving = ref(false);
+	const uploading = ref(false);
+	const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 	function init() {
 		if (documentId) {
@@ -106,15 +108,56 @@ export function useDocumentEditor(documentId: string | undefined) {
 		}
 	}
 
+	async function handleImageUpload(file: File) {
+		if (!documentId || !document.value) return;
+
+		uploading.value = true;
+		try {
+			const result = await DocumentAPI.uploadImage(documentId, file);
+			// Keep relative URL - it will be processed in DocumentPreview
+			const imageMarkdown = `\n![${file.name}](${result.url})\n`;
+
+			const textarea = textareaRef.value;
+			if (textarea) {
+				const start = textarea.selectionStart;
+				const newContent =
+					document.value.content.substring(0, start) +
+					imageMarkdown +
+					document.value.content.substring(textarea.selectionEnd);
+
+				document.value = { ...document.value, content: newContent };
+
+				// Restore cursor position after content update
+				setTimeout(() => {
+					if (textarea) {
+						const newPosition = start + imageMarkdown.length;
+						textarea.selectionStart = textarea.selectionEnd = newPosition;
+						textarea.focus();
+					}
+				}, 0);
+			} else {
+				document.value = { ...document.value, content: document.value.content + imageMarkdown };
+			}
+		} catch (error) {
+			console.error('Upload failed:', error);
+			alert('Ошибка загрузки изображения');
+		} finally {
+			uploading.value = false;
+		}
+	}
+
 	return {
 		document,
 		profile,
 		profiles,
 		loading,
 		saving,
+		uploading,
+		textareaRef,
 		handleSave,
 		handleNameChange,
 		handleContentChange,
 		handleProfileChange,
+		handleImageUpload,
 	};
 }
