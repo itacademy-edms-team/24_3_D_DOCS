@@ -1,3 +1,5 @@
+import type { EntityStyle } from '@/shared/services/markdown/renderUtils';
+
 export interface DocumentMeta {
 	id: string;
 	name?: string;
@@ -9,6 +11,7 @@ export interface DocumentMeta {
 export interface Document extends DocumentMeta {
 	content: string;
 	profileId?: string;
+	overrides?: Record<string, EntityStyle>;
 }
 
 export interface CreateDocumentDTO {
@@ -20,4 +23,5 @@ export interface UpdateDocumentDTO {
 	name?: string;
 	content?: string;
 	profileId?: string;
+	overrides?: Record<string, EntityStyle>;
 }

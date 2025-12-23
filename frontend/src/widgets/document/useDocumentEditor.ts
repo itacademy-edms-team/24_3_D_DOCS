@@ -67,6 +67,7 @@ export function useDocumentEditor(documentId: string | undefined) {
 				name: document.value.name,
 				content: document.value.content,
 				profileId: document.value.profileId,
+				overrides: document.value.overrides,
 			};
 			const updated = await DocumentAPI.update(documentId, updateData);
 			if (updated) {

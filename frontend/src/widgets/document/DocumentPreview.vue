@@ -67,7 +67,7 @@
 						height: `${dimensions.pageHeight}px`,
 						margin: index > 0 ? '20px auto 0' : '0 auto',
 					}"
-					@click="$emit('click', $event)"
+					@click="handleElementClick"
 				>
 					<!-- Header with page number -->
 					<div
@@ -122,12 +122,16 @@ interface Props {
 	html: string;
 	profile: Profile | null;
 	documentVariables?: Record<string, string>;
+	selectable?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+	selectable: false,
+});
 
 const emit = defineEmits<{
 	click: [event: MouseEvent];
+	elementSelect: [{ id: string; type: string }];
 }>();
 
 interface PageDimensions {
@@ -559,6 +563,27 @@ onUnmounted(() => {
 
 const totalPages = computed(() => pages.value.length);
 
+function handleElementClick(e: MouseEvent) {
+	emit('click', e);
+
+	if (!props.selectable) {
+		return;
+	}
+
+	const target = e.target as HTMLElement | null;
+	if (!target) return;
+
+	const selectableElement = target.closest('.element-selectable') as HTMLElement | null;
+	if (!selectableElement || !selectableElement.id) return;
+
+	const elementId = selectableElement.id;
+	const elementType = selectableElement.getAttribute('data-type') || '';
+
+	if (!elementType) return;
+
+	emit('elementSelect', { id: elementId, type: elementType });
+}
+
 function handleMouseDown(e: MouseEvent) {
 	if (e.button === 0) {
 		isDragging.value = true;
@@ -730,5 +755,21 @@ function handleMouseLeave() {
 	flex-direction: column;
 	justify-content: flex-end;
 	z-index: 1;
+}
+
+.page-content :deep(.element-selectable) {
+	cursor: pointer;
+	transition: outline 0.15s ease;
+}
+
+.page-content :deep(.element-selectable:hover) {
+	outline: 1px dashed rgba(99, 102, 241, 0.5);
+	outline-offset: 2px;
+}
+
+.page-content :deep(.element-selectable.selected) {
+	outline: 2px solid #6366f1;
+	outline-offset: 2px;
+	background-color: rgba(99, 102, 241, 0.1);
 }
 </style>

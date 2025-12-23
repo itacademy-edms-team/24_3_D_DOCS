@@ -43,7 +43,7 @@
 
 			<!-- Main Content -->
 			<div class="editor-content">
-				<ResizableSplitView :initial-left-width="50">
+				<ResizableSplitView :initial-left-width="55">
 					<template #left>
 						<div class="editor-pane" :class="{ 'is-dragging': isDragging }">
 							<textarea
@@ -76,11 +76,31 @@
 						</div>
 					</template>
 					<template #right>
-						<DocumentPreview
-							:html="renderedHtml"
-							:profile="profile"
-							:document-variables="documentVariables"
-						/>
+						<div class="preview-and-style">
+							<div class="preview-pane">
+								<DocumentPreview
+									:html="renderedHtml"
+									:profile="profile"
+									:document-variables="documentVariables"
+									:selectable="true"
+									@elementSelect="handleElementSelect"
+								/>
+							</div>
+							<div
+								v-if="currentStyle && selectedElementType"
+								class="style-pane"
+							>
+								<EntityStyleEditor
+									:entity-type="selectedElementType"
+									:style="currentStyle"
+									:profile="profile"
+									:show-reset="!!document.overrides && !!selectedElementId && !!document.overrides[selectedElementId]"
+									@change="handleStyleChange"
+									@reset="handleResetStyle"
+									@close="handleCloseStyleEditor"
+								/>
+							</div>
+						</div>
 					</template>
 				</ResizableSplitView>
 			</div>
@@ -89,12 +109,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDocumentEditor } from '@/widgets/document/useDocumentEditor';
 import ResizableSplitView from '@/widgets/document/ResizableSplitView.vue';
 import DocumentPreview from '@/widgets/document/DocumentPreview.vue';
 import { renderDocument } from '@/shared/services/markdown/documentRenderer';
+import type { EntityType } from '@/entities/profile/constants';
+import { getBaseStyle } from '@/shared/services/markdown/renderUtils';
+import { computeStyleDelta, isDeltaEmpty } from '@/shared/services/markdown/styleDiff';
+import EntityStyleEditor from '@/widgets/document/EntityStyleEditor.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -116,6 +140,18 @@ const {
 } = useDocumentEditor(documentId);
 
 const isDragging = ref(false);
+const selectedElementId = ref<string | null>(null);
+const selectedElementType = ref<EntityType | null>(null);
+
+const currentStyle = computed(() => {
+	if (!document.value || !selectedElementId.value || !selectedElementType.value) {
+		return null;
+	}
+
+	const base = getBaseStyle(selectedElementType.value, profile.value);
+	const override = document.value.overrides?.[selectedElementId.value] || {};
+	return { ...base, ...override };
+});
 
 function handleBack() {
 	router.push('/dashboard');
@@ -177,6 +213,66 @@ function handlePaste(event: ClipboardEvent) {
 	}
 }
 
+function handleElementSelect(payload: { id: string; type: string }) {
+	selectedElementId.value = payload.id;
+	selectedElementType.value = payload.type as EntityType;
+	
+	// Update selection visual in DOM
+	nextTick(() => {
+		// Remove previous selection
+		document.querySelectorAll('.element-selectable.selected').forEach((el) => {
+			el.classList.remove('selected');
+		});
+		
+		// Add selection to current element
+		const element = document.getElementById(payload.id);
+		if (element && element.classList.contains('element-selectable')) {
+			element.classList.add('selected');
+		}
+	});
+}
+
+function handleStyleChange(style: any) {
+	if (!document.value || !selectedElementId.value || !selectedElementType.value) return;
+
+	const base = getBaseStyle(selectedElementType.value, profile.value);
+	const delta = computeStyleDelta(style, base);
+
+	const currentOverrides = document.value.overrides || {};
+	const newOverrides = { ...currentOverrides };
+
+	if (isDeltaEmpty(delta)) {
+		delete newOverrides[selectedElementId.value];
+	} else {
+		newOverrides[selectedElementId.value] = delta;
+	}
+
+	document.value = { ...document.value, overrides: newOverrides };
+}
+
+function handleResetStyle() {
+	if (!document.value || !selectedElementId.value) return;
+
+	const currentOverrides = document.value.overrides || {};
+	if (!currentOverrides[selectedElementId.value]) return;
+
+	const newOverrides = { ...currentOverrides };
+	delete newOverrides[selectedElementId.value];
+
+	document.value = { ...document.value, overrides: newOverrides };
+}
+
+function handleCloseStyleEditor() {
+	selectedElementId.value = null;
+	selectedElementType.value = null;
+	// Remove selection from DOM
+	nextTick(() => {
+		document.querySelectorAll('.element-selectable.selected').forEach((el) => {
+			el.classList.remove('selected');
+		});
+	});
+}
+
 const documentVariables = computed(() => {
 	// Extract variables from frontmatter if needed
 	// For now, return empty object
@@ -189,8 +285,8 @@ const renderedHtml = computed(() => {
 	return renderDocument({
 		markdown: document.value.content,
 		profile: profile.value,
-		overrides: {},
-		selectable: false,
+		overrides: document.value.overrides || {},
+		selectable: true,
 	});
 });
 </script>
@@ -325,6 +421,24 @@ const renderedHtml = computed(() => {
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
+}
+
+.preview-and-style {
+	display: flex;
+	flex-direction: row;
+	height: 100%;
+}
+
+.preview-pane {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.style-pane {
+	flex: 0 0 280px;
+	max-width: 320px;
+	border-left: 1px solid #27272a;
+	background: #09090b;
 }
 
 .editor-pane {
