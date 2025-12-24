@@ -1,5 +1,6 @@
 import type { TitlePageElement } from '../types/titlePage';
 import { MM_TO_PX, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, PT_TO_MM } from '../constants/canvas';
+import { getCanvasFontFamily } from '@/widgets/title-page/fontUtils';
 
 /**
  * Convert millimeters to pixels
@@ -51,7 +52,8 @@ export function getDistanceToElement(
 		const fontFamily = element.fontFamily || 'Times New Roman';
 		const fontWeight = element.fontWeight || 'normal';
 		const fontStyle = element.fontStyle || 'normal';
-		ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fontFamily}`;
+		const fullFontFamily = getCanvasFontFamily(fontFamily);
+		ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fullFontFamily}`;
 
 		const content =
 			element.type === 'variable'
@@ -121,7 +123,8 @@ export function getElementBounds(
 		const fontFamily = element.fontFamily || 'Times New Roman';
 		const fontWeight = element.fontWeight || 'normal';
 		const fontStyle = element.fontStyle || 'normal';
-		ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fontFamily}`;
+		const fullFontFamily = getCanvasFontFamily(fontFamily);
+		ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fullFontFamily}`;
 
 		const content =
 			element.type === 'variable'

@@ -69,8 +69,8 @@ const rulerStyle = computed(() => {
 			left: '0',
 			width: `${mmToPx(PAGE_WIDTH_MM)}px`,
 			height: '20px',
-			background: '#e8e8e8',
-			borderBottom: '1px solid #ccc',
+			background: '#27272a',
+			borderBottom: '1px solid #3f3f46',
 		};
 	} else {
 		return {
@@ -79,8 +79,8 @@ const rulerStyle = computed(() => {
 			left: '-20px',
 			width: '20px',
 			height: `${mmToPx(PAGE_HEIGHT_MM)}px`,
-			background: '#e8e8e8',
-			borderRight: '1px solid #ccc',
+			background: '#27272a',
+			borderRight: '1px solid #3f3f46',
 		};
 	}
 });
@@ -115,7 +115,7 @@ function getLabelStyle(label: { value: number }) {
 			left: `${mmToPx(label.value) + 2}px`,
 			top: '2px',
 			fontSize: '10px',
-			color: '#666',
+			color: '#a1a1aa',
 			pointerEvents: 'none',
 		};
 	} else {
@@ -124,7 +124,7 @@ function getLabelStyle(label: { value: number }) {
 			top: `${mmToPx(label.value) + 2}px`,
 			left: '2px',
 			fontSize: '10px',
-			color: '#666',
+			color: '#a1a1aa',
 			pointerEvents: 'none',
 			transform: 'rotate(-90deg)',
 			transformOrigin: 'top left',
@@ -140,7 +140,7 @@ function getIndicatorStyle() {
 			top: '0',
 			width: '1px',
 			height: '20px',
-			background: '#0066ff',
+			background: '#6366f1',
 			pointerEvents: 'none',
 		};
 	} else if (props.orientation === 'vertical' && props.mousePos) {
@@ -150,7 +150,7 @@ function getIndicatorStyle() {
 			left: '0',
 			width: '20px',
 			height: '1px',
-			background: '#0066ff',
+			background: '#6366f1',
 			pointerEvents: 'none',
 		};
 	}

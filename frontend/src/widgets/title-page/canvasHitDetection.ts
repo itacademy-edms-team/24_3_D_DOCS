@@ -1,6 +1,7 @@
 import type { TitlePageElement } from '@/shared/types/titlePage';
 import { pxToMm } from '@/shared/utils/canvasUtils';
 import { PT_TO_MM } from '@/shared/constants/canvas';
+import { getCanvasFontFamily } from './fontUtils';
 
 const HITBOX_PADDING = 5; // mm padding for easier selection
 
@@ -41,7 +42,8 @@ export function calculateTextHitbox(
 	const fontFamily = element.fontFamily || 'Times New Roman';
 	const fontWeight = element.fontWeight || 'normal';
 	const fontStyle = element.fontStyle || 'normal';
-	ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fontFamily}`;
+	const fullFontFamily = getCanvasFontFamily(fontFamily);
+	ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fullFontFamily}`;
 
 	const content =
 		element.type === 'variable'

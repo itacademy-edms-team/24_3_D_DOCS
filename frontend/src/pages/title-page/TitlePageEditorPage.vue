@@ -20,26 +20,26 @@
 		>
 			<!-- Header -->
 			<div class="header">
-				<input
-					v-model="titlePage.name"
-					class="name-input"
-					@input="handleNameChange(titlePage.name)"
-				/>
-				<div class="header-actions">
-					<button
-						class="save-btn"
-						:disabled="saving"
-						@click="handleSave"
-					>
-						{{ saving ? 'Сохранение...' : 'Сохранить' }}
-					</button>
+				<div class="header-left">
 					<button
 						class="back-btn"
 						@click="router.push('/')"
 					>
-						Назад
+						← Назад
 					</button>
+					<input
+						v-model="titlePage.name"
+						class="name-input"
+						@input="handleNameChange(titlePage.name)"
+					/>
 				</div>
+				<button
+					class="save-btn"
+					:disabled="saving"
+					@click="handleSave"
+				>
+					{{ saving ? 'Сохранение...' : 'Сохранить' }}
+				</button>
 			</div>
 
 			<!-- Main content -->
@@ -119,10 +119,12 @@ onMounted(() => {
 
 <style scoped>
 .title-page-editor {
-	padding: 1rem;
 	height: 100vh;
 	display: flex;
 	flex-direction: column;
+	background: #0a0a0a;
+	color: #e4e4e7;
+	overflow: hidden;
 }
 
 .loading,
@@ -131,6 +133,7 @@ onMounted(() => {
 	align-items: center;
 	justify-content: center;
 	height: 100%;
+	color: #e4e4e7;
 }
 
 .editor-layout {
@@ -143,9 +146,15 @@ onMounted(() => {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 1rem;
-	padding: 1rem;
-	border-bottom: 1px solid #ddd;
+	padding: 1.5rem 2rem;
+	border-bottom: 1px solid #27272a;
+	background: #0a0a0a;
+}
+
+.header-left {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
 }
 
 .name-input {
@@ -154,6 +163,14 @@ onMounted(() => {
 	border: none;
 	outline: none;
 	padding: 0.5rem;
+	background: transparent;
+	color: #e4e4e7;
+	flex: 1;
+	min-width: 200px;
+}
+
+.name-input::placeholder {
+	color: #71717a;
 }
 
 .header-actions {
@@ -164,36 +181,58 @@ onMounted(() => {
 .save-btn,
 .back-btn {
 	padding: 0.5rem 1rem;
-	border: 1px solid #ddd;
-	border-radius: 4px;
+	border: 1px solid #27272a;
+	border-radius: 6px;
 	cursor: pointer;
-	background: #f0f0f0;
+	font-size: 14px;
+	font-weight: 600;
+	transition: all 0.2s;
+	font-family: inherit;
+}
+
+.back-btn {
+	background: #18181b;
+	color: #e4e4e7;
+}
+
+.back-btn:hover {
+	background: #27272a;
 }
 
 .save-btn {
-	background: #0066ff;
+	background: #6366f1;
 	color: #fff;
-	border-color: #0066ff;
+	border-color: #6366f1;
+}
+
+.save-btn:hover:not(:disabled) {
+	background: #818cf8;
 }
 
 .save-btn:disabled {
-	opacity: 0.6;
+	opacity: 0.5;
 	cursor: not-allowed;
 }
 
 .content {
 	display: grid;
 	grid-template-columns: 1fr 350px;
-	gap: 1.5rem;
+	gap: 0;
 	flex: 1;
 	overflow: hidden;
+	background: #0a0a0a;
 }
 
 .canvas-area {
 	overflow: auto;
+	background: #0a0a0a;
+	padding: 1rem;
 }
 
 .sidebar {
 	overflow-y: auto;
+	background: #09090b;
+	border-left: 1px solid #27272a;
+	padding: 1rem;
 }
 </style>

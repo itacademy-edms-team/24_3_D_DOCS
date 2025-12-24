@@ -281,12 +281,13 @@ function handleDelete() {
 <style scoped>
 .element-editor {
 	padding: 1rem;
-	border: 1px solid #ddd;
-	border-radius: 4px;
+	border: 1px solid #27272a;
+	border-radius: 6px;
+	background: #09090b;
 }
 
 .empty-state {
-	color: #666;
+	color: #71717a;
 }
 
 .editor-content {
@@ -306,6 +307,7 @@ function handleDelete() {
 	margin: 0;
 	font-size: 1rem;
 	font-weight: 600;
+	color: #e4e4e7;
 }
 
 .delete-btn {
@@ -316,6 +318,11 @@ function handleDelete() {
 	border-radius: 4px;
 	cursor: pointer;
 	font-size: 0.875rem;
+	transition: background 0.2s;
+}
+
+.delete-btn:hover {
+	background: #c82333;
 }
 
 .field {
@@ -326,13 +333,26 @@ function handleDelete() {
 
 .field label {
 	font-size: 0.875rem;
+	color: #a1a1aa;
 }
 
 .field input,
 .field textarea,
 .field select {
-	padding: 0.25rem;
+	padding: 0.5rem;
 	width: 100%;
+	background: #18181b;
+	border: 1px solid #27272a;
+	border-radius: 4px;
+	color: #e4e4e7;
+	font-size: 14px;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+	outline: none;
+	border-color: #6366f1;
 }
 
 .field textarea {
@@ -349,7 +369,7 @@ function handleDelete() {
 }
 
 .field small {
-	color: #666;
+	color: #71717a;
 	font-size: 0.75rem;
 }
 </style>

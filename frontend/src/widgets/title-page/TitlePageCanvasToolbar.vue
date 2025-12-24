@@ -18,13 +18,6 @@
 		>
 			Линия
 		</button>
-		<button
-			:class="{ active: showGrid }"
-			@click="onGridToggle"
-			title="Toggle grid (G)"
-		>
-			Сетка
-		</button>
 
 		<!-- Zoom controls -->
 		<div class="zoom-controls">
@@ -41,13 +34,11 @@ import type { TitlePageElementType } from '@/shared/types/titlePage';
 
 interface Props {
 	tool: TitlePageElementType | null;
-	showGrid: boolean;
 	zoom: number;
 }
 
 interface Emits {
 	(e: 'tool-change', tool: TitlePageElementType | null): void;
-	(e: 'grid-toggle'): void;
 	(e: 'zoom-change', zoom: number): void;
 }
 
@@ -77,24 +68,33 @@ function handleZoomReset() {
 	display: flex;
 	gap: 0.5rem;
 	padding: 0.5rem;
-	border: 1px solid #ddd;
-	border-radius: 4px;
+	border: 1px solid #27272a;
+	border-radius: 6px;
 	align-items: center;
 	flex-wrap: wrap;
+	background: #18181b;
 }
 
 .toolbar button {
 	padding: 0.5rem 1rem;
-	background: #f0f0f0;
-	color: #000;
-	border: 1px solid #ddd;
-	border-radius: 4px;
+	background: #27272a;
+	color: #e4e4e7;
+	border: 1px solid #3f3f46;
+	border-radius: 6px;
 	cursor: pointer;
+	font-size: 14px;
+	font-weight: 500;
+	transition: all 0.2s;
+}
+
+.toolbar button:hover {
+	background: #3f3f46;
 }
 
 .toolbar button.active {
-	background: #0066ff;
+	background: #6366f1;
 	color: #fff;
+	border-color: #6366f1;
 }
 
 .zoom-controls {
@@ -112,6 +112,7 @@ function handleZoomReset() {
 	min-width: 60px;
 	text-align: center;
 	font-size: 0.875rem;
+	color: #e4e4e7;
 }
 
 .reset-btn {

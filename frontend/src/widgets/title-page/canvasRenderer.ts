@@ -5,6 +5,7 @@ import {
 	PAGE_HEIGHT_MM,
 	getElementBounds,
 } from '@/shared/utils/canvasUtils';
+import { getCanvasFontFamily } from './fontUtils';
 
 export interface TextBounds {
 	left: number;
@@ -30,6 +31,12 @@ export function calculateTextBounds(
 
 	const lines = content.split('\n');
 	const fontSize = element.fontSize || 14;
+	const fontFamily = element.fontFamily || 'Times New Roman';
+	const fontWeight = element.fontWeight || 'normal';
+	const fontStyle = element.fontStyle || 'normal';
+	const fullFontFamily = getCanvasFontFamily(fontFamily);
+	ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fullFontFamily}`;
+	
 	const lineHeight = fontSize * (element.lineHeight || 1.2);
 	const totalHeight = lines.length * lineHeight;
 
@@ -106,7 +113,9 @@ export function drawElement(
 		const fontStyle = element.fontStyle || 'normal';
 		const fontSize = element.fontSize || 14;
 		const fontFamily = element.fontFamily || 'Times New Roman';
-		ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fontFamily}`;
+		const fullFontFamily = getCanvasFontFamily(fontFamily);
+		
+		ctx.font = `${fontStyle} ${fontWeight} ${fontSize}pt ${fullFontFamily}`;
 		ctx.fillStyle = '#000000';
 		ctx.textBaseline = 'top';
 

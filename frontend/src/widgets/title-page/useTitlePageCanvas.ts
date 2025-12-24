@@ -27,7 +27,6 @@ interface UseTitlePageCanvasProps {
 	onMoveEnd?: () => void;
 	onToolChange?: (tool: TitlePageElementType | null) => void;
 	initialTool?: TitlePageElementType | null;
-	onGridToggle?: () => void;
 }
 
 export function useTitlePageCanvas({
@@ -41,7 +40,6 @@ export function useTitlePageCanvas({
 	onMoveEnd,
 	onToolChange,
 	initialTool,
-	onGridToggle,
 }: UseTitlePageCanvasProps) {
 	const canvasRef = ref<HTMLCanvasElement | null>(null);
 	const isDragging = ref(false);
@@ -58,8 +56,6 @@ export function useTitlePageCanvas({
 	const zoom = ref(1.0);
 	const mousePos = ref<{ x: number; y: number } | null>(null);
 	const hoveredElementId = ref<string | null>(null);
-	const gridSize = ref(5); // Grid size in mm
-	const showGrid = ref(false);
 	const alignmentGuides = ref<AlignmentGuide[]>([]);
 	const isAltPressed = ref(false);
 	const elementDistances = ref<ElementDistances | null>(null);
@@ -85,20 +81,8 @@ export function useTitlePageCanvas({
 		{ immediate: true }
 	);
 
-	// Keyboard shortcut for grid toggle and Alt key tracking
+	// Alt key tracking
 	const handleKeyDown = (e: KeyboardEvent) => {
-		if (e.key === 'g' || e.key === 'G') {
-			const target = e.target as HTMLElement;
-			if (
-				target.tagName !== 'INPUT' &&
-				target.tagName !== 'TEXTAREA' &&
-				!target.isContentEditable
-			) {
-				e.preventDefault();
-				showGrid.value = !showGrid.value;
-				onGridToggle?.();
-			}
-		}
 		if (e.key === 'Alt') {
 			isAltPressed.value = true;
 		}
@@ -123,11 +107,6 @@ export function useTitlePageCanvas({
 	const handleToolChange = (newTool: TitlePageElementType | null) => {
 		tool.value = newTool;
 		onToolChange?.(newTool);
-	};
-
-	const handleGridToggle = () => {
-		showGrid.value = !showGrid.value;
-		onGridToggle?.();
 	};
 
 	const handleZoomChange = (newZoom: number) => {
@@ -453,10 +432,8 @@ export function useTitlePageCanvas({
 		canvasRef,
 		tool,
 		zoom,
-		showGrid,
 		mousePos,
 		hoveredElementId,
-		gridSize,
 		isDragging,
 		isSelecting,
 		selectionStart,
@@ -464,7 +441,6 @@ export function useTitlePageCanvas({
 		alignmentGuides,
 		elementDistances,
 		handleToolChange,
-		handleGridToggle,
 		handleZoomChange,
 		handleMouseDown,
 		handleMouseMove,

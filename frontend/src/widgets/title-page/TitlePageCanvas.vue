@@ -3,10 +3,8 @@
 		<!-- Toolbar -->
 		<TitlePageCanvasToolbar
 			:tool="tool"
-			:show-grid="showGrid"
 			:zoom="zoom"
 			@tool-change="handleToolChange"
-			@grid-toggle="handleGridToggle"
 			@zoom-change="handleZoomChange"
 		/>
 
@@ -71,7 +69,6 @@ import type { TitlePageElement, TitlePageElementType } from '@/shared/types/titl
 import { mmToPx, PAGE_WIDTH_MM, PAGE_HEIGHT_MM } from '@/shared/utils/canvasUtils';
 import {
 	drawPageBackground,
-	drawGrid,
 	drawElement,
 	drawHover,
 	drawSelection,
@@ -96,7 +93,6 @@ interface Emits {
 	(e: 'element-add', type: TitlePageElementType, x: number, y: number): void;
 	(e: 'move-end'): void;
 	(e: 'tool-change', tool: TitlePageElementType | null): void;
-	(e: 'grid-toggle'): void;
 }
 
 const props = defineProps<Props>();
@@ -131,10 +127,8 @@ const {
 	canvasRef,
 	tool,
 	zoom,
-	showGrid,
 	mousePos,
 	hoveredElementId,
-	gridSize,
 	isDragging,
 	isSelecting,
 	selectionStart,
@@ -142,7 +136,6 @@ const {
 	alignmentGuides,
 	elementDistances,
 	handleToolChange: handleToolChangeInternal,
-	handleGridToggle: handleGridToggleInternal,
 	handleZoomChange: handleZoomChangeInternal,
 	handleMouseDown,
 	handleMouseMove,
@@ -161,7 +154,6 @@ const {
 	onMoveEnd: () => emit('move-end'),
 	onToolChange: (tool) => emit('tool-change', tool),
 	initialTool: props.initialTool,
-	onGridToggle: () => emit('grid-toggle'),
 });
 
 const canvasStyle = computed(() => ({
@@ -187,13 +179,6 @@ const selectionBoxStyle = computed(() => {
 
 function handleToolChange(tool: TitlePageElementType | null) {
 	handleToolChangeInternal(tool);
-}
-
-function handleGridToggle() {
-	handleGridToggleInternal();
-	nextTick(() => {
-		draw();
-	});
 }
 
 function handleZoomChange(newZoom: number) {
@@ -229,11 +214,6 @@ function draw() {
 
 	// Draw page background and border
 	drawPageBackground(ctx);
-
-	// Draw grid if enabled
-	if (showGrid.value) {
-		drawGrid(ctx, gridSize.value);
-	}
 
 	// Draw elements
 	elementsRef.value.forEach((element) => {
@@ -276,7 +256,9 @@ function draw() {
 watch(
 	() => elementsRef.value,
 	() => {
-		draw();
+		nextTick(() => {
+			draw();
+		});
 	},
 	{ deep: true, immediate: false }
 );
@@ -285,13 +267,14 @@ watch(
 	[
 		() => selectedElementIdsRef.value,
 		hoveredElementId,
-		showGrid,
 		alignmentGuides,
 		isDragging,
 		elementDistances,
 	],
 	() => {
-		draw();
+		nextTick(() => {
+			draw();
+		});
 	},
 	{ deep: true }
 );
@@ -310,12 +293,13 @@ onMounted(() => {
 }
 
 .canvas-wrapper {
-	border: 1px solid #ddd;
+	border: 1px solid #27272a;
 	display: inline-block;
-	background: #f5f5f5;
+	background: #18181b;
 	padding: 20px;
 	overflow: auto;
 	max-width: 100%;
+	border-radius: 8px;
 }
 
 .canvas-zoom-container {
@@ -329,9 +313,9 @@ onMounted(() => {
 	left: -20px;
 	width: 20px;
 	height: 20px;
-	background: #d0d0d0;
-	border-right: 1px solid #ccc;
-	border-bottom: 1px solid #ccc;
+	background: #27272a;
+	border-right: 1px solid #3f3f46;
+	border-bottom: 1px solid #3f3f46;
 }
 
 .canvas-mouse-tracker {
@@ -344,7 +328,7 @@ onMounted(() => {
 	position: absolute;
 	top: -20px;
 	right: 0;
-	background: #0066ff;
+	background: #6366f1;
 	color: #fff;
 	padding: 2px 6px;
 	font-size: 10px;
