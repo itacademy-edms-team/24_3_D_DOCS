@@ -76,6 +76,7 @@
 						type="number"
 						min="8"
 						max="72"
+						@input="handleChange({ fontSize: localFontSize || 14 })"
 						@blur="handleNumericBlur('fontSize', 14)"
 					/>
 				</div>
@@ -127,6 +128,7 @@
 						min="0.5"
 						max="3"
 						step="0.1"
+						@input="handleChange({ lineHeight: localLineHeight || 1.2 })"
 						@blur="handleNumericBlur('lineHeight', 1.2)"
 					/>
 					<small>Множитель (например, 1.2 = 120%)</small>
@@ -153,6 +155,7 @@
 						v-model.number="localLength"
 						type="number"
 						min="1"
+						@input="handleChange({ length: localLength || 100 })"
 						@blur="handleNumericBlur('length', 100)"
 					/>
 				</div>
@@ -164,6 +167,7 @@
 						type="number"
 						min="0.1"
 						step="0.1"
+						@input="handleChange({ thickness: localThickness || 1 })"
 						@blur="handleNumericBlur('thickness', 1)"
 					/>
 				</div>

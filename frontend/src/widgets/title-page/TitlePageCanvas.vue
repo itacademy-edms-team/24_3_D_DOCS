@@ -102,14 +102,16 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const elementsRef = ref(props.elements);
-const selectedElementIdsRef = ref(props.selectedElementIds);
+const elementsRef = ref([...props.elements]);
+const selectedElementIdsRef = ref([...props.selectedElementIds]);
 
 watch(
 	() => props.elements,
 	(newElements) => {
-		elementsRef.value = newElements;
-		draw();
+		elementsRef.value = [...newElements]; // Создаем новый массив для реактивности
+		nextTick(() => {
+			draw();
+		});
 	},
 	{ deep: true }
 );
@@ -117,8 +119,10 @@ watch(
 watch(
 	() => props.selectedElementIds,
 	(newIds) => {
-		selectedElementIdsRef.value = newIds;
-		draw();
+		selectedElementIdsRef.value = [...newIds];
+		nextTick(() => {
+			draw();
+		});
 	},
 	{ deep: true }
 );
@@ -187,6 +191,9 @@ function handleToolChange(tool: TitlePageElementType | null) {
 
 function handleGridToggle() {
 	handleGridToggleInternal();
+	nextTick(() => {
+		draw();
+	});
 }
 
 function handleZoomChange(newZoom: number) {
@@ -267,8 +274,15 @@ function draw() {
 }
 
 watch(
+	() => elementsRef.value,
+	() => {
+		draw();
+	},
+	{ deep: true, immediate: false }
+);
+
+watch(
 	[
-		() => elementsRef.value,
 		() => selectedElementIdsRef.value,
 		hoveredElementId,
 		showGrid,

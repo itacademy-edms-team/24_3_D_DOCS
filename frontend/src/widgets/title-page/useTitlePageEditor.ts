@@ -115,7 +115,11 @@ export function useTitlePageEditor() {
 			(el) => el.id === element.id
 		);
 		if (index !== -1) {
-			titlePage.value.elements[index] = element;
+			// Создаем новый массив для правильной реактивности Vue
+			const newElements = [...titlePage.value.elements];
+			// Создаем новый объект элемента для правильной реактивности
+			newElements[index] = { ...newElements[index], ...element };
+			titlePage.value.elements = newElements;
 		}
 	}
 

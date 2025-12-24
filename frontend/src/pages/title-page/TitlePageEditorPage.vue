@@ -57,6 +57,7 @@
 						@element-add="handleElementAdd"
 						@move-end="handleSave"
 						@tool-change="handleToolChange"
+						@grid-toggle="() => {}"
 					/>
 				</div>
 

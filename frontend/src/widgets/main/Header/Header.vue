@@ -23,7 +23,9 @@ defineEmits<{
 }>();
 
 const buttonText = computed(() => {
-	return props.activeTab === 'profiles' ? 'Новый шаблон' : 'Новый документ';
+	if (props.activeTab === 'profiles') return 'Новый шаблон';
+	if (props.activeTab === 'title-pages') return 'Новый титульный лист';
+	return 'Новый документ';
 });
 </script>
 
