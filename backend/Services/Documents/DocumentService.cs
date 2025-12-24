@@ -49,11 +49,11 @@ public class DocumentService : IDocumentService
 
     public async Task<List<DocumentMetaDTO>> GetAllDocumentsAsync(Guid userId)
     {
-        // Get documents from DB (only id and updatedAt for sorting)
+        // Get documents from DB (id, updatedAt, and titlePageId)
         var dbDocuments = await _context.Documents
             .Where(d => d.CreatorId == userId)
             .OrderByDescending(d => d.UpdatedAt)
-            .Select(d => new { d.Id, d.UpdatedAt })
+            .Select(d => new { d.Id, d.UpdatedAt, d.TitlePageId })
             .ToListAsync();
 
         var bucketName = GetBucketName(userId);
@@ -72,6 +72,7 @@ public class DocumentService : IDocumentService
                     Id = Guid.Parse(metaJson.id),
                     Name = metaJson.name,
                     ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
+                    TitlePageId = dbDoc.TitlePageId,
                     CreatedAt = metaJson.createdAt,
                     UpdatedAt = metaJson.updatedAt
                 };
@@ -108,6 +109,7 @@ public class DocumentService : IDocumentService
             Id = Guid.Parse(metaJson.id),
             Name = metaJson.name,
             ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
+            TitlePageId = document.TitlePageId,
             Content = content,
             Overrides = overrides,
             CreatedAt = metaJson.createdAt,
@@ -130,7 +132,8 @@ public class DocumentService : IDocumentService
         {
             Id = documentId,
             CreatorId = userId,
-            UpdatedAt = now
+            UpdatedAt = now,
+            TitlePageId = dto.TitlePageId
         };
 
         // #region agent log
@@ -220,6 +223,7 @@ public class DocumentService : IDocumentService
                 Id = documentId,
                 Name = meta.name,
                 ProfileId = dto.ProfileId,
+                TitlePageId = dto.TitlePageId,
                 Content = defaultContent,
                 Overrides = new Dictionary<string, object>(),
                 CreatedAt = now,
@@ -256,7 +260,9 @@ public class DocumentService : IDocumentService
         // Update meta if needed
         if (dto.Name != null) metaJson.name = dto.Name;
         if (dto.ProfileId != null) metaJson.profileId = dto.ProfileId.ToString();
+        if (dto.TitlePageId != null) document.TitlePageId = dto.TitlePageId;
         metaJson.updatedAt = document.UpdatedAt;
+        await _context.SaveChangesAsync();
 
         if (dto.Content != null)
         {
@@ -273,11 +279,15 @@ public class DocumentService : IDocumentService
         var content = dto.Content ?? await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
         var overrides = dto.Overrides ?? await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
 
+        // Reload document to get updated TitlePageId
+        await _context.Entry(document).ReloadAsync();
+
         return new DocumentDTO
         {
             Id = id,
             Name = metaJson.name,
             ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
+            TitlePageId = document.TitlePageId,
             Content = content,
             Overrides = overrides,
             CreatedAt = metaJson.createdAt,

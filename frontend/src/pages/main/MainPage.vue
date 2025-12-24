@@ -42,6 +42,7 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/entities/auth/store/authStore';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
+import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import Sidebar from '@/widgets/main/Sidebar/Sidebar.vue';
 import Header from '@/widgets/main/Header/Header.vue';
 import SearchBar from '@/widgets/main/SearchBar/SearchBar.vue';
@@ -49,6 +50,7 @@ import DataTable from '@/widgets/main/DataTable/DataTable.vue';
 import { useMainPage } from '@/widgets/main/useMainPage';
 import type { ProfileMeta } from '@/entities/profile/types';
 import type { DocumentMeta } from '@/entities/document/types';
+import type { TitlePageMeta } from '@/entities/title-page/types';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -64,9 +66,11 @@ const {
 	loadData,
 } = useMainPage();
 
-function handleItemClick(item: ProfileMeta | DocumentMeta) {
+function handleItemClick(item: ProfileMeta | DocumentMeta | TitlePageMeta) {
 	if (activeTab.value === 'profiles') {
 		router.push(`/profile/${item.id}`);
+	} else if (activeTab.value === 'title-pages') {
+		router.push(`/title-page/${item.id}`);
 	} else {
 		router.push(`/document/${item.id}`);
 	}
@@ -76,6 +80,8 @@ async function handleNewProject() {
 	try {
 		if (activeTab.value === 'profiles') {
 			await ProfileAPI.create({ name: 'Новый шаблон' });
+		} else if (activeTab.value === 'title-pages') {
+			await TitlePageAPI.create({ name: 'Новый титульный лист' });
 		} else {
 			await DocumentAPI.create({ name: 'Новый документ' });
 		}
@@ -87,7 +93,7 @@ async function handleNewProject() {
 	}
 }
 
-async function handleDelete(item: ProfileMeta | DocumentMeta) {
+async function handleDelete(item: ProfileMeta | DocumentMeta | TitlePageMeta) {
 	if (!confirm(`Вы уверены, что хотите удалить "${item.name || 'элемент'}"?`)) {
 		return;
 	}
@@ -95,6 +101,8 @@ async function handleDelete(item: ProfileMeta | DocumentMeta) {
 	try {
 		if (activeTab.value === 'profiles') {
 			await ProfileAPI.delete(item.id);
+		} else if (activeTab.value === 'title-pages') {
+			await TitlePageAPI.delete(item.id);
 		} else {
 			await DocumentAPI.delete(item.id);
 		}
@@ -105,10 +113,12 @@ async function handleDelete(item: ProfileMeta | DocumentMeta) {
 	}
 }
 
-async function handleUpdate(item: ProfileMeta | DocumentMeta, name: string) {
+async function handleUpdate(item: ProfileMeta | DocumentMeta | TitlePageMeta, name: string) {
 	try {
 		if (activeTab.value === 'profiles') {
 			await ProfileAPI.update(item.id, { name });
+		} else if (activeTab.value === 'title-pages') {
+			await TitlePageAPI.update(item.id, { name });
 		} else {
 			await DocumentAPI.update(item.id, { name });
 		}

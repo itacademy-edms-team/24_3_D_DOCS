@@ -34,6 +34,12 @@ const router = createRouter({
 			component: () => import('@/pages/document/DocumentEditorPage.vue'),
 			meta: { requiresAuth: true },
 		},
+		{
+			path: '/title-page/:id',
+			name: 'title-page-editor',
+			component: () => import('@/pages/title-page/TitlePageEditorPage.vue'),
+			meta: { requiresAuth: true },
+		},
 	],
 });
 

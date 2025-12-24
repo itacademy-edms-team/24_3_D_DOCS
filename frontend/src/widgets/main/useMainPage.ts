@@ -2,10 +2,12 @@ import { ref, computed } from 'vue';
 import { useDebounce } from '@vueuse/core';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
+import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import type { ProfileMeta } from '@/entities/profile/types';
 import type { DocumentMeta } from '@/entities/document/types';
+import type { TitlePageMeta } from '@/entities/title-page/types';
 
-export type TabType = 'docs' | 'profiles';
+export type TabType = 'docs' | 'profiles' | 'title-pages';
 
 export function useMainPage() {
 	const activeTab = ref<TabType>('docs');
@@ -15,10 +17,14 @@ export function useMainPage() {
 
 	const profiles = ref<ProfileMeta[]>([]);
 	const documents = ref<DocumentMeta[]>([]);
+	const titlePages = ref<TitlePageMeta[]>([]);
 
 	const currentItems = computed(() => {
 		if (activeTab.value === 'profiles') {
 			return profiles.value;
+		}
+		if (activeTab.value === 'title-pages') {
+			return titlePages.value;
 		}
 		return documents.value;
 	});
@@ -48,23 +54,28 @@ export function useMainPage() {
 	const tabTitles: Record<TabType, string> = {
 		docs: 'Документы',
 		profiles: 'Шаблоны',
+		'title-pages': 'Титульные листы',
 	};
 
 	const pageTitle = computed(() => tabTitles[activeTab.value]);
 
 	const searchPlaceholder = computed(() => {
-		return `Поиск в ${activeTab.value === 'docs' ? 'документах' : 'шаблонах'}...`;
+		if (activeTab.value === 'docs') return 'Поиск в документах...';
+		if (activeTab.value === 'profiles') return 'Поиск в шаблонах...';
+		return 'Поиск в титульных листах...';
 	});
 
 	async function loadData() {
 		isLoading.value = true;
 		try {
-			const [profilesData, documentsData] = await Promise.all([
+			const [profilesData, documentsData, titlePagesData] = await Promise.all([
 				ProfileAPI.getAll().catch(() => []),
 				DocumentAPI.getAll().catch(() => []),
+				TitlePageAPI.getAll().catch(() => []),
 			]);
 			profiles.value = profilesData;
 			documents.value = documentsData;
+			titlePages.value = titlePagesData;
 		} catch (error) {
 			console.error('Failed to load data:', error);
 		} finally {

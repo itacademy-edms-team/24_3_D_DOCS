@@ -43,6 +43,7 @@ defineEmits<{
 const tabs = [
 	{ id: 'docs' as TabType, label: 'Документы', icon: '📄' },
 	{ id: 'profiles' as TabType, label: 'Шаблоны', icon: '🎨' },
+	{ id: 'title-pages' as TabType, label: 'Титульные листы', icon: '📋' },
 ];
 </script>
 

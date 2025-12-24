@@ -1,11 +1,9 @@
-namespace RusalProject.Models.DTOs.Documents;
+namespace RusalProject.Models.DTOs.TitlePages;
 
-public class DocumentMetaDTO
+public class TitlePageMetaDTO
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public Guid? ProfileId { get; set; }
-    public Guid? TitlePageId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

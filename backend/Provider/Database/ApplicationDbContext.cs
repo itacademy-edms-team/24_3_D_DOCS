@@ -13,6 +13,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Profile> Profiles { get; set; }
     public DbSet<Document> Documents { get; set; }
+    public DbSet<TitlePage> TitlePages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,7 +32,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Role)
                   .HasDatabaseName("IX_Users_Role");
 
-            // One-to-many relationships: User -> Profiles, User -> Documents
+            // One-to-many relationships: User -> Profiles, User -> Documents, User -> TitlePages
             entity.HasMany(e => e.Profiles)
                   .WithOne(e => e.Creator)
                   .HasForeignKey(e => e.CreatorId)
@@ -76,6 +77,18 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                   .HasDefaultValueSql("NOW()");
         });
+
+        // Configure TitlePage entity
+        modelBuilder.Entity<TitlePage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.CreatorId)
+                  .HasDatabaseName("IX_TitlePages_CreatorId");
+
+            entity.Property(e => e.UpdatedAt)
+                  .HasDefaultValueSql("NOW()");
+        });
     }
 
     // Override SaveChanges to automatically update UpdatedAt
@@ -109,6 +122,10 @@ public class ApplicationDbContext : DbContext
             else if (entry.Entity is Document document)
             {
                 document.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is TitlePage titlePage)
+            {
+                titlePage.UpdatedAt = DateTime.UtcNow;
             }
         }
     }

@@ -6,22 +6,26 @@ export interface DocumentMeta {
 	createdAt: string;
 	updatedAt: string;
 	profileId?: string;
+	titlePageId?: string;
 }
 
 export interface Document extends DocumentMeta {
 	content: string;
 	profileId?: string;
+	titlePageId?: string;
 	overrides?: Record<string, EntityStyle>;
 }
 
 export interface CreateDocumentDTO {
 	name?: string;
 	profileId?: string;
+	titlePageId?: string;
 }
 
 export interface UpdateDocumentDTO {
 	name?: string;
 	content?: string;
 	profileId?: string;
+	titlePageId?: string;
 	overrides?: Record<string, EntityStyle>;
 }

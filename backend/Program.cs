@@ -11,6 +11,7 @@ using RusalProject.Services.Auth;
 using RusalProject.Services.Documents;
 using RusalProject.Services.Email;
 using RusalProject.Services.Profiles;
+using RusalProject.Services.TitlePages;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -96,6 +97,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 // Document & Profile Services
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
+builder.Services.AddScoped<ITitlePageService, TitlePageService>();
 
 // JWT Authentication Configuration
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] 

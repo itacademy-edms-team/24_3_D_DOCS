@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace RusalProject.Models.Entities;
 
-[Table("documents")]
-public class Document
+[Table("title_pages")]
+public class TitlePage
 {
     [Key]
     [Column("id")]
@@ -17,13 +17,7 @@ public class Document
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    [Column("title_page_id")]
-    public Guid? TitlePageId { get; set; }
-
     // Navigation properties
     [ForeignKey("CreatorId")]
     public virtual User? Creator { get; set; }
-
-    [ForeignKey("TitlePageId")]
-    public virtual TitlePage? TitlePage { get; set; }
 }
