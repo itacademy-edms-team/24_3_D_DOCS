@@ -35,6 +35,20 @@
 							{{ p.name }}
 						</option>
 					</select>
+					<select
+						class="profile-select title-page-select"
+						:value="document.titlePageId || ''"
+						@change="handleTitlePageChange($event)"
+					>
+						<option value="">Без титульного листа</option>
+						<option
+							v-for="tp in titlePages"
+							:key="tp.id"
+							:value="tp.id"
+						>
+							{{ tp.name }}
+						</option>
+					</select>
 				</div>
 				<button class="save-btn" @click="handleSave" :disabled="saving">
 					{{ saving ? 'Сохранение...' : 'Сохранить' }}
@@ -82,6 +96,7 @@
 									:html="renderedHtml"
 									:profile="profile"
 									:document-variables="documentVariables"
+									:title-page-id="document?.titlePageId"
 									:selectable="true"
 									@elementSelect="handleElementSelect"
 								/>
@@ -128,6 +143,7 @@ const {
 	document,
 	profile,
 	profiles,
+	titlePages,
 	loading,
 	saving,
 	uploading,
@@ -136,6 +152,7 @@ const {
 	handleNameChange: handleNameChangeInternal,
 	handleContentChange: handleContentChangeInternal,
 	handleProfileChange: handleProfileChangeInternal,
+	handleTitlePageChange: handleTitlePageChangeInternal,
 	handleImageUpload: handleImageUploadInternal,
 } = useDocumentEditor(documentId);
 
@@ -174,6 +191,11 @@ function handleContentChange(event: Event) {
 function handleProfileChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
 	handleProfileChangeInternal(target.value);
+}
+
+function handleTitlePageChange(event: Event) {
+	const target = event.target as HTMLSelectElement;
+	handleTitlePageChangeInternal(target.value);
 }
 
 function handleDragOver(event: DragEvent) {

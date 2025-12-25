@@ -57,6 +57,23 @@
 					v-html="html"
 				/>
 
+				<!-- Title Page -->
+				<div
+					v-if="titlePageHtml"
+					class="document-page title-page"
+					:style="{
+						width: `${dimensions.pageWidth}px`,
+						height: `${dimensions.pageHeight}px`,
+						margin: '0 auto 20px auto',
+						position: 'relative',
+					}"
+				>
+					<div
+						v-html="titlePageHtml"
+						style="position: absolute; inset: 0;"
+					/>
+				</div>
+
 				<!-- Document Pages -->
 				<div
 					v-for="(pageHtml, index) in pages"
@@ -65,7 +82,7 @@
 					:style="{
 						width: `${dimensions.pageWidth}px`,
 						height: `${dimensions.pageHeight}px`,
-						margin: index > 0 ? '20px auto 0' : '0 auto',
+						margin: (index > 0 || titlePageHtml) ? '20px auto 0' : '0 auto',
 					}"
 					@click="handleElementClick"
 				>
@@ -76,7 +93,7 @@
 						:style="{
 							paddingTop: `${dimensions.marginTop}px`,
 						}"
-						v-html="renderPageNumber(index + 1, totalPages, 'top')"
+						v-html="renderPageNumber(titlePageHtml ? index + 2 : index + 1, totalPages, 'top')"
 					/>
 
 					<!-- Content area -->
@@ -105,7 +122,7 @@
 						:style="{
 							height: `${dimensions.marginBottom}px`,
 						}"
-						v-html="renderPageNumber(index + 1, totalPages, 'bottom')"
+						v-html="renderPageNumber(titlePageHtml ? index + 2 : index + 1, totalPages, 'bottom')"
 					/>
 				</div>
 			</div>
@@ -114,14 +131,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue';
 import type { Profile } from '@/entities/profile/types';
+import type { TitlePage } from '@/entities/title-page/types';
+import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
+import { renderTitlePageToHtml } from '@/shared/services/titlePage/titlePageRenderer';
 import { PAGE_SIZES, MM_TO_PX } from '@/shared/constants/pageSizes';
 
 interface Props {
 	html: string;
 	profile: Profile | null;
 	documentVariables?: Record<string, string>;
+	titlePageId?: string;
 	selectable?: boolean;
 }
 
@@ -364,6 +385,7 @@ const isDragging = ref(false);
 const dragStart = ref({ x: 0, y: 0 });
 const scrollPosition = ref({ left: 0, top: 0 });
 const hasMoved = ref(false);
+const titlePage = ref<TitlePage | null>(null);
 
 let splitTimeout: ReturnType<typeof setTimeout> | null = null;
 let splitIdleCallback: number | null = null;
@@ -561,7 +583,43 @@ onUnmounted(() => {
 	blobUrls.value = [];
 });
 
-const totalPages = computed(() => pages.value.length);
+// Load title page when titlePageId changes
+watch(
+	() => props.titlePageId,
+	async (newTitlePageId) => {
+		if (newTitlePageId) {
+			try {
+				const loadedTitlePage = await TitlePageAPI.getById(newTitlePageId);
+				titlePage.value = loadedTitlePage;
+			} catch (error) {
+				console.error('Failed to load title page:', error);
+				titlePage.value = null;
+			}
+		} else {
+			titlePage.value = null;
+		}
+	},
+	{ immediate: true }
+);
+
+// Merge documentVariables with titlePage.variables (documentVariables have priority)
+const mergedVariables = computed(() => {
+	if (!titlePage.value) return props.documentVariables || {};
+	return {
+		...titlePage.value.variables,
+		...(props.documentVariables || {}),
+	};
+});
+
+const titlePageHtml = computed(() => {
+	if (!titlePage.value) return null;
+	return renderTitlePageToHtml(titlePage.value, mergedVariables.value);
+});
+
+const totalPages = computed(() => {
+	const basePages = pages.value.length;
+	return titlePageHtml.value ? basePages + 1 : basePages;
+});
 
 function handleElementClick(e: MouseEvent) {
 	emit('click', e);

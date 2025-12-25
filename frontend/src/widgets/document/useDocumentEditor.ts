@@ -1,13 +1,16 @@
 import { ref, onMounted } from 'vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
+import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import type { Document, UpdateDocumentDTO } from '@/entities/document/types';
 import type { Profile, ProfileMeta } from '@/entities/profile/types';
+import type { TitlePageMeta } from '@/entities/title-page/types';
 
 export function useDocumentEditor(documentId: string | undefined) {
 	const document = ref<Document | null>(null);
 	const profile = ref<Profile | null>(null);
 	const profiles = ref<ProfileMeta[]>([]);
+	const titlePages = ref<TitlePageMeta[]>([]);
 	const loading = ref(true);
 	const saving = ref(false);
 	const uploading = ref(false);
@@ -20,6 +23,7 @@ export function useDocumentEditor(documentId: string | undefined) {
 			loading.value = false;
 		}
 		loadProfiles();
+		loadTitlePages();
 	}
 
 	onMounted(() => {
@@ -32,6 +36,15 @@ export function useDocumentEditor(documentId: string | undefined) {
 			profiles.value = profilesData;
 		} catch (error) {
 			console.error('Failed to load profiles:', error);
+		}
+	}
+
+	async function loadTitlePages() {
+		try {
+			const titlePagesData = await TitlePageAPI.getAll();
+			titlePages.value = titlePagesData;
+		} catch (error) {
+			console.error('Failed to load title pages:', error);
 		}
 	}
 
@@ -67,6 +80,7 @@ export function useDocumentEditor(documentId: string | undefined) {
 				name: document.value.name,
 				content: document.value.content,
 				profileId: document.value.profileId,
+				titlePageId: document.value.titlePageId,
 				overrides: document.value.overrides,
 			};
 			const updated = await DocumentAPI.update(documentId, updateData);
@@ -107,6 +121,11 @@ export function useDocumentEditor(documentId: string | undefined) {
 		} else {
 			profile.value = null;
 		}
+	}
+
+	function handleTitlePageChange(titlePageId: string) {
+		if (!document.value) return;
+		document.value = { ...document.value, titlePageId: titlePageId || undefined };
 	}
 
 	async function handleImageUpload(file: File) {
@@ -151,6 +170,7 @@ export function useDocumentEditor(documentId: string | undefined) {
 		document,
 		profile,
 		profiles,
+		titlePages,
 		loading,
 		saving,
 		uploading,
@@ -159,6 +179,7 @@ export function useDocumentEditor(documentId: string | undefined) {
 		handleNameChange,
 		handleContentChange,
 		handleProfileChange,
+		handleTitlePageChange,
 		handleImageUpload,
 	};
 }
