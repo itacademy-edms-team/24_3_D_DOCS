@@ -7,4 +7,5 @@ public class UpdateDocumentDTO
     public Guid? TitlePageId { get; set; }
     public string? Content { get; set; }
     public Dictionary<string, object>? Overrides { get; set; }
+    public Dictionary<string, string>? Variables { get; set; }
 }

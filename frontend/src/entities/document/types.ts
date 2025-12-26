@@ -14,6 +14,7 @@ export interface Document extends DocumentMeta {
 	profileId?: string;
 	titlePageId?: string;
 	overrides?: Record<string, EntityStyle>;
+	variables?: Record<string, string>;
 }
 
 export interface CreateDocumentDTO {
@@ -28,4 +29,5 @@ export interface UpdateDocumentDTO {
 	profileId?: string;
 	titlePageId?: string;
 	overrides?: Record<string, EntityStyle>;
+	variables?: Record<string, string>;
 }

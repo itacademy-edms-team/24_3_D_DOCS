@@ -149,6 +149,7 @@
 				<VariablesEditor
 					:variables="variables"
 					:title-page-variable-keys="titlePageVariableKeys"
+					:saving="savingVariables"
 					@update="handleVariablesUpdate"
 				/>
 			</div>
@@ -169,6 +170,7 @@ import { computeStyleDelta, isDeltaEmpty } from '@/shared/services/markdown/styl
 import EntityStyleEditor from '@/widgets/document/EntityStyleEditor.vue';
 import VariablesEditor from '@/widgets/document/VariablesEditor.vue';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
+import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import { getTitlePageVariableKeys } from '@/shared/utils/titlePageUtils';
 import type { TitlePage } from '@/entities/title-page/types';
 
@@ -199,6 +201,7 @@ const selectedElementType = ref<EntityType | null>(null);
 const isVariablesModalOpen = ref(false);
 const variables = ref<Record<string, string>>({});
 const currentTitlePage = ref<TitlePage | null>(null);
+const savingVariables = ref(false);
 
 const currentStyle = computed(() => {
 	if (!document.value || !selectedElementId.value || !selectedElementType.value) {
@@ -344,6 +347,17 @@ const documentVariables = computed(() => {
 	return variables.value;
 });
 
+// Initialize variables from document when document loads
+watch(
+	() => document.value,
+	(newDocument) => {
+		if (newDocument) {
+			variables.value = { ...(newDocument.variables || {}) };
+		}
+	},
+	{ immediate: true }
+);
+
 // Load title page when titlePageId changes
 watch(
 	() => document.value?.titlePageId,
@@ -352,28 +366,36 @@ watch(
 			try {
 				const loadedTitlePage = await TitlePageAPI.getById(newTitlePageId);
 				currentTitlePage.value = loadedTitlePage;
-				// Initialize variables from title page, but don't overwrite existing ones
-				const newVariables: Record<string, string> = { ...variables.value };
-				Object.keys(loadedTitlePage.variables).forEach((key) => {
-					if (!(key in newVariables)) {
-						newVariables[key] = loadedTitlePage.variables[key];
-					}
-				});
-				variables.value = newVariables;
 			} catch (error) {
 				console.error('Failed to load title page:', error);
 				currentTitlePage.value = null;
 			}
 		} else {
 			currentTitlePage.value = null;
-			variables.value = {};
 		}
 	},
 	{ immediate: true }
 );
 
-function handleVariablesUpdate(newVariables: Record<string, string>) {
+async function handleVariablesUpdate(newVariables: Record<string, string>) {
+	if (!document.value || !documentId) return;
+	
 	variables.value = newVariables;
+	savingVariables.value = true;
+	
+	try {
+		const updated = await DocumentAPI.update(documentId, {
+			variables: newVariables,
+		});
+		if (updated) {
+			document.value = updated;
+			isVariablesModalOpen.value = false;
+		}
+	} catch (error) {
+		console.error('Failed to save variables:', error);
+	} finally {
+		savingVariables.value = false;
+	}
 }
 
 const renderedHtml = computed(() => {

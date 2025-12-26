@@ -2,151 +2,83 @@
 	<div class="variables-editor">
 		<div class="variables-editor-header">
 			<h3 class="variables-editor-title">Переменные титульного листа</h3>
-			<button
-				v-if="titlePageVariableKeys.length > 0"
-				class="btn-insert-template"
-				@click="handleInsertAllFromTemplate"
-			>
-				+ Вставить из шаблона
-			</button>
-		</div>
-
-		<div
-			v-if="titlePageVariableKeys.length > 0"
-			class="variables-info"
-		>
-			<strong>Переменные из титульного листа:</strong>
-			<ul class="variables-list">
-				<li
-					v-for="key in titlePageVariableKeys"
-					:key="key"
-					:class="{ 'defined': isVariableDefined(key) }"
-				>
-					{{ key }} {{ isVariableDefined(key) ? '✓' : '(не определена)' }}
-				</li>
-			</ul>
 		</div>
 
 		<div class="variables-content">
 			<div
-				v-if="localVariables.length === 0"
+				v-if="titlePageVariableKeys.length === 0"
 				class="empty-state"
 			>
-				Нет переменных. Добавьте переменную для использования в титульном листе.
+				В титульном листе нет переменных.
 			</div>
 			<div
 				v-else
 				class="variables-list"
 			>
 				<div
-					v-for="(variable, index) in localVariables"
-					:key="index"
+					v-for="key in titlePageVariableKeys"
+					:key="key"
 					class="variable-row"
 				>
-					<input
-						type="text"
-						class="variable-input variable-key"
-						:value="variable.key"
-						placeholder="Ключ"
-						@input="handleUpdate(index, { key: ($event.target as HTMLInputElement).value })"
-					/>
+					<label class="variable-label">{{ key }}</label>
 					<input
 						type="text"
 						class="variable-input variable-value"
-						:value="variable.value"
+						:value="variables[key] || ''"
 						placeholder="Значение"
-						@input="handleUpdate(index, { value: ($event.target as HTMLInputElement).value })"
+						@input="handleValueChange(key, ($event.target as HTMLInputElement).value)"
 					/>
-					<button
-						class="btn-delete"
-						@click="handleDelete(index)"
-					>
-						Удалить
-					</button>
 				</div>
 			</div>
 		</div>
 
 		<div class="variables-actions">
 			<button
-				class="btn-add"
-				@click="handleAdd"
+				class="btn-save"
+				:disabled="saving"
+				@click="handleSave"
 			>
-				+ Добавить переменную
+				{{ saving ? 'Сохранение...' : 'Сохранить' }}
 			</button>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch } from 'vue';
 
 interface Props {
 	variables: Record<string, string>;
 	titlePageVariableKeys: string[];
+	saving?: boolean;
 }
 
 interface Emits {
 	(e: 'update', variables: Record<string, string>): void;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+	saving: false,
+});
+
 const emit = defineEmits<Emits>();
 
-const localVariables = ref<Array<{ key: string; value: string }>>(() => {
-	return Object.entries(props.variables).map(([key, value]) => ({ key, value }));
-});
+const localValues = ref<Record<string, string>>({ ...props.variables });
 
 watch(
 	() => props.variables,
 	(newVariables) => {
-		localVariables.value = Object.entries(newVariables).map(([key, value]) => ({ key, value }));
+		localValues.value = { ...newVariables };
 	},
 	{ deep: true }
 );
 
-function isVariableDefined(key: string): boolean {
-	return props.variables[key] !== undefined && props.variables[key] !== '';
+function handleValueChange(key: string, value: string) {
+	localValues.value[key] = value;
 }
 
-function handleAdd() {
-	localVariables.value = [...localVariables.value, { key: '', value: '' }];
-	updateVariables();
-}
-
-function handleUpdate(index: number, updates: Partial<{ key: string; value: string }>) {
-	const newVars = [...localVariables.value];
-	newVars[index] = { ...newVars[index], ...updates };
-	localVariables.value = newVars;
-	updateVariables();
-}
-
-function handleDelete(index: number) {
-	const newVars = localVariables.value.filter((_, i) => i !== index);
-	localVariables.value = newVars;
-	updateVariables();
-}
-
-function handleInsertAllFromTemplate() {
-	const newVariables: Record<string, string> = { ...props.variables };
-
-	props.titlePageVariableKeys.forEach((key) => {
-		if (!newVariables[key]) {
-			newVariables[key] = '';
-		}
-	});
-
-	emit('update', newVariables);
-}
-
-function updateVariables() {
-	const result: Record<string, string> = {};
-	localVariables.value.forEach(({ key, value }) => {
-		if (key.trim()) {
-			result[key.trim()] = value;
-		}
-	});
-	emit('update', result);
+function handleSave() {
+	emit('update', { ...localValues.value });
 }
 </script>
 
@@ -161,10 +93,7 @@ function updateVariables() {
 }
 
 .variables-editor-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 1rem;
+	margin-bottom: 1.5rem;
 }
 
 .variables-editor-title {
@@ -174,57 +103,8 @@ function updateVariables() {
 	color: #e4e4e7;
 }
 
-.btn-insert-template {
-	padding: 0.5rem 1rem;
-	background: #28a745;
-	color: white;
-	border: none;
-	border-radius: 6px;
-	cursor: pointer;
-	font-size: 0.875rem;
-	font-weight: 500;
-	transition: background 0.2s;
-	font-family: inherit;
-}
-
-.btn-insert-template:hover {
-	background: #218838;
-}
-
-.variables-info {
-	margin-bottom: 1rem;
-	padding: 0.75rem;
-	background: rgba(59, 130, 246, 0.1);
-	border: 1px solid rgba(59, 130, 246, 0.2);
-	border-radius: 6px;
-	font-size: 0.875rem;
-	color: #e4e4e7;
-}
-
-.variables-info strong {
-	display: block;
-	margin-bottom: 0.5rem;
-}
-
-.variables-info ul {
-	margin: 0.5rem 0 0 0;
-	padding-left: 1.5rem;
-}
-
-.variables-info li {
-	margin-bottom: 0.25rem;
-}
-
-.variables-info li.defined {
-	color: #28a745;
-}
-
-.variables-info li:not(.defined) {
-	color: #dc3545;
-}
-
 .variables-content {
-	margin-bottom: 1rem;
+	margin-bottom: 1.5rem;
 }
 
 .empty-state {
@@ -237,13 +117,21 @@ function updateVariables() {
 .variables-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
+	gap: 1rem;
 }
 
 .variable-row {
 	display: flex;
-	gap: 0.5rem;
+	flex-direction: row;
 	align-items: center;
+	gap: 1rem;
+}
+
+.variable-label {
+	color: #e4e4e7;
+	font-size: 0.875rem;
+	font-weight: 500;
+	flex: 0 0 150px;
 }
 
 .variable-input {
@@ -256,55 +144,44 @@ function updateVariables() {
 	font-family: inherit;
 	outline: none;
 	transition: border-color 0.2s;
+	width: 100%;
+	box-sizing: border-box;
 }
 
 .variable-input:focus {
 	border-color: #6366f1;
 }
 
-.variable-key {
-	flex: 1;
-}
-
 .variable-value {
-	flex: 2;
-}
-
-.btn-delete {
-	padding: 0.5rem 0.75rem;
-	background: #dc3545;
-	color: white;
-	border: none;
-	border-radius: 6px;
-	cursor: pointer;
-	font-size: 0.875rem;
-	transition: background 0.2s;
-	font-family: inherit;
-}
-
-.btn-delete:hover {
-	background: #c82333;
+	flex: 1;
 }
 
 .variables-actions {
 	display: flex;
-	justify-content: flex-start;
+	justify-content: flex-end;
+	padding-top: 1rem;
+	border-top: 1px solid #27272a;
 }
 
-.btn-add {
-	padding: 0.5rem 1rem;
+.btn-save {
+	padding: 0.75rem 1.5rem;
 	background: #6366f1;
 	color: white;
 	border: none;
-	border-radius: 6px;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
 	cursor: pointer;
-	font-size: 0.875rem;
-	font-weight: 500;
 	transition: background 0.2s;
 	font-family: inherit;
 }
 
-.btn-add:hover {
+.btn-save:hover:not(:disabled) {
 	background: #4f46e5;
+}
+
+.btn-save:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 </style>

@@ -45,6 +45,7 @@ public class DocumentService : IDocumentService
     private string GetContentPath(Guid documentId) => $"{GetDocumentPath(documentId)}/content.md";
     private string GetMetaPath(Guid documentId) => $"{GetDocumentPath(documentId)}/meta.json";
     private string GetOverridesPath(Guid documentId) => $"{GetDocumentPath(documentId)}/overrides.json";
+    private string GetVariablesPath(Guid documentId) => $"{GetDocumentPath(documentId)}/variables.json";
     private string GetImagePath(Guid documentId, string imageId) => $"{GetDocumentPath(documentId)}/images/{imageId}";
 
     public async Task<List<DocumentMetaDTO>> GetAllDocumentsAsync(Guid userId)
@@ -103,6 +104,7 @@ public class DocumentService : IDocumentService
 
         var content = await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
         var overrides = await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
+        var variables = await ReadJsonAsync<Dictionary<string, string>>(bucketName, GetVariablesPath(id)) ?? new Dictionary<string, string>();
 
         return new DocumentDTO
         {
@@ -112,6 +114,7 @@ public class DocumentService : IDocumentService
             TitlePageId = document.TitlePageId,
             Content = content,
             Overrides = overrides,
+            Variables = variables,
             CreatedAt = metaJson.createdAt,
             UpdatedAt = metaJson.updatedAt
         };
@@ -214,6 +217,8 @@ public class DocumentService : IDocumentService
         Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:154\",\"message\":\"Overrides.json written successfully\",\"data\":{{\"path\":\"{GetOverridesPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
         // #endregion
 
+        await WriteJsonAsync(bucketName, GetVariablesPath(documentId), new Dictionary<string, string>());
+
         // #region agent log
         Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:225\",\"message\":\"CreateDocumentAsync completed successfully\",\"data\":{{\"documentId\":\"{documentId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"A\"}}");
         // #endregion
@@ -226,6 +231,7 @@ public class DocumentService : IDocumentService
                 TitlePageId = dto.TitlePageId,
                 Content = defaultContent,
                 Overrides = new Dictionary<string, object>(),
+                Variables = new Dictionary<string, string>(),
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -274,10 +280,16 @@ public class DocumentService : IDocumentService
             await WriteJsonAsync(bucketName, GetOverridesPath(id), dto.Overrides);
         }
 
+        if (dto.Variables != null)
+        {
+            await WriteJsonAsync(bucketName, GetVariablesPath(id), dto.Variables);
+        }
+
         await WriteJsonAsync(bucketName, GetMetaPath(id), metaJson);
 
         var content = dto.Content ?? await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
         var overrides = dto.Overrides ?? await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
+        var variables = dto.Variables ?? await ReadJsonAsync<Dictionary<string, string>>(bucketName, GetVariablesPath(id)) ?? new Dictionary<string, string>();
 
         // Reload document to get updated TitlePageId
         await _context.Entry(document).ReloadAsync();
@@ -290,6 +302,7 @@ public class DocumentService : IDocumentService
             TitlePageId = document.TitlePageId,
             Content = content,
             Overrides = overrides,
+            Variables = variables,
             CreatedAt = metaJson.createdAt,
             UpdatedAt = metaJson.updatedAt
         };
@@ -310,7 +323,8 @@ public class DocumentService : IDocumentService
             {
                 GetContentPath(id),
                 GetMetaPath(id),
-                GetOverridesPath(id)
+                GetOverridesPath(id),
+                GetVariablesPath(id)
             };
 
             foreach (var filePath in filesToDelete)
