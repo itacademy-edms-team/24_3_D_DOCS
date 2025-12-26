@@ -50,9 +50,18 @@
 						</option>
 					</select>
 				</div>
-				<button class="save-btn" @click="handleSave" :disabled="saving">
-					{{ saving ? 'Сохранение...' : 'Сохранить' }}
-				</button>
+				<div class="header-right">
+					<button
+						class="variables-btn"
+						@click="isVariablesModalOpen = true"
+						:disabled="!document.titlePageId"
+					>
+						Переменные
+					</button>
+					<button class="save-btn" @click="handleSave" :disabled="saving">
+						{{ saving ? 'Сохранение...' : 'Сохранить' }}
+					</button>
+				</div>
 			</div>
 
 			<!-- Main Content -->
@@ -120,11 +129,35 @@
 				</ResizableSplitView>
 			</div>
 		</div>
+
+		<!-- Variables Modal -->
+		<div
+			v-if="isVariablesModalOpen"
+			class="modal-overlay"
+			@click.self="isVariablesModalOpen = false"
+		>
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2 class="modal-title">Редактор переменных</h2>
+					<button
+						class="modal-close-btn"
+						@click="isVariablesModalOpen = false"
+					>
+						×
+					</button>
+				</div>
+				<VariablesEditor
+					:variables="variables"
+					:title-page-variable-keys="titlePageVariableKeys"
+					@update="handleVariablesUpdate"
+				/>
+			</div>
+		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDocumentEditor } from '@/widgets/document/useDocumentEditor';
 import ResizableSplitView from '@/widgets/document/ResizableSplitView.vue';
@@ -134,6 +167,10 @@ import type { EntityType } from '@/entities/profile/constants';
 import { getBaseStyle } from '@/shared/services/markdown/renderUtils';
 import { computeStyleDelta, isDeltaEmpty } from '@/shared/services/markdown/styleDiff';
 import EntityStyleEditor from '@/widgets/document/EntityStyleEditor.vue';
+import VariablesEditor from '@/widgets/document/VariablesEditor.vue';
+import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
+import { getTitlePageVariableKeys } from '@/shared/utils/titlePageUtils';
+import type { TitlePage } from '@/entities/title-page/types';
 
 const route = useRoute();
 const router = useRouter();
@@ -159,6 +196,9 @@ const {
 const isDragging = ref(false);
 const selectedElementId = ref<string | null>(null);
 const selectedElementType = ref<EntityType | null>(null);
+const isVariablesModalOpen = ref(false);
+const variables = ref<Record<string, string>>({});
+const currentTitlePage = ref<TitlePage | null>(null);
 
 const currentStyle = computed(() => {
 	if (!document.value || !selectedElementId.value || !selectedElementType.value) {
@@ -295,11 +335,46 @@ function handleCloseStyleEditor() {
 	});
 }
 
-const documentVariables = computed(() => {
-	// Extract variables from frontmatter if needed
-	// For now, return empty object
-	return {};
+const titlePageVariableKeys = computed(() => {
+	if (!currentTitlePage.value) return [];
+	return getTitlePageVariableKeys(currentTitlePage.value);
 });
+
+const documentVariables = computed(() => {
+	return variables.value;
+});
+
+// Load title page when titlePageId changes
+watch(
+	() => document.value?.titlePageId,
+	async (newTitlePageId) => {
+		if (newTitlePageId) {
+			try {
+				const loadedTitlePage = await TitlePageAPI.getById(newTitlePageId);
+				currentTitlePage.value = loadedTitlePage;
+				// Initialize variables from title page, but don't overwrite existing ones
+				const newVariables: Record<string, string> = { ...variables.value };
+				Object.keys(loadedTitlePage.variables).forEach((key) => {
+					if (!(key in newVariables)) {
+						newVariables[key] = loadedTitlePage.variables[key];
+					}
+				});
+				variables.value = newVariables;
+			} catch (error) {
+				console.error('Failed to load title page:', error);
+				currentTitlePage.value = null;
+			}
+		} else {
+			currentTitlePage.value = null;
+			variables.value = {};
+		}
+	},
+	{ immediate: true }
+);
+
+function handleVariablesUpdate(newVariables: Record<string, string>) {
+	variables.value = newVariables;
+}
 
 const renderedHtml = computed(() => {
 	if (!document.value) return '';
@@ -351,6 +426,12 @@ const renderedHtml = computed(() => {
 }
 
 .header-left {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+}
+
+.header-right {
 	display: flex;
 	align-items: center;
 	gap: 1rem;
@@ -435,6 +516,93 @@ const renderedHtml = computed(() => {
 .save-btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+.variables-btn {
+	padding: 0.75rem 1.5rem;
+	background: #27272a;
+	color: #e4e4e7;
+	border: 1px solid #3f3f46;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s;
+	font-family: inherit;
+}
+
+.variables-btn:hover:not(:disabled) {
+	background: #3f3f46;
+	border-color: #52525b;
+}
+
+.variables-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	padding: 2rem;
+}
+
+.modal-content {
+	background: #18181b;
+	border-radius: 12px;
+	border: 1px solid #27272a;
+	max-width: 900px;
+	width: 100%;
+	max-height: 80vh;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+}
+
+.modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 1.5rem;
+	border-bottom: 1px solid #27272a;
+}
+
+.modal-title {
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: #e4e4e7;
+}
+
+.modal-close-btn {
+	background: transparent;
+	border: 1px solid #27272a;
+	border-radius: 6px;
+	color: #a1a1aa;
+	font-size: 1.5rem;
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: all 0.2s;
+	font-family: inherit;
+	line-height: 1;
+}
+
+.modal-close-btn:hover {
+	background: #27272a;
+	color: #e4e4e7;
+	border-color: #3f3f46;
 }
 
 .editor-content {
