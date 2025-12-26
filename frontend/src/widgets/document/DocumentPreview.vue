@@ -137,6 +137,7 @@ import type { TitlePage } from '@/entities/title-page/types';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import { renderTitlePageToHtml } from '@/shared/services/titlePage/titlePageRenderer';
 import { PAGE_SIZES, MM_TO_PX } from '@/shared/constants/pageSizes';
+import { exportPagesToPDF } from '@/shared/utils/pdfExport';
 
 interface Props {
 	html: string;
@@ -683,6 +684,46 @@ function handleMouseLeave() {
 	isDragging.value = false;
 	hasMoved.value = false;
 }
+
+/**
+ * Экспортирует все страницы документа в PDF
+ * @param filename - Имя файла для сохранения (без расширения)
+ */
+async function exportToPDF(filename: string = 'document'): Promise<void> {
+	if (!scrollContainerRef.value) {
+		throw new Error('Preview container not found');
+	}
+
+	// Находим все страницы документа
+	const pageElements = Array.from(
+		scrollContainerRef.value.querySelectorAll('.document-page')
+	) as HTMLElement[];
+
+	if (pageElements.length === 0) {
+		throw new Error('Нет страниц для экспорта');
+	}
+
+	// Получаем настройки страницы из профиля
+	const settings = props.profile?.page || DEFAULT_PAGE_SETTINGS;
+	const size = PAGE_SIZES[settings.size] || PAGE_SIZES.A4;
+	const isLandscape = settings.orientation === 'landscape';
+
+	// Конвертируем размеры в мм
+	const pageWidth = isLandscape ? size.height : size.width;
+	const pageHeight = isLandscape ? size.width : size.height;
+
+	// Экспортируем в PDF
+	await exportPagesToPDF(pageElements, filename, {
+		format: [pageWidth, pageHeight],
+		orientation: settings.orientation || 'portrait',
+		margin: 0,
+	});
+}
+
+// Экспортируем метод для использования через ref
+defineExpose({
+	exportToPDF,
+});
 </script>
 
 <style scoped>

@@ -58,6 +58,13 @@
 					>
 						Переменные
 					</button>
+					<button
+						class="export-btn"
+						@click="handleExportPDF"
+						:disabled="exporting"
+					>
+						{{ exporting ? 'Экспорт...' : 'Экспорт PDF' }}
+					</button>
 					<button class="save-btn" @click="handleSave" :disabled="saving">
 						{{ saving ? 'Сохранение...' : 'Сохранить' }}
 					</button>
@@ -102,6 +109,7 @@
 						<div class="preview-and-style">
 							<div class="preview-pane">
 								<DocumentPreview
+									ref="previewRef"
 									:html="renderedHtml"
 									:profile="profile"
 									:document-variables="documentVariables"
@@ -173,6 +181,7 @@ import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import { getTitlePageVariableKeys } from '@/shared/utils/titlePageUtils';
 import type { TitlePage } from '@/entities/title-page/types';
+import type { ComponentPublicInstance } from 'vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -202,6 +211,8 @@ const isVariablesModalOpen = ref(false);
 const variables = ref<Record<string, string>>({});
 const currentTitlePage = ref<TitlePage | null>(null);
 const savingVariables = ref(false);
+const previewRef = ref<ComponentPublicInstance<{ exportToPDF: (filename: string) => Promise<void> }> | null>(null);
+const exporting = ref(false);
 
 const currentStyle = computed(() => {
 	if (!document.value || !selectedElementId.value || !selectedElementType.value) {
@@ -285,12 +296,12 @@ function handleElementSelect(payload: { id: string; type: string }) {
 	// Update selection visual in DOM
 	nextTick(() => {
 		// Remove previous selection
-		document.querySelectorAll('.element-selectable.selected').forEach((el) => {
+		window.document.querySelectorAll('.element-selectable.selected').forEach((el: Element) => {
 			el.classList.remove('selected');
 		});
 		
 		// Add selection to current element
-		const element = document.getElementById(payload.id);
+		const element = window.document.getElementById(payload.id);
 		if (element && element.classList.contains('element-selectable')) {
 			element.classList.add('selected');
 		}
@@ -332,7 +343,7 @@ function handleCloseStyleEditor() {
 	selectedElementType.value = null;
 	// Remove selection from DOM
 	nextTick(() => {
-		document.querySelectorAll('.element-selectable.selected').forEach((el) => {
+		window.document.querySelectorAll('.element-selectable.selected').forEach((el: Element) => {
 			el.classList.remove('selected');
 		});
 	});
@@ -408,6 +419,21 @@ const renderedHtml = computed(() => {
 		selectable: true,
 	});
 });
+
+async function handleExportPDF() {
+	if (!previewRef.value || !document.value) return;
+
+	exporting.value = true;
+	try {
+		const filename = document.value.name || 'document';
+		await previewRef.value.exportToPDF(filename);
+	} catch (error) {
+		console.error('Ошибка при экспорте в PDF:', error);
+		alert('Не удалось экспортировать документ в PDF. Проверьте консоль для подробностей.');
+	} finally {
+		exporting.value = false;
+	}
+}
 </script>
 
 <style scoped>
@@ -559,6 +585,29 @@ const renderedHtml = computed(() => {
 }
 
 .variables-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.export-btn {
+	padding: 0.75rem 1.5rem;
+	background: #27272a;
+	color: #e4e4e7;
+	border: 1px solid #3f3f46;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s;
+	font-family: inherit;
+}
+
+.export-btn:hover:not(:disabled) {
+	background: #3f3f46;
+	border-color: #52525b;
+}
+
+.export-btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
