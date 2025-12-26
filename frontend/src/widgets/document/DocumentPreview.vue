@@ -131,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import type { Profile } from '@/entities/profile/types';
 import type { TitlePage } from '@/entities/title-page/types';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
@@ -224,6 +224,131 @@ function renderPageNumber(
 			${format}
 		</div>
 	`;
+}
+
+async function preloadImagesForSplit(html: string, contentWidth: number): Promise<string> {
+	if (!html.trim()) {
+		return html;
+	}
+
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(html, 'text/html');
+	const images = Array.from(doc.querySelectorAll('img')) as HTMLImageElement[];
+
+	// Фильтруем только API изображения
+	const apiImages = images.filter((img) => {
+		const src = img.getAttribute('src') || '';
+		return src.includes('/api/documents/') && src.includes('/images/');
+	});
+
+	if (apiImages.length === 0) {
+		return html;
+	}
+
+	// Извлекаем пути и загружаем изображения
+	const baseUrl = typeof BASE_URI !== 'undefined' ? BASE_URI : 'http://localhost:5159';
+
+	// Get auth token
+	const authData = localStorage.getItem('auth-storage');
+	let token = '';
+	if (authData) {
+		try {
+			const parsed = JSON.parse(authData);
+			token = parsed?.state?.accessToken || parsed?.accessToken || '';
+		} catch {}
+	}
+
+	const loadPromises = apiImages.map(async (img) => {
+		let src = img.getAttribute('src') || '';
+		
+		// Extract path from URL
+		let path = src;
+		if (src.startsWith('http')) {
+			try {
+				const url = new URL(src);
+				path = url.pathname;
+			} catch {
+				const match = src.match(/\/api\/documents\/[^/]+\/images\/[^/]+/);
+				if (match) {
+					path = match[0];
+				}
+			}
+		} else if (!src.startsWith('/')) {
+			const match = src.match(/\/api\/documents\/[^"'\s]+/);
+			if (match) {
+				path = match[0];
+			}
+		}
+
+		if (!path || !path.startsWith('/api/documents/')) {
+			return null;
+		}
+
+		try {
+			const absoluteUrl = `${baseUrl}${path}`;
+			const response = await fetch(absoluteUrl, {
+				headers: token ? { Authorization: `Bearer ${token}` } : {},
+			});
+
+			if (!response.ok) {
+				console.error('Failed to load image for split:', response.status, response.statusText, absoluteUrl);
+				return null;
+			}
+
+			const blob = await response.blob();
+			const blobUrl = URL.createObjectURL(blob);
+			blobUrls.value.push(blobUrl);
+			return blobUrl;
+		} catch (error) {
+			console.error('Error loading image for split:', error);
+			return null;
+		}
+	});
+
+	const loadedBlobUrls = await Promise.all(loadPromises);
+
+	// Заменяем src на blob URL
+	apiImages.forEach((img, index) => {
+		const blobUrl = loadedBlobUrls[index];
+		if (blobUrl) {
+			img.setAttribute('src', blobUrl);
+		}
+	});
+
+	const updatedHtml = doc.body.innerHTML;
+
+	// Создаем временный контейнер и ждем загрузки изображений
+	const tempContainer = document.createElement('div');
+	tempContainer.style.position = 'absolute';
+	tempContainer.style.visibility = 'hidden';
+	tempContainer.style.width = `${contentWidth}px`;
+	tempContainer.style.fontFamily = "'Times New Roman', Times, serif";
+	tempContainer.style.fontSize = '14pt';
+	tempContainer.style.lineHeight = '1.5';
+	tempContainer.style.color = '#1a1a1a';
+	tempContainer.innerHTML = updatedHtml;
+	document.body.appendChild(tempContainer);
+
+	// Ждем загрузки всех изображений
+	const imgElements = Array.from(tempContainer.querySelectorAll('img')) as HTMLImageElement[];
+	await Promise.all(
+		imgElements.map((img) => {
+			if (img.complete && img.naturalWidth > 0) {
+				return Promise.resolve();
+			}
+			return new Promise<void>((resolve) => {
+				img.onload = () => resolve();
+				img.onerror = () => resolve(); // Продолжаем даже при ошибке
+				// Таймаут на случай, если изображение не загрузится
+				setTimeout(() => resolve(), 5000);
+			});
+		})
+	);
+
+	const finalHtml = tempContainer.innerHTML;
+	document.body.removeChild(tempContainer);
+
+	return finalHtml;
 }
 
 function splitIntoPages(
@@ -556,14 +681,18 @@ watch([() => props.html, contentHeight, contentWidth], () => {
 
 	isUpdatingPages.value = true;
 
-	scheduleSplit(() => {
-		const splitPages = splitIntoPages(props.html, contentHeight.value, contentWidth.value);
+	scheduleSplit(async () => {
+		// Загружаем изображения ДО разбиения на страницы
+		const loadedHtml = await preloadImagesForSplit(props.html, contentWidth.value);
+		
+		// Разбиваем на страницы с загруженными изображениями
+		const splitPages = splitIntoPages(loadedHtml, contentHeight.value, contentWidth.value);
 		pages.value = splitPages;
 		isUpdatingPages.value = false;
 		splitTimeout = null;
 		splitIdleCallback = null;
 		
-		// Process images after pages are updated
+		// Обновляем изображения в DOM (они уже загружены)
 		processImagesInPages();
 	});
 }, { immediate: true });
