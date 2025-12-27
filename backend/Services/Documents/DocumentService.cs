@@ -536,4 +536,10 @@ public class DocumentService : IDocumentService
         Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:514\",\"message\":\"WriteJsonAsync completed\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
         // #endregion
     }
+
+    public async Task<bool> DocumentExistsAsync(Guid documentId, Guid userId)
+    {
+        return await _context.Documents
+            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId);
+    }
 }
