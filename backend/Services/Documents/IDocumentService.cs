@@ -9,6 +9,7 @@ public interface IDocumentService
     Task<DocumentDTO> CreateDocumentAsync(CreateDocumentDTO dto, Guid userId);
     Task<DocumentDTO?> UpdateDocumentAsync(Guid id, UpdateDocumentDTO dto, Guid userId);
     Task<bool> DeleteDocumentAsync(Guid id, Guid userId);
+    Task<bool> DocumentExistsAsync(Guid documentId, Guid userId);
     Task<string> UploadImageAsync(Guid documentId, Stream fileStream, string filename, Guid userId);
     Task<Stream?> GetImageAsync(Guid documentId, string imageId, Guid userId);
     Task<bool> DeleteImageAsync(Guid documentId, string imageId, Guid userId);
