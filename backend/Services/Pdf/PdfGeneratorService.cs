@@ -1,7 +1,7 @@
 using System.Text.Json;
 using PuppeteerSharp;
 using PuppeteerSharp.Media;
-using RusalProject.Services.Document;
+using RusalProject.Services.Documents;
 using RusalProject.Services.Profile;
 using RusalProject.Services.TitlePage;
 using RusalProject.Services.Storage;

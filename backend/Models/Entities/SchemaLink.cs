@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace RusalProject.Models.Entities;
 
-[Table("title_pages")]
-public class TitlePage
+[Table("schema_links")]
+public class SchemaLink
 {
     [Key]
     [Column("id")]
@@ -27,6 +27,12 @@ public class TitlePage
     [Column("minio_path")]
     [MaxLength(500)]
     public string MinioPath { get; set; } = string.Empty;
+
+    [Column("pandoc_options")]
+    public string? PandocOptions { get; set; } // JSON с настройками Pandoc
+
+    [Column("is_public")]
+    public bool IsPublic { get; set; } = false;
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

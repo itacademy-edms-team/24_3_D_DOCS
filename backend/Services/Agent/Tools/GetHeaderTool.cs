@@ -1,6 +1,6 @@
 using System.Text.Json;
 using RusalProject.Models.Types;
-using RusalProject.Services.Document;
+using RusalProject.Services.Documents;
 using RusalProject.Services.Markdown;
 
 namespace RusalProject.Services.Agent.Tools;

@@ -52,5 +52,6 @@ public class Attachment
     public virtual User? User { get; set; }
 
     [ForeignKey("DocumentId")]
-    public virtual Document? Document { get; set; }
+    public virtual DocumentLink? Document { get; set; }
 }
+

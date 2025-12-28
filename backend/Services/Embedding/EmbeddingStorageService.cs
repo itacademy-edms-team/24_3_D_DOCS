@@ -3,7 +3,7 @@ using RusalProject.Models.DTOs.Document;
 using RusalProject.Models.Entities;
 using RusalProject.Models.Types;
 using RusalProject.Provider.Database;
-using RusalProject.Services.Document;
+using RusalProject.Services.Documents;
 using RusalProject.Services.Markdown;
 using RusalProject.Services.Ollama;
 

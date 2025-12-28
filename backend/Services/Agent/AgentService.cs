@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Services.Agent.Tools;
-using RusalProject.Services.Document;
+using RusalProject.Services.Documents;
 using RusalProject.Services.Embedding;
 using RusalProject.Services.Ollama;
 

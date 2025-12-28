@@ -3,7 +3,7 @@ using RusalProject.Models.DTOs.RAG;
 using RusalProject.Models.Entities;
 using RusalProject.Provider.Database;
 using RusalProject.Services.Ollama;
-using RusalProject.Services.Document;
+using RusalProject.Services.Documents;
 
 namespace RusalProject.Services.RAG;
 

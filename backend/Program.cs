@@ -1,22 +1,47 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Minio;
-using Minio.DataModel.Args;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
+using RusalProject.Services.Agent;
+using RusalProject.Services.Agent.Tools;
 using RusalProject.Services.Auth;
 using RusalProject.Services.Documents;
+using RusalProject.Services.Attachment;
 using RusalProject.Services.Email;
-using RusalProject.Services.Profiles;
-using RusalProject.Services.TitlePages;
+using RusalProject.Services.Embedding;
+using RusalProject.Services.Markdown;
+using RusalProject.Services.Ollama;
+using RusalProject.Services.Pdf;
+using RusalProject.Services.Profile;
+using RusalProject.Services.RAG;
+using RusalProject.Services.Storage;
+using RusalProject.Services.TitlePage;
+using RusalProject.Services.Chat;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel request timeout for long-running operations like embedding generation
+builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
+{
+    options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(30);
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(30);
+});
+
 // Add services to the container.
 builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Настройка JSON сериализации для enum (без учета регистра)
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        // Устанавливаем camelCase для совместимости с фронтендом
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    })
     .ConfigureApiBehaviorOptions(options =>
     {
         // Отключаем автоматическую обработку ошибок валидации
@@ -65,28 +90,15 @@ builder.Services.AddSwaggerGen(options =>
 // Database Configuration (PostgreSQL)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString));
+{
+    options.UseNpgsql(connectionString);
+    options.ConfigureWarnings(warnings =>
+        warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+});
 
 // Redis Configuration
 var redisConnection = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
 builder.Services.AddSingleton<IRedisService>(sp => new RedisService(redisConnection));
-
-// MinIO Configuration
-var minioEndpoint = builder.Configuration["MinIO:Endpoint"] ?? "localhost:9000";
-var minioAccessKey = builder.Configuration["MinIO:AccessKey"] ?? "minioadmin";
-var minioSecretKey = builder.Configuration["MinIO:SecretKey"] ?? "minioadmin123";
-var useSSL = builder.Configuration.GetValue<bool>("MinIO:UseSSL", false);
-
-var minioClient = new MinioClient()
-    .WithEndpoint(minioEndpoint)
-    .WithCredentials(minioAccessKey, minioSecretKey);
-
-if (useSSL)
-{
-    minioClient.WithSSL();
-}
-
-builder.Services.AddSingleton<IMinioClient>(minioClient.Build());
 
 // Auth Services
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
@@ -94,10 +106,52 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
-// Document & Profile Services
+// Storage Services
+builder.Services.AddSingleton<IMinioService, MinioService>();
+
+// Document Services
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+// Attachment Services
+builder.Services.AddScoped<IAttachmentService, AttachmentService>();
+
+// Profile Services
 builder.Services.AddScoped<IProfileService, ProfileService>();
+
+// TitlePage Services
 builder.Services.AddScoped<ITitlePageService, TitlePageService>();
+
+// PDF Services
+builder.Services.AddScoped<IPdfGeneratorService, PdfGeneratorService>();
+
+// Ollama Services
+builder.Services.AddSingleton<IOllamaService, OllamaService>();
+
+// Markdown Services
+builder.Services.AddScoped<IMarkdownParserService, MarkdownParserService>();
+
+// Embedding Services
+builder.Services.AddScoped<IEmbeddingStorageService, EmbeddingStorageService>();
+
+// RAG Services
+builder.Services.AddScoped<IRAGService, RAGService>();
+
+// Agent Tools
+builder.Services.AddScoped<RAGSearchTool>();
+builder.Services.AddScoped<TableSearchTool>();
+builder.Services.AddScoped<InsertTool>();
+builder.Services.AddScoped<EditTool>();
+builder.Services.AddScoped<DeleteTool>();
+builder.Services.AddScoped<WebSearchTool>();
+builder.Services.AddScoped<ImageAnalysisTool>();
+builder.Services.AddScoped<GetHeaderTool>();
+builder.Services.AddScoped<GetDateTimeTool>();
+builder.Services.AddScoped<GrepTool>();
+
+// Agent Services
+builder.Services.AddScoped<IAgentService, AgentService>();
+
+// Chat Services
+builder.Services.AddScoped<IChatService, ChatService>();
 
 // JWT Authentication Configuration
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] 
@@ -152,81 +206,34 @@ using (var scope = app.Services.CreateScope())
     {
         // Apply migrations
         var context = services.GetRequiredService<ApplicationDbContext>();
-        try
-        {
-            context.Database.Migrate();
-            Console.WriteLine("Database migrations applied successfully.");
-        }
-        catch (Exception ex)
-        {
-            throw;
-        }
+        var pendingMigrations = context.Database.GetPendingMigrations().ToList();
+        Console.WriteLine($"Pending migrations: {string.Join(", ", pendingMigrations)}");
+        var appliedMigrations = context.Database.GetAppliedMigrations().ToList();
+        Console.WriteLine($"Applied migrations: {string.Join(", ", appliedMigrations)}");
+        context.Database.Migrate();
+        Console.WriteLine("Database migrations applied successfully.");
         
         // Warm-up database connection (prevents cold start delay)
-        try
-        {
-            var userCount = context.Users.Count();
-            Console.WriteLine($"Database warm-up completed. Users count: {userCount}");
-        }
-        catch (Exception ex)
-        {
-            throw;
-        }
+        var userCount = context.Users.Count();
+        Console.WriteLine($"Database warm-up completed. Users count: {userCount}");
         
-        // Warm-up Redis connection (non-blocking)
-        try
-        {
-            var redisService = services.GetRequiredService<IRedisService>();
-            redisService.SetAsync("warmup:check", "ready", TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-            var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
-            redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
-            Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Redis warm-up error: {ex.Message}");
-            // Don't throw - Redis warm-up failure shouldn't prevent app startup
-        }
-        
-        // Warm-up MinIO - ensure default bucket exists (non-blocking)
-        try
-        {
-            var minio = services.GetRequiredService<IMinioClient>();
-            var defaultBucket = builder.Configuration["MinIO:DefaultBucket"] ?? "documents";
-            var exists = minio.BucketExistsAsync(
-                new BucketExistsArgs()
-                    .WithBucket(defaultBucket)).GetAwaiter().GetResult();
-            if (!exists)
-            {
-                minio.MakeBucketAsync(
-                    new MakeBucketArgs()
-                        .WithBucket(defaultBucket)).GetAwaiter().GetResult();
-                Console.WriteLine($"MinIO bucket '{defaultBucket}' created.");
-            }
-            else
-            {
-                Console.WriteLine($"MinIO bucket '{defaultBucket}' already exists.");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"MinIO warm-up error: {ex.Message}");
-            // Don't throw - MinIO warm-up failure shouldn't prevent app startup
-        }
+        // Warm-up Redis connection
+        var redisService = services.GetRequiredService<IRedisService>();
+        redisService.SetAsync("warmup:check", "ready", TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+        var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
+        redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
+        Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
     }
     catch (Exception ex)
     {
         Console.WriteLine($"An error occurred during startup: {ex.Message}");
-        // Only throw if database migration failed - that's critical
-        if (ex.Message.Contains("migration", StringComparison.OrdinalIgnoreCase) || 
-            ex.Message.Contains("database", StringComparison.OrdinalIgnoreCase))
-        {
-            throw;
-        }
     }
 }
 
 // Configure the HTTP request pipeline.
+// CORS must be before Authentication/Authorization
+app.UseCors("AllowFrontend");
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -236,8 +243,6 @@ if (app.Environment.IsDevelopment())
         c.RoutePrefix = "swagger"; // Swagger будет доступен на /swagger
     });
 }
-
-app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
