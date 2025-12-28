@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using RusalProject.Models.DTOs.Profiles;
-using RusalProject.Services.Profiles;
+using RusalProject.Models.DTOs.Profile;
+using RusalProject.Services.Profile;
 using System.Security.Claims;
 
 namespace RusalProject.Controllers;
@@ -24,49 +24,158 @@ public class ProfilesController : ControllerBase
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
             ?? User.FindFirst("sub")?.Value;
-        return Guid.Parse(userIdClaim ?? throw new UnauthorizedAccessException());
+        
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            throw new UnauthorizedAccessException("Invalid user token");
+        }
+
+        return userId;
     }
 
+    /// <summary>
+    /// Получить список профилей
+    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<List<ProfileMetaDTO>>> GetAll()
+    [ProducesResponseType(typeof(List<ProfileDTO>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetProfiles([FromQuery] bool includePublic = true)
     {
-        var userId = GetUserId();
-        var profiles = await _profileService.GetAllProfilesAsync(userId);
-        return Ok(profiles);
+        try
+        {
+            var userId = GetUserId();
+            var profiles = await _profileService.GetProfilesAsync(userId, includePublic);
+            return Ok(profiles);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting profiles");
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
     }
 
+    /// <summary>
+    /// Получить профиль по ID
+    /// </summary>
     [HttpGet("{id}")]
-    public async Task<ActionResult<ProfileDTO>> GetById(Guid id)
+    [ProducesResponseType(typeof(ProfileWithDataDTO), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetProfile(Guid id)
     {
-        var userId = GetUserId();
-        var profile = await _profileService.GetProfileByIdAsync(id, userId);
-        if (profile == null) return NotFound();
-        return Ok(profile);
+        try
+        {
+            var userId = GetUserId();
+            var profile = await _profileService.GetProfileWithDataAsync(id, userId);
+            
+            if (profile == null)
+                return NotFound(new { message = "Профиль не найден" });
+
+            return Ok(profile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting profile {ProfileId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
     }
 
+    /// <summary>
+    /// Создать новый профиль
+    /// </summary>
     [HttpPost]
-    public async Task<ActionResult<ProfileDTO>> Create([FromBody] CreateProfileDTO dto)
+    [ProducesResponseType(typeof(ProfileDTO), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CreateProfile([FromBody] CreateProfileDTO dto)
     {
-        var userId = GetUserId();
-        var profile = await _profileService.CreateProfileAsync(dto, userId);
-        return CreatedAtAction(nameof(GetById), new { id = profile.Id }, profile);
+        try
+        {
+            var userId = GetUserId();
+            var profile = await _profileService.CreateProfileAsync(userId, dto);
+            return CreatedAtAction(nameof(GetProfile), new { id = profile.Id }, profile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating profile");
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
     }
 
+    /// <summary>
+    /// Обновить профиль
+    /// </summary>
     [HttpPut("{id}")]
-    public async Task<ActionResult<ProfileDTO>> Update(Guid id, [FromBody] UpdateProfileDTO dto)
+    [ProducesResponseType(typeof(ProfileDTO), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateProfile(Guid id, [FromBody] UpdateProfileDTO dto)
     {
-        var userId = GetUserId();
-        var profile = await _profileService.UpdateProfileAsync(id, dto, userId);
-        if (profile == null) return NotFound();
-        return Ok(profile);
+        try
+        {
+            var userId = GetUserId();
+            var profile = await _profileService.UpdateProfileAsync(id, userId, dto);
+            return Ok(profile);
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Профиль не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating profile {ProfileId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
     }
 
+    /// <summary>
+    /// Удалить профиль
+    /// </summary>
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(Guid id)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteProfile(Guid id)
     {
-        var userId = GetUserId();
-        var deleted = await _profileService.DeleteProfileAsync(id, userId);
-        if (!deleted) return NotFound();
-        return NoContent();
+        try
+        {
+            var userId = GetUserId();
+            await _profileService.DeleteProfileAsync(id, userId);
+            return NoContent();
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Профиль не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting profile {ProfileId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
     }
+
+    /// <summary>
+    /// Дублировать профиль
+    /// </summary>
+    [HttpPost("{id}/duplicate")]
+    [ProducesResponseType(typeof(ProfileDTO), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DuplicateProfile(Guid id, [FromBody] DuplicateProfileRequestDTO? dto = null)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var profile = await _profileService.DuplicateProfileAsync(id, userId, dto?.Name);
+            return CreatedAtAction(nameof(GetProfile), new { id = profile.Id }, profile);
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Профиль не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error duplicating profile {ProfileId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+}
+
+public class DuplicateProfileRequestDTO
+{
+    public string? Name { get; set; }
 }
