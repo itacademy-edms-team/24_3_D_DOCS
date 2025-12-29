@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RusalProject.Provider.Database;
@@ -11,9 +12,11 @@ using RusalProject.Provider.Database;
 namespace RusalProject.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251026054040_CreateSchemaLinkAndDocumentLinkTables")]
+    partial class CreateSchemaLinkAndDocumentLinkTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -65,6 +68,10 @@ namespace RusalProject.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("pdf_minio_path");
 
+                    b.Property<Guid?>("SchemaLinkId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("schema_link_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -83,6 +90,9 @@ namespace RusalProject.Migrations
 
                     b.HasIndex("CreatorId")
                         .HasDatabaseName("IX_DocumentLinks_CreatorId");
+
+                    b.HasIndex("SchemaLinkId")
+                        .HasDatabaseName("IX_DocumentLinks_SchemaLinkId");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_DocumentLinks_Status");
@@ -214,7 +224,14 @@ namespace RusalProject.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("RusalProject.Models.Entities.SchemaLink", "SchemaLink")
+                        .WithMany("Documents")
+                        .HasForeignKey("SchemaLinkId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Creator");
+
+                    b.Navigation("SchemaLink");
                 });
 
             modelBuilder.Entity("RusalProject.Models.Entities.SchemaLink", b =>
@@ -226,6 +243,11 @@ namespace RusalProject.Migrations
                         .IsRequired();
 
                     b.Navigation("Creator");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.SchemaLink", b =>
+                {
+                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("RusalProject.Models.Entities.User", b =>
