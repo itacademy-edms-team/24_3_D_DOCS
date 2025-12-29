@@ -36,11 +36,15 @@ export const useAuthStore = defineStore(
 		}
 
 		async function login(data: LoginRequest) {
-			isLoading.value = true;
-			error.value = null;
 			try {
+				isLoading.value = true;
+				error.value = null;
 				const response = await AuthAPI.login(data);
-				setAuthData(response);
+				setAuthData({
+					user: response.user,
+					accessToken: response.accessToken,
+					refreshToken: response.refreshToken,
+				});
 			} catch (err: any) {
 				error.value = err?.message || 'Ошибка при входе';
 				throw err;
@@ -50,9 +54,9 @@ export const useAuthStore = defineStore(
 		}
 
 		async function sendVerification(data: SendVerificationRequest) {
-			isLoading.value = true;
-			error.value = null;
 			try {
+				isLoading.value = true;
+				error.value = null;
 				await AuthAPI.sendVerification(data);
 			} catch (err: any) {
 				error.value = err?.message || 'Ошибка при отправке кода';
@@ -63,11 +67,15 @@ export const useAuthStore = defineStore(
 		}
 
 		async function register(data: VerifyEmailRequest) {
-			isLoading.value = true;
-			error.value = null;
 			try {
+				isLoading.value = true;
+				error.value = null;
 				const response = await AuthAPI.register(data);
-				setAuthData(response);
+				setAuthData({
+					user: response.user,
+					accessToken: response.accessToken,
+					refreshToken: response.refreshToken,
+				});
 			} catch (err: any) {
 				error.value = err?.message || 'Ошибка при регистрации';
 				throw err;
@@ -81,38 +89,51 @@ export const useAuthStore = defineStore(
 			if (refreshToken.value) {
 				await AuthAPI.logout({ refreshToken: refreshToken.value });
 			}
-		} catch {}
-		finally {
+		} catch (err: any) {
+			// Игнорируем ошибку 401 - это нормально, если токен уже истек
+			// Просто очищаем данные локально
+			const statusCode = err?.code || err?.response?.status || err?.status;
+			if (statusCode !== 401) {
+				console.error('Logout error:', err);
+			}
+		} finally {
 			clearAuthData();
 			error.value = null;
 		}
 	}
 
 	async function checkAuth() {
-		if (!accessToken.value) return;
-		
 		try {
+			if (!accessToken.value) {
+				return;
+			}
+			// Просто проверяем валидность токена
+			// Данные пользователя уже должны быть в localStorage благодаря persist
 			await AuthAPI.me();
 		} catch (err: any) {
-			if (err?.code === 401) {
-				await refreshAccessToken();
-			} else {
-				clearAuthData();
-			}
+			// Token expired, try refresh
+			await refreshAccessToken();
 		}
 	}
 
 	async function refreshAccessToken() {
-		if (!refreshToken.value) {
-			clearAuthData();
-			return;
-		}
-		
 		try {
-			const response = await AuthAPI.refresh({ refreshToken: refreshToken.value });
-			setAuthData(response);
-		} catch {
+			if (!refreshToken.value) {
+				throw new Error('No refresh token');
+			}
+			const response = await AuthAPI.refresh({
+				refreshToken: refreshToken.value,
+			});
+			setAuthData({
+				user: response.user,
+				accessToken: response.accessToken,
+				refreshToken: response.refreshToken,
+			});
+		} catch (err: any) {
+			// Refresh failed, просто очищаем данные (не вызываем logout, чтобы избежать рекурсии)
 			clearAuthData();
+			error.value = null;
+			throw err;
 		}
 	}
 

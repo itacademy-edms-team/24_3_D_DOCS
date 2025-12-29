@@ -93,8 +93,8 @@ onMounted(() => {
 	left: 0;
 	width: 100%;
 	height: 100%;
-	background-image: linear-gradient(rgba(99, 102, 241, 0.05) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(99, 102, 241, 0.05) 1px, transparent 1px);
+	background-image: linear-gradient(rgba(var(--accent-rgb), 0.05) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(var(--accent-rgb), 0.05) 1px, transparent 1px);
 	background-size: 50px 50px;
 	animation: gridMove 20s linear infinite;
 }
@@ -120,7 +120,7 @@ onMounted(() => {
 .glow1 {
 	width: 600px;
 	height: 600px;
-	background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+	background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
 	top: -200px;
 	right: -200px;
 	animation-delay: 0s;
@@ -159,13 +159,13 @@ onMounted(() => {
 
 .logoIcon {
 	font-size: 48px;
-	filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.5));
+	filter: drop-shadow(0 0 20px rgba(var(--accent-rgb), 0.5));
 }
 
 .logoText {
 	font-size: 36px;
 	font-weight: 700;
-	background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+	background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;
 	background-clip: text;
@@ -219,10 +219,10 @@ onMounted(() => {
 	left: 6px;
 	width: calc(50% - 10px);
 	height: calc(100% - 12px);
-	background: #6366f1;
+	background: var(--accent);
 	border-radius: 10px;
 	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-	box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+	box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
 	z-index: 0;
 }
 

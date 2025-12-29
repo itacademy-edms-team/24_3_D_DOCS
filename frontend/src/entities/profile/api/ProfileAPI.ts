@@ -1,29 +1,39 @@
 import HttpClient from '@/shared/api/HttpClient';
-import type { Profile, ProfileMeta, CreateProfileDTO, UpdateProfileDTO } from '../types';
+import type {
+	Profile,
+	ProfileWithData,
+	CreateProfileDTO,
+	UpdateProfileDTO,
+} from '../types';
 
 class ProfileAPI extends HttpClient {
 	constructor() {
 		super();
 	}
 
-	async getAll(): Promise<ProfileMeta[]> {
-		return this._get<ProfileMeta[]>('/api/profiles');
+	async getAll(includePublic = true): Promise<Profile[]> {
+		const params = includePublic ? '?includePublic=true' : '';
+		return this.get<Profile[]>(`/api/profiles${params}`);
 	}
 
-	async getById(id: string): Promise<Profile> {
-		return this._get<Profile>(`/api/profiles/${id}`);
+	async getById(id: string): Promise<ProfileWithData> {
+		return this.get<ProfileWithData>(`/api/profiles/${id}`);
 	}
 
 	async create(data: CreateProfileDTO): Promise<Profile> {
-		return this._post<Profile, CreateProfileDTO>('/api/profiles', data);
+		return this.post<Profile, CreateProfileDTO>('/api/profiles', data);
 	}
 
 	async update(id: string, data: UpdateProfileDTO): Promise<Profile> {
-		return this._put<Profile, UpdateProfileDTO>(`/api/profiles/${id}`, data);
+		return this.put<Profile, UpdateProfileDTO>(`/api/profiles/${id}`, data);
 	}
 
 	async delete(id: string): Promise<void> {
-		return this._delete<void>(`/api/profiles/${id}`);
+		return super.delete<void>(`/api/profiles/${id}`);
+	}
+
+	async duplicate(id: string, name?: string): Promise<Profile> {
+		return this.post<Profile>(`/api/profiles/${id}/duplicate`, { name });
 	}
 }
 

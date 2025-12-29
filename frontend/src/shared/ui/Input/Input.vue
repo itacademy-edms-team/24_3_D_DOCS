@@ -15,34 +15,8 @@
 				class="passwordToggle"
 				@click="togglePasswordVisibility"
 				tabindex="-1"
-				:aria-label="isPasswordVisible ? 'Скрыть пароль' : 'Показать пароль'"
 			>
-				<svg
-					v-if="isPasswordVisible"
-					class="eye-icon"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-					<circle cx="12" cy="12" r="3" />
-				</svg>
-				<svg
-					v-else
-					class="eye-icon"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-					<line x1="1" y1="1" x2="23" y2="23" />
-				</svg>
+				{{ isPasswordVisible ? '👁️' : '👁️‍🗨️' }}
 			</button>
 		</div>
 		<span v-if="error" class="errorText">{{ error }}</span>
@@ -132,9 +106,9 @@ function togglePasswordVisibility() {
 
 .input:focus {
 	outline: none;
-	border-color: #6366f1;
+	border-color: var(--accent);
 	background: #1c1c1f;
-	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+	box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
 }
 
 .input::placeholder {
@@ -166,28 +140,25 @@ function togglePasswordVisibility() {
 	background: none;
 	border: none;
 	cursor: pointer;
-	color: #71717a;
+	font-size: 18px;
+	color: #a5b4fc;
 	padding: 4px;
 	border-radius: 4px;
 	transition: all 0.2s ease;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 24px;
-	height: 24px;
+	width: 32px;
+	height: 32px;
 }
 
 .passwordToggle:hover {
-	color: #a1a1aa;
+	background: rgba(var(--accent-rgb), 0.08);
+	color: rgba(var(--accent-rgb), 0.9);
 }
 
 .passwordToggle:active {
 	transform: translateY(-50%) scale(0.95);
-}
-
-.eye-icon {
-	width: 20px;
-	height: 20px;
 }
 
 @keyframes slideDown {

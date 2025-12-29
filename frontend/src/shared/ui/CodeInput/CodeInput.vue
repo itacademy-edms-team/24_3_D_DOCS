@@ -139,7 +139,7 @@ function handlePaste(e: ClipboardEvent) {
 	background: #18181b;
 	color: #e4e4e7;
 	transition: all 0.2s ease;
-	caret-color: #6366f1;
+	caret-color: var(--accent);
 	outline: none;
 }
 
@@ -148,14 +148,14 @@ function handlePaste(e: ClipboardEvent) {
 }
 
 .input.focused {
-	border-color: #6366f1;
+	border-color: var(--accent);
 	background: #1c1c1f;
-	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+	box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
 	transform: scale(1.05);
 }
 
 .input.filled {
-	border-color: #6366f1;
+	border-color: var(--accent);
 	background: #1c1c1f;
 }
 

@@ -1,38 +1,90 @@
-export interface ProfileMeta {
+export interface Profile {
 	id: string;
+	creatorId: string;
 	name: string;
+	description?: string;
+	isPublic: boolean;
 	createdAt: string;
 	updatedAt: string;
 }
 
-export interface Profile extends ProfileMeta {
-	page: {
-		size: string;
-		orientation: 'portrait' | 'landscape';
-		margins: {
-			top: number;
-			right: number;
-			bottom: number;
-			left: number;
-		};
-		pageNumbers?: {
-			enabled: boolean;
-			position: string;
-			align: string;
-			format: string;
-			fontSize: number;
-			[key: string]: any;
-		};
+export interface ProfileWithData extends Profile {
+	data: ProfileData;
+}
+
+export interface ProfileData {
+	pageSettings: PageSettings;
+	entityStyles: Record<string, EntityStyle>;
+	headingNumbering?: HeadingNumberingSettings;
+}
+
+export interface HeadingNumberingSettings {
+	templates: Record<number, HeadingTemplate>;
+}
+
+export interface HeadingTemplate {
+	format: string;
+	enabled: boolean;
+}
+
+export interface PageSettings {
+	size: string;
+	orientation: 'portrait' | 'landscape';
+	margins: {
+		top: number;
+		right: number;
+		bottom: number;
+		left: number;
 	};
-	entities: Record<string, any>;
+	pageNumbers: {
+		enabled: boolean;
+		position: string;
+		align: string;
+		format: string;
+		fontSize: number;
+		fontStyle: string;
+		fontFamily: string;
+	};
+	globalLineHeight?: number;
+}
+
+export interface EntityStyle {
+	fontFamily?: string;
+	fontSize?: number;
+	fontWeight?: string;
+	fontStyle?: string;
+	textAlign?: string;
+	textIndent?: number;
+	lineHeight?: number;
+	lineHeightUseGlobal?: boolean;
+	color?: string;
+	backgroundColor?: string;
+	highlightColor?: string;
+	highlightBackgroundColor?: string;
+	marginTop?: number;
+	marginBottom?: number;
+	marginLeft?: number;
+	marginRight?: number;
+	paddingLeft?: number;
+	listAdditionalIndent?: number;
+	listUseParagraphTextIndent?: boolean;
+	borderWidth?: number;
+	borderColor?: string;
+	borderStyle?: string;
+	maxWidth?: number;
+	captionFormat?: string;
 }
 
 export interface CreateProfileDTO {
 	name: string;
+	description?: string;
+	isPublic?: boolean;
+	data?: ProfileData;
 }
 
 export interface UpdateProfileDTO {
 	name?: string;
-	page?: Partial<Profile['page']>;
-	entities?: Partial<Profile['entities']>;
+	description?: string;
+	isPublic?: boolean;
+	data?: ProfileData;
 }

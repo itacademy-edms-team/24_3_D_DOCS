@@ -60,32 +60,32 @@ withDefaults(defineProps<Props>(), {
 }
 
 .primary {
-	background: #6366f1;
+	background: var(--accent);
 	color: white;
-	box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+	box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.28);
 }
 
 .primary:hover:not(:disabled) {
-	background: #4f46e5;
+	background: var(--accent-hover);
 	transform: translateY(-2px);
-	box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+	box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.44);
 }
 
 .primary:active:not(:disabled) {
 	transform: translateY(0);
-	background: #4338ca;
+	background: var(--accent-hover);
 }
 
 .secondary {
-	background: rgba(99, 102, 241, 0.1);
-	color: #a5b4fc;
+	background: rgba(var(--accent-rgb), 0.08);
+	color: rgba(var(--accent-rgb), 0.95);
 	border: 2px solid #3f3f46;
 	backdrop-filter: blur(10px);
 }
 
 .secondary:hover:not(:disabled) {
-	background: rgba(99, 102, 241, 0.15);
-	border-color: #52525b;
+	background: rgba(var(--accent-rgb), 0.12);
+	border-color: rgba(var(--accent-rgb), 0.18);
 	transform: translateY(-2px);
 }
 
