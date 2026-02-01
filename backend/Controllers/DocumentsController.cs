@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using RusalProject.Models.DTOs.Document;
 using RusalProject.Services.Documents;
 using RusalProject.Services.Embedding;
@@ -7,6 +8,8 @@ using RusalProject.Services.Pdf;
 using RusalProject.Services.Storage;
 using System.Security.Claims;
 using System.IO;
+using System.IO.Compression;
+using System.Text.Json;
 
 namespace RusalProject.Controllers;
 
@@ -555,10 +558,25 @@ public class DocumentsController : ControllerBase
             
             return StatusCode(StatusCodes.Status201Created, document);
         }
+        catch (InvalidDataException ex)
+        {
+            _logger.LogWarning(ex, "Invalid .ddoc archive format");
+            return BadRequest(new { message = "Файл не является корректным архивом .ddoc. Убедитесь, что файл не повреждён." });
+        }
         catch (InvalidOperationException ex)
         {
             _logger.LogWarning(ex, "Invalid .ddoc file format");
             return BadRequest(new { message = ex.Message });
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Invalid metadata.json in .ddoc");
+            return BadRequest(new { message = "Неверный формат metadata.json в архиве.", details = ex.Message });
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Database error during document import");
+            return BadRequest(new { message = "Ошибка при сохранении документа. Проверьте данные в файле.", details = ex.InnerException?.Message ?? ex.Message });
         }
         catch (Exception ex)
         {

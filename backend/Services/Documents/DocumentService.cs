@@ -1,11 +1,12 @@
+using System.Formats.Tar;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Minio;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
-using RusalProject.Models.DTOs.Documents;
+using RusalProject.Models.DTOs.Document;
 using RusalProject.Models.Entities;
 using RusalProject.Provider.Database;
 
@@ -18,15 +19,11 @@ public class DocumentService : IDocumentService
     private readonly IConfiguration _configuration;
     private readonly ILogger<DocumentService> _logger;
 
-    // Internal class for deserializing meta.json
-    private class DocumentMetaJson
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
-        public string id { get; set; } = string.Empty;
-        public string name { get; set; } = string.Empty;
-        public string? profileId { get; set; }
-        public DateTime createdAt { get; set; }
-        public DateTime updatedAt { get; set; }
-    }
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
 
     public DocumentService(
         ApplicationDbContext context,
@@ -43,322 +40,532 @@ public class DocumentService : IDocumentService
     private string GetBucketName(Guid userId) => $"user-{userId}";
     private string GetDocumentPath(Guid documentId) => $"Document/{documentId}";
     private string GetContentPath(Guid documentId) => $"{GetDocumentPath(documentId)}/content.md";
-    private string GetMetaPath(Guid documentId) => $"{GetDocumentPath(documentId)}/meta.json";
     private string GetOverridesPath(Guid documentId) => $"{GetDocumentPath(documentId)}/overrides.json";
-    private string GetVariablesPath(Guid documentId) => $"{GetDocumentPath(documentId)}/variables.json";
     private string GetImagePath(Guid documentId, string imageId) => $"{GetDocumentPath(documentId)}/images/{imageId}";
 
-    public async Task<List<DocumentMetaDTO>> GetAllDocumentsAsync(Guid userId)
+    public async Task<List<DocumentDTO>> GetDocumentsAsync(Guid userId, string? status = null, string? search = null)
     {
-        // Get documents from DB (id, updatedAt, and titlePageId)
-        var dbDocuments = await _context.Documents
-            .Where(d => d.CreatorId == userId)
+        var query = _context.DocumentLinks
+            .Where(d => d.CreatorId == userId && d.DeletedAt == null);
+
+        if (!string.IsNullOrEmpty(status))
+        {
+            query = query.Where(d => d.Status == status);
+        }
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(d => d.Name.Contains(search) || (d.Description != null && d.Description.Contains(search)));
+        }
+
+        var documents = await query
             .OrderByDescending(d => d.UpdatedAt)
-            .Select(d => new { d.Id, d.UpdatedAt, d.TitlePageId })
+            .Select(d => new DocumentDTO
+            {
+                Id = d.Id,
+                CreatorId = d.CreatorId,
+                Name = d.Name,
+                Description = d.Description,
+                ProfileId = d.ProfileId,
+                TitlePageId = d.TitlePageId,
+                Status = d.Status,
+                IsArchived = d.IsArchived,
+                DeletedAt = d.DeletedAt,
+                CreatedAt = d.CreatedAt,
+                UpdatedAt = d.UpdatedAt,
+                HasPdf = !string.IsNullOrEmpty(d.PdfMinioPath)
+            })
             .ToListAsync();
+
+        return documents;
+    }
+
+    public async Task<DocumentWithContentDTO?> GetDocumentWithContentAsync(Guid id, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null) return null;
 
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        // Read meta.json for each document in parallel
-        var metaTasks = dbDocuments.Select(async dbDoc =>
+        var content = await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
+        var overrides = await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
+
+        DocumentMetadataDTO? metadata = null;
+        if (!string.IsNullOrEmpty(document.Metadata))
         {
-            try
-            {
-                var metaJson = await ReadJsonAsync<DocumentMetaJson>(bucketName, GetMetaPath(dbDoc.Id));
-                if (metaJson == null) return null;
+            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(document.Metadata, s_jsonOptions);
+        }
 
-                return new DocumentMetaDTO
-                {
-                    Id = Guid.Parse(metaJson.id),
-                    Name = metaJson.name,
-                    ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
-                    TitlePageId = dbDoc.TitlePageId,
-                    CreatedAt = metaJson.createdAt,
-                    UpdatedAt = metaJson.updatedAt
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to read meta.json for document {DocumentId}", dbDoc.Id);
-                return null;
-            }
-        });
-
-        var metas = await Task.WhenAll(metaTasks);
-        return metas.Where(m => m != null).Cast<DocumentMetaDTO>().ToList();
+        return new DocumentWithContentDTO
+        {
+            Id = document.Id,
+            CreatorId = document.CreatorId,
+            Name = document.Name,
+            Description = document.Description,
+            ProfileId = document.ProfileId,
+            TitlePageId = document.TitlePageId,
+            Metadata = metadata,
+            Status = document.Status,
+            IsArchived = document.IsArchived,
+            DeletedAt = document.DeletedAt,
+            CreatedAt = document.CreatedAt,
+            UpdatedAt = document.UpdatedAt,
+            HasPdf = !string.IsNullOrEmpty(document.PdfMinioPath),
+            Content = content,
+            StyleOverrides = overrides
+        };
     }
 
     public async Task<DocumentDTO?> GetDocumentByIdAsync(Guid id, Guid userId)
     {
-        var document = await _context.Documents
+        var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
 
         if (document == null) return null;
 
-        var bucketName = GetBucketName(userId);
-        await EnsureBucketExistsAsync(bucketName);
-
-        var metaJson = await ReadJsonAsync<DocumentMetaJson>(bucketName, GetMetaPath(id));
-        if (metaJson == null) return null;
-
-        var content = await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
-        var overrides = await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
-        var variables = await ReadJsonAsync<Dictionary<string, string>>(bucketName, GetVariablesPath(id)) ?? new Dictionary<string, string>();
+        DocumentMetadataDTO? metadata = null;
+        if (!string.IsNullOrEmpty(document.Metadata))
+        {
+            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(document.Metadata, s_jsonOptions);
+        }
 
         return new DocumentDTO
         {
-            Id = Guid.Parse(metaJson.id),
-            Name = metaJson.name,
-            ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
+            Id = document.Id,
+            CreatorId = document.CreatorId,
+            Name = document.Name,
+            Description = document.Description,
+            ProfileId = document.ProfileId,
             TitlePageId = document.TitlePageId,
-            Content = content,
-            Overrides = overrides,
-            Variables = variables,
-            CreatedAt = metaJson.createdAt,
-            UpdatedAt = metaJson.updatedAt
+            Metadata = metadata,
+            Status = document.Status,
+            IsArchived = document.IsArchived,
+            DeletedAt = document.DeletedAt,
+            CreatedAt = document.CreatedAt,
+            UpdatedAt = document.UpdatedAt,
+            HasPdf = !string.IsNullOrEmpty(document.PdfMinioPath)
         };
     }
 
-    public async Task<DocumentDTO> CreateDocumentAsync(CreateDocumentDTO dto, Guid userId)
+    public async Task<DocumentDTO> CreateDocumentAsync(Guid userId, CreateDocumentDTO dto)
     {
-        try
-        {
-            // #region agent log
-            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:118\",\"message\":\"CreateDocumentAsync started\",\"data\":{{\"userId\":\"{userId}\",\"dtoName\":\"{dto.Name}\",\"dtoProfileId\":\"{dto.ProfileId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run2\",\"hypothesisId\":\"A\"}}");
-            // #endregion
+        var documentId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
 
-            var documentId = Guid.NewGuid();
-            var now = DateTime.UtcNow;
-        
-        var document = new Document
+        var document = new DocumentLink
         {
             Id = documentId,
             CreatorId = userId,
-            UpdatedAt = now,
-            TitlePageId = dto.TitlePageId
+            Name = dto.Name,
+            Description = dto.Description,
+            MdMinioPath = GetContentPath(documentId),
+            ProfileId = dto.ProfileId,
+            TitlePageId = dto.TitlePageId,
+            Metadata = dto.Metadata != null ? JsonSerializer.Serialize(dto.Metadata, s_jsonOptions) : null,
+            Status = "draft",
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:130\",\"message\":\"About to save document to DB\",\"data\":{{\"documentId\":\"{documentId}\",\"userId\":\"{userId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"A\"}}");
-        // #endregion
-
-        _context.Documents.Add(document);
+        _context.DocumentLinks.Add(document);
         await _context.SaveChangesAsync();
 
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:131\",\"message\":\"Document saved to DB successfully\",\"data\":{{\"documentId\":\"{documentId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"A\"}}");
-        // #endregion
-
         var bucketName = GetBucketName(userId);
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:133\",\"message\":\"About to ensure bucket exists\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
-        // #endregion
-
         await EnsureBucketExistsAsync(bucketName);
 
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:134\",\"message\":\"Bucket ensured successfully\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
-        // #endregion
-
-        var configPath = Path.Combine(AppContext.BaseDirectory, "Config", "DefaultContent.md");
-        var defaultContent = string.Empty;
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:136\",\"message\":\"Checking default content file\",\"data\":{{\"configPath\":\"{configPath}\",\"fileExists\":\"{File.Exists(configPath)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"C\"}}");
-        // #endregion
-
-        if (File.Exists(configPath))
-        {
-            defaultContent = await File.ReadAllTextAsync(configPath);
-
-            // #region agent log
-            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:140\",\"message\":\"Default content loaded\",\"data\":{{\"contentLength\":\"{defaultContent.Length}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"C\"}}");
-            // #endregion
-        }
-
-        var meta = new DocumentMetaJson
-        {
-            id = documentId.ToString(),
-            name = dto.Name ?? "Новый документ",
-            profileId = dto.ProfileId?.ToString(),
-            createdAt = now,
-            updatedAt = now
-        };
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:152\",\"message\":\"About to write content file to MinIO\",\"data\":{{\"path\":\"{GetContentPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
-        await WriteFileAsync(bucketName, GetContentPath(documentId), defaultContent);
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:152\",\"message\":\"Content file written successfully\",\"data\":{{\"path\":\"{GetContentPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:153\",\"message\":\"About to write meta.json to MinIO\",\"data\":{{\"path\":\"{GetMetaPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
-        await WriteJsonAsync(bucketName, GetMetaPath(documentId), meta);
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:153\",\"message\":\"Meta.json written successfully\",\"data\":{{\"path\":\"{GetMetaPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:154\",\"message\":\"About to write overrides.json to MinIO\",\"data\":{{\"path\":\"{GetOverridesPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
+        // Create initial content
+        var initialContent = dto.InitialContent ?? string.Empty;
+        await WriteFileAsync(bucketName, GetContentPath(documentId), initialContent);
         await WriteJsonAsync(bucketName, GetOverridesPath(documentId), new Dictionary<string, object>());
 
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:154\",\"message\":\"Overrides.json written successfully\",\"data\":{{\"path\":\"{GetOverridesPath(documentId)}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
-        await WriteJsonAsync(bucketName, GetVariablesPath(documentId), new Dictionary<string, string>());
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:225\",\"message\":\"CreateDocumentAsync completed successfully\",\"data\":{{\"documentId\":\"{documentId}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"A\"}}");
-        // #endregion
-
-            return new DocumentDTO
-            {
-                Id = documentId,
-                Name = meta.name,
-                ProfileId = dto.ProfileId,
-                TitlePageId = dto.TitlePageId,
-                Content = defaultContent,
-                Overrides = new Dictionary<string, object>(),
-                Variables = new Dictionary<string, string>(),
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-        }
-        catch (Exception ex)
+        return new DocumentDTO
         {
-            // #region agent log
-            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:242\",\"message\":\"CreateDocumentAsync failed with exception\",\"data\":{{\"userId\":\"{userId}\",\"error\":\"{ex.Message}\",\"stackTrace\":\"{ex.StackTrace}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"E\"}}");
-            // #endregion
-
-            throw;
-        }
+            Id = documentId,
+            CreatorId = userId,
+            Name = document.Name,
+            Description = document.Description,
+            ProfileId = document.ProfileId,
+            TitlePageId = document.TitlePageId,
+            Metadata = dto.Metadata,
+            Status = document.Status,
+            IsArchived = document.IsArchived,
+            DeletedAt = document.DeletedAt,
+            CreatedAt = now,
+            UpdatedAt = now,
+            HasPdf = false
+        };
     }
 
-    public async Task<DocumentDTO?> UpdateDocumentAsync(Guid id, UpdateDocumentDTO dto, Guid userId)
+    public async Task<DocumentDTO> UpdateDocumentAsync(Guid id, Guid userId, UpdateDocumentDTO dto)
     {
-        var document = await _context.Documents
+        var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
 
-        if (document == null) return null;
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        if (dto.Name != null) document.Name = dto.Name;
+        if (dto.Description != null) document.Description = dto.Description;
+        if (dto.ProfileId.HasValue) document.ProfileId = dto.ProfileId;
+        if (dto.TitlePageId.HasValue) document.TitlePageId = dto.TitlePageId;
+        if (dto.Metadata != null) document.Metadata = JsonSerializer.Serialize(dto.Metadata, s_jsonOptions);
 
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        var bucketName = GetBucketName(userId);
-        await EnsureBucketExistsAsync(bucketName);
-
-        // Read existing meta
-        var metaJson = await ReadJsonAsync<DocumentMetaJson>(bucketName, GetMetaPath(id));
-        if (metaJson == null) return null;
-
-        // Update meta if needed
-        if (dto.Name != null) metaJson.name = dto.Name;
-        if (dto.ProfileId != null) metaJson.profileId = dto.ProfileId.ToString();
-        if (dto.TitlePageId != null) document.TitlePageId = dto.TitlePageId;
-        metaJson.updatedAt = document.UpdatedAt;
-        await _context.SaveChangesAsync();
-
-        if (dto.Content != null)
+        DocumentMetadataDTO? metadata = null;
+        if (!string.IsNullOrEmpty(document.Metadata))
         {
-            await WriteFileAsync(bucketName, GetContentPath(id), dto.Content);
+            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(document.Metadata, s_jsonOptions);
         }
-
-        if (dto.Overrides != null)
-        {
-            await WriteJsonAsync(bucketName, GetOverridesPath(id), dto.Overrides);
-        }
-
-        if (dto.Variables != null)
-        {
-            await WriteJsonAsync(bucketName, GetVariablesPath(id), dto.Variables);
-        }
-
-        await WriteJsonAsync(bucketName, GetMetaPath(id), metaJson);
-
-        var content = dto.Content ?? await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
-        var overrides = dto.Overrides ?? await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
-        var variables = dto.Variables ?? await ReadJsonAsync<Dictionary<string, string>>(bucketName, GetVariablesPath(id)) ?? new Dictionary<string, string>();
-
-        // Reload document to get updated TitlePageId
-        await _context.Entry(document).ReloadAsync();
 
         return new DocumentDTO
         {
-            Id = id,
-            Name = metaJson.name,
-            ProfileId = !string.IsNullOrEmpty(metaJson.profileId) ? Guid.Parse(metaJson.profileId) : null,
+            Id = document.Id,
+            CreatorId = document.CreatorId,
+            Name = document.Name,
+            Description = document.Description,
+            ProfileId = document.ProfileId,
             TitlePageId = document.TitlePageId,
-            Content = content,
-            Overrides = overrides,
-            Variables = variables,
-            CreatedAt = metaJson.createdAt,
-            UpdatedAt = metaJson.updatedAt
+            Metadata = metadata,
+            Status = document.Status,
+            IsArchived = document.IsArchived,
+            DeletedAt = document.DeletedAt,
+            CreatedAt = document.CreatedAt,
+            UpdatedAt = document.UpdatedAt,
+            HasPdf = !string.IsNullOrEmpty(document.PdfMinioPath)
         };
     }
 
-    public async Task<bool> DeleteDocumentAsync(Guid id, Guid userId)
+    public async Task UpdateDocumentContentAsync(Guid id, Guid userId, string content)
     {
-        var document = await _context.Documents
+        var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
 
-        if (document == null) return false;
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        var bucketName = GetBucketName(userId);
+        await EnsureBucketExistsAsync(bucketName);
+        await WriteFileAsync(bucketName, GetContentPath(id), content);
+
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task UpdateDocumentOverridesAsync(Guid id, Guid userId, Dictionary<string, object> overrides)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        var bucketName = GetBucketName(userId);
+        await EnsureBucketExistsAsync(bucketName);
+        await WriteJsonAsync(bucketName, GetOverridesPath(id), overrides);
+
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task UpdateDocumentMetadataAsync(Guid id, Guid userId, DocumentMetadataDTO metadata)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        document.Metadata = JsonSerializer.Serialize(metadata, s_jsonOptions);
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task DeleteDocumentAsync(Guid id, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        // Soft delete
+        document.DeletedAt = DateTime.UtcNow;
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task RestoreDocumentAsync(Guid id, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        document.DeletedAt = null;
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task DeleteDocumentPermanentlyAsync(Guid id, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
 
         var bucketName = GetBucketName(userId);
 
+        // Delete MinIO files
         try
         {
-            var filesToDelete = new[]
-            {
-                GetContentPath(id),
-                GetMetaPath(id),
-                GetOverridesPath(id),
-                GetVariablesPath(id)
-            };
-
-            foreach (var filePath in filesToDelete)
-            {
-                try
-                {
-                    var removeArgs = new RemoveObjectArgs()
-                        .WithBucket(bucketName)
-                        .WithObject(filePath);
-                    await _minioClient.RemoveObjectAsync(removeArgs);
-                }
-                catch (ObjectNotFoundException)
-                {
-                    // File doesn't exist, skip
-                }
-            }
+            await DeleteMinioObjectAsync(bucketName, GetContentPath(id));
+            await DeleteMinioObjectAsync(bucketName, GetOverridesPath(id));
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to delete files from MinIO for document {DocumentId}", id);
+            _logger.LogWarning(ex, "Failed to delete MinIO files for document {DocumentId}", id);
         }
 
-        _context.Documents.Remove(document);
+        _context.DocumentLinks.Remove(document);
         await _context.SaveChangesAsync();
+    }
 
-        return true;
+    public async Task ArchiveDocumentAsync(Guid id, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        document.IsArchived = true;
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task UnarchiveDocumentAsync(Guid id, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        document.IsArchived = false;
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task UpdatePdfPathAsync(Guid id, Guid userId, string? pdfPath)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
+
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        document.PdfMinioPath = pdfPath;
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<byte[]> ExportDocumentAsync(Guid id, Guid userId)
+    {
+        var document = await GetDocumentWithContentAsync(id, userId);
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {id} not found");
+        }
+
+        using var memoryStream = new MemoryStream();
+        using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+        {
+            // Add content.md
+            var contentEntry = archive.CreateEntry("content.md");
+            using (var writer = new StreamWriter(contentEntry.Open()))
+            {
+                await writer.WriteAsync(document.Content ?? string.Empty);
+            }
+
+            // Add metadata.json
+            var metadataEntry = archive.CreateEntry("metadata.json");
+            using (var writer = new StreamWriter(metadataEntry.Open()))
+            {
+                var exportData = new
+                {
+                    document.Name,
+                    document.Description,
+                    document.ProfileId,
+                    document.TitlePageId,
+                    document.Metadata,
+                    document.StyleOverrides
+                };
+                await writer.WriteAsync(JsonSerializer.Serialize(exportData, s_jsonOptions));
+            }
+        }
+
+        return memoryStream.ToArray();
+    }
+
+    public async Task<DocumentDTO> ImportDocumentAsync(Guid userId, Stream fileStream, string filename)
+    {
+        // Copy to MemoryStream so we can detect format and re-read
+        using var memStream = new MemoryStream();
+        await fileStream.CopyToAsync(memStream);
+        memStream.Position = 0;
+
+        var (content, name, description, profileId, titlePageId, metadata, overrides) = await ReadDdocArchiveAsync(memStream, filename);
+
+        // Validate profileId and titlePageId belong to current user (imported file may reference another user's resources)
+        if (profileId.HasValue)
+        {
+            var profileOwned = await _context.Profiles.AnyAsync(p => p.Id == profileId.Value && p.CreatorId == userId);
+            if (!profileOwned) profileId = null;
+        }
+        if (titlePageId.HasValue)
+        {
+            var titlePageOwned = await _context.TitlePages.AnyAsync(t => t.Id == titlePageId.Value && t.CreatorId == userId);
+            if (!titlePageOwned) titlePageId = null;
+        }
+
+        var dto = new CreateDocumentDTO
+        {
+            Name = name ?? "Imported Document",
+            Description = description,
+            ProfileId = profileId,
+            TitlePageId = titlePageId,
+            Metadata = metadata,
+            InitialContent = content ?? string.Empty
+        };
+
+        var document = await CreateDocumentAsync(userId, dto);
+
+        if (overrides != null && overrides.Count > 0)
+        {
+            await UpdateDocumentOverridesAsync(document.Id, userId, overrides);
+        }
+
+        return document;
+    }
+
+    /// <summary>
+    /// Reads .ddoc archive (ZIP or TAR format). Supports both content.md and document.md for content.
+    /// </summary>
+    private async Task<(string? content, string? name, string? description, Guid? profileId, Guid? titlePageId, DocumentMetadataDTO? metadata, Dictionary<string, object>? overrides)> ReadDdocArchiveAsync(Stream stream, string filename)
+    {
+        string? content = null;
+        string? name = Path.GetFileNameWithoutExtension(filename);
+        string? description = null;
+        Guid? profileId = null;
+        Guid? titlePageId = null;
+        DocumentMetadataDTO? metadata = null;
+        Dictionary<string, object>? overrides = null;
+
+        var header = new byte[2];
+        var bytesRead = await stream.ReadAsync(header.AsMemory(0, 2));
+        stream.Position = 0;
+
+        if (bytesRead >= 2 && header[0] == 0x50 && header[1] == 0x4B) // "PK" - ZIP
+        {
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+            content = ReadEntry(archive, "content.md") ?? ReadEntry(archive, "document.md");
+            var metadataJson = ReadEntry(archive, "metadata.json");
+            var overridesJson = ReadEntry(archive, "overrides.json");
+
+            if (!string.IsNullOrEmpty(metadataJson))
+                ParseMetadata(metadataJson, ref name, ref description, ref profileId, ref titlePageId, ref metadata);
+            if (!string.IsNullOrEmpty(overridesJson))
+                overrides = JsonSerializer.Deserialize<Dictionary<string, object>>(overridesJson, s_jsonOptions);
+
+            static string? ReadEntry(ZipArchive archive, string entryName)
+            {
+                var entry = archive.GetEntry(entryName);
+                if (entry == null) return null;
+                using var reader = new StreamReader(entry.Open());
+                return reader.ReadToEnd();
+            }
+        }
+        else // TAR (POSIX tar, ustar, etc.)
+        {
+            stream.Position = 0;
+            using var reader = new TarReader(stream, leaveOpen: true);
+            var entries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            TarEntry? entry;
+            while ((entry = reader.GetNextEntry()) != null)
+            {
+                if (entry.DataStream == null || entry.EntryType is TarEntryType.Directory) continue;
+                var key = entry.Name.TrimStart('.', '/').Replace('\\', '/');
+                if (key.Contains('/')) key = key.Split('/').Last(); // flatten path
+                using var sr = new StreamReader(entry.DataStream);
+                entries[key] = await sr.ReadToEndAsync();
+            }
+
+            content = entries.GetValueOrDefault("content.md") ?? entries.GetValueOrDefault("document.md");
+            var metaJson = entries.GetValueOrDefault("metadata.json");
+            var overJson = entries.GetValueOrDefault("overrides.json");
+
+            if (!string.IsNullOrEmpty(metaJson))
+                ParseMetadata(metaJson, ref name, ref description, ref profileId, ref titlePageId, ref metadata);
+            if (!string.IsNullOrEmpty(overJson))
+                overrides = JsonSerializer.Deserialize<Dictionary<string, object>>(overJson, s_jsonOptions);
+        }
+
+        return (content, name, description, profileId, titlePageId, metadata, overrides ?? new Dictionary<string, object>());
+    }
+
+    private static void ParseMetadata(string json, ref string? name, ref string? description, ref Guid? profileId, ref Guid? titlePageId, ref DocumentMetadataDTO? metadata)
+    {
+        var importData = JsonSerializer.Deserialize<JsonElement>(json, s_jsonOptions);
+        if (importData.TryGetProperty("name", out var nameElement)) name = nameElement.GetString();
+        if (importData.TryGetProperty("description", out var descElement)) description = descElement.GetString();
+        if (importData.TryGetProperty("profileId", out var profileElement) && profileElement.ValueKind != JsonValueKind.Null) profileId = profileElement.GetGuid();
+        if (importData.TryGetProperty("titlePageId", out var titleElement) && titleElement.ValueKind != JsonValueKind.Null) titlePageId = titleElement.GetGuid();
+        if (importData.TryGetProperty("metadata", out var metaElement) && metaElement.ValueKind != JsonValueKind.Null)
+            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(metaElement.GetRawText(), s_jsonOptions);
+    }
+
+    public async Task<bool> DocumentExistsAsync(Guid documentId, Guid userId)
+    {
+        return await _context.DocumentLinks
+            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId);
     }
 
     public async Task<string> UploadImageAsync(Guid documentId, Stream fileStream, string filename, Guid userId)
     {
-        var document = await _context.Documents
+        var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
-        if (document == null) throw new InvalidOperationException("Document not found");
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document {documentId} not found");
+        }
 
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
@@ -381,7 +588,7 @@ public class DocumentService : IDocumentService
 
     public async Task<Stream?> GetImageAsync(Guid documentId, string imageId, Guid userId)
     {
-        var document = await _context.Documents
+        var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null) return null;
@@ -409,7 +616,7 @@ public class DocumentService : IDocumentService
 
     public async Task<bool> DeleteImageAsync(Guid documentId, string imageId, Guid userId)
     {
-        var document = await _context.Documents
+        var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null) return false;
@@ -419,10 +626,7 @@ public class DocumentService : IDocumentService
 
         try
         {
-            var removeArgs = new RemoveObjectArgs()
-                .WithBucket(bucketName)
-                .WithObject(imagePath);
-            await _minioClient.RemoveObjectAsync(removeArgs);
+            await DeleteMinioObjectAsync(bucketName, imagePath);
             return true;
         }
         catch (Exception ex)
@@ -434,29 +638,13 @@ public class DocumentService : IDocumentService
 
     private async Task EnsureBucketExistsAsync(string bucketName)
     {
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:414\",\"message\":\"EnsureBucketExistsAsync checking bucket\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
-        // #endregion
-
         var bucketExistsArgs = new BucketExistsArgs().WithBucket(bucketName);
         var exists = await _minioClient.BucketExistsAsync(bucketExistsArgs);
 
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:414\",\"message\":\"Bucket exists check result\",\"data\":{{\"bucketName\":\"{bucketName}\",\"exists\":\"{exists}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
-        // #endregion
-
         if (!exists)
         {
-            // #region agent log
-            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:419\",\"message\":\"Creating bucket\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
-            // #endregion
-
             var makeBucketArgs = new MakeBucketArgs().WithBucket(bucketName);
             await _minioClient.MakeBucketAsync(makeBucketArgs);
-
-            // #region agent log
-            Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:421\",\"message\":\"Bucket created successfully\",\"data\":{{\"bucketName\":\"{bucketName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"B\"}}");
-            // #endregion
         }
     }
 
@@ -482,12 +670,12 @@ public class DocumentService : IDocumentService
 
     private async Task WriteFileAsync(string bucketName, string objectName, string content)
     {
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:466\",\"message\":\"WriteFileAsync starting\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\",\"contentLength\":\"{content.Length}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
-        var bytes = Encoding.UTF8.GetBytes(content);
-        using var stream = new MemoryStream(bytes);
+        var bytes = Encoding.UTF8.GetBytes(content ?? string.Empty);
+        if (bytes.Length == 0)
+        {
+            bytes = new byte[] { (byte)'\n' };
+        }
+        var stream = new MemoryStream(bytes);
         stream.Position = 0;
 
         var putArgs = new PutObjectArgs()
@@ -498,29 +686,24 @@ public class DocumentService : IDocumentService
             .WithContentType("text/markdown");
 
         await _minioClient.PutObjectAsync(putArgs);
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:479\",\"message\":\"WriteFileAsync completed\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
     }
 
     private async Task<T?> ReadJsonAsync<T>(string bucketName, string objectName)
     {
         var content = await ReadFileAsync(bucketName, objectName);
         if (content == null) return default;
-
-        return JsonSerializer.Deserialize<T>(content);
+        return JsonSerializer.Deserialize<T>(content, s_jsonOptions);
     }
 
     private async Task WriteJsonAsync<T>(string bucketName, string objectName, T data)
     {
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:500\",\"message\":\"WriteJsonAsync starting\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\",\"type\":\"{typeof(T).Name}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
-
-        var json = JsonSerializer.Serialize(data);
+        var json = JsonSerializer.Serialize(data, s_jsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
-        using var stream = new MemoryStream(bytes);
+        if (bytes.Length == 0)
+        {
+            bytes = new byte[] { (byte)' ' };
+        }
+        var stream = new MemoryStream(bytes);
         stream.Position = 0;
 
         var putArgs = new PutObjectArgs()
@@ -531,15 +714,20 @@ public class DocumentService : IDocumentService
             .WithContentType("application/json");
 
         await _minioClient.PutObjectAsync(putArgs);
-
-        // #region agent log
-        Console.WriteLine($"{{\"timestamp\":{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},\"location\":\"DocumentService.cs:514\",\"message\":\"WriteJsonAsync completed\",\"data\":{{\"bucketName\":\"{bucketName}\",\"objectName\":\"{objectName}\"}},\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"D\"}}");
-        // #endregion
     }
 
-    public async Task<bool> DocumentExistsAsync(Guid documentId, Guid userId)
+    private async Task DeleteMinioObjectAsync(string bucketName, string objectName)
     {
-        return await _context.Documents
-            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId);
+        try
+        {
+            var removeArgs = new RemoveObjectArgs()
+                .WithBucket(bucketName)
+                .WithObject(objectName);
+            await _minioClient.RemoveObjectAsync(removeArgs);
+        }
+        catch (ObjectNotFoundException)
+        {
+            // Object doesn't exist, skip
+        }
     }
 }

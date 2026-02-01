@@ -1,12 +1,13 @@
-using RusalProject.Models.DTOs.Profiles;
+using RusalProject.Models.DTOs.Profile;
 
 namespace RusalProject.Services.Profiles;
 
 public interface IProfileService
 {
-    Task<List<ProfileMetaDTO>> GetAllProfilesAsync(Guid userId);
-    Task<ProfileDTO?> GetProfileByIdAsync(Guid id, Guid userId);
-    Task<ProfileDTO> CreateProfileAsync(CreateProfileDTO dto, Guid userId);
-    Task<ProfileDTO?> UpdateProfileAsync(Guid id, UpdateProfileDTO dto, Guid userId);
-    Task<bool> DeleteProfileAsync(Guid id, Guid userId);
+    Task<List<ProfileDTO>> GetProfilesAsync(Guid userId, bool includePublic = true);
+    Task<ProfileWithDataDTO?> GetProfileWithDataAsync(Guid id, Guid userId);
+    Task<ProfileDTO> CreateProfileAsync(Guid userId, CreateProfileDTO dto);
+    Task<ProfileDTO> UpdateProfileAsync(Guid id, Guid userId, UpdateProfileDTO dto);
+    Task DeleteProfileAsync(Guid id, Guid userId);
+    Task<ProfileDTO> DuplicateProfileAsync(Guid id, Guid userId, string? newName = null);
 }

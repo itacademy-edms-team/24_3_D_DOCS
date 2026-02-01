@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Profile;
-using RusalProject.Services.Profile;
+using RusalProject.Services.Profiles;
 using System.Security.Claims;
 
 namespace RusalProject.Controllers;

@@ -163,60 +163,14 @@ const computeContentHash = async (content: string): Promise<string> => {
 };
 
 const updateEmbeddingsIfNeeded = async () => {
-	if (!props.documentId || !localContent.value) return;
-
-	try {
-		const currentHash = await computeContentHash(localContent.value);
-		if (currentHash !== lastContentHash.value) {
-			lastContentHash.value = currentHash;
-			// Silently update embeddings in background
-			await DocumentAPI.updateEmbeddings(props.documentId);
-		}
-	} catch (error) {
-		console.error('Failed to auto-update embeddings:', error);
-		// Don't throw - this is a background operation
-	}
+	// Embeddings are disabled by product requirement.
+	return;
 };
 
 const loadEmbeddingStatus = async () => {
-	if (!props.documentId || !localContent.value) {
-		embeddingStatus.value = null;
-		updateGutterStyles();
-		return;
-	}
-
-	isLoadingStatus.value = true;
-	try {
-		const status = await DocumentAPI.getEmbeddingStatus(props.documentId);
-		embeddingStatus.value = status;
-		
-		// Debug: log status for troubleshooting
-		if (status.lineStatuses.length > 0) {
-			const sampleLines = [0, 2, 20].filter((i) => i < status.lineStatuses.length);
-			console.log('Embedding status loaded:', {
-				coveragePercentage: status.coveragePercentage.toFixed(1) + '%',
-				totalLines: status.totalLines,
-				coveredLines: status.coveredLines,
-				sampleStatuses: sampleLines.map((i) => {
-					const s = status.lineStatuses[i];
-					return {
-						lineNumber: s.lineNumber,
-						isCovered: s.isCovered,
-						isEmpty: s.isEmpty,
-						content: localContent.value.split('\n')[s.lineNumber]?.substring(0, 50) || '',
-					};
-				}),
-			});
-		}
-		
-		updateGutterStyles();
-	} catch (error) {
-		console.error('Failed to load embedding status:', error);
-		embeddingStatus.value = null;
-		updateGutterStyles();
-	} finally {
-		isLoadingStatus.value = false;
-	}
+	isLoadingStatus.value = false;
+	embeddingStatus.value = null;
+	updateGutterStyles();
 };
 
 // Update gutter element styles based on embedding status and diff changes

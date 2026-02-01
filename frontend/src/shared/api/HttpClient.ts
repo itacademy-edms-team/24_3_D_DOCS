@@ -262,8 +262,11 @@ class HttpClient {
 		const status = error.response?.status || error.status;
 		const responseData = error.response?.data as any;
 
-		// Получаем сообщение с бэкенда
+		// Получаем сообщение с бэкенда (добавляем details для 500, если есть)
 		let message = responseData?.message || error.message;
+		if (responseData?.details && typeof responseData.details === 'string') {
+			message = `${message}. ${responseData.details}`;
+		}
 
 		// Если есть ошибки валидации ASP.NET Core, объединяем их в одно сообщение
 		if (responseData?.errors && typeof responseData.errors === 'object') {

@@ -18,11 +18,12 @@ using RusalProject.Services.Embedding;
 using RusalProject.Services.Markdown;
 using RusalProject.Services.Ollama;
 using RusalProject.Services.Pdf;
-using RusalProject.Services.Profile;
+using RusalProject.Services.Profiles;
 using RusalProject.Services.RAG;
 using RusalProject.Services.Storage;
-using RusalProject.Services.TitlePage;
+using RusalProject.Services.TitlePages;
 using RusalProject.Services.Chat;
+using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -106,7 +107,21 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
-// Storage Services
+// Storage Services - MinIO Client
+builder.Services.AddSingleton<IMinioClient>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var endpoint = config["MinIO:Endpoint"] ?? "localhost:9000";
+    var accessKey = config["MinIO:AccessKey"] ?? "minioadmin";
+    var secretKey = config["MinIO:SecretKey"] ?? "minioadmin";
+    var useSSL = config.GetValue<bool>("MinIO:UseSSL", false);
+    
+    return new MinioClient()
+        .WithEndpoint(endpoint)
+        .WithCredentials(accessKey, secretKey)
+        .WithSSL(useSSL)
+        .Build();
+});
 builder.Services.AddSingleton<IMinioService, MinioService>();
 
 // Document Services

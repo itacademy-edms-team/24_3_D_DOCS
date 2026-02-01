@@ -60,27 +60,6 @@ class AIAPI extends HttpClient {
 		onStep?: (step: AgentStepDTO) => void,
 		signal?: AbortSignal
 	): Promise<AgentResponseDTO> {
-		// #region agent log
-		try {
-			fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sessionId: 'debug-session',
-					runId: 'run1',
-					hypothesisId: 'B',
-					location: 'AIAPI.ts:54',
-					message: 'AIAPI.agent HTTP request',
-					data: {
-						url: '/api/ai/agent',
-						requestBody: request
-					},
-					timestamp: Date.now()
-				})
-			}).catch(() => {});
-		} catch {}
-		// #endregion
-
 		// Получаем baseURL и токен авторизации
 		const baseURL = this.instance.defaults.baseURL || 'http://localhost:5159';
 		const authData = localStorage.getItem('auth-storage');
@@ -166,27 +145,6 @@ class AIAPI extends HttpClient {
 						if (done) {
 							console.log('Stream ended. Total chunks received:', chunkCount, 'Final response:', finalResponse ? 'present' : 'missing');
 							if (finalResponse) {
-								// #region agent log
-								try {
-									fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-										method: 'POST',
-										headers: { 'Content-Type': 'application/json' },
-										body: JSON.stringify({
-											sessionId: 'debug-session',
-											runId: 'run1',
-											hypothesisId: 'B',
-											location: 'AIAPI.ts:74',
-											message: 'AIAPI.agent SSE stream completed',
-											data: {
-												isComplete: finalResponse.isComplete,
-												stepsCount: finalResponse.steps?.length ?? 0,
-												finalMessageLength: finalResponse.finalMessage?.length ?? 0
-											},
-											timestamp: Date.now()
-										})
-									}).catch(() => {});
-								} catch {}
-								// #endregion
 								resolve(finalResponse);
 							} else {
 								reject(new Error('Stream ended without complete event'));

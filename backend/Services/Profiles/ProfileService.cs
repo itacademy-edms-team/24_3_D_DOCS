@@ -1,13 +1,12 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Minio;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
-using RusalProject.Models.DTOs.Profiles;
+using RusalProject.Models.DTOs.Profile;
 using RusalProject.Models.Entities;
+using RusalProject.Models.Types;
 using RusalProject.Provider.Database;
 
 namespace RusalProject.Services.Profiles;
@@ -18,6 +17,12 @@ public class ProfileService : IProfileService
     private readonly IMinioClient _minioClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ProfileService> _logger;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
 
     public ProfileService(
         ApplicationDbContext context,
@@ -34,32 +39,35 @@ public class ProfileService : IProfileService
     private string GetBucketName(Guid userId) => $"user-{userId}";
     private string GetProfilePath(Guid profileId) => $"Profile/{profileId}.json";
 
-    public async Task<List<ProfileMetaDTO>> GetAllProfilesAsync(Guid userId)
+    public async Task<List<ProfileDTO>> GetProfilesAsync(Guid userId, bool includePublic = true)
     {
-        // Get profiles from DB (only id and updatedAt for sorting)
+        // Get user's own profiles from DB
         var dbProfiles = await _context.Profiles
             .Where(p => p.CreatorId == userId)
             .OrderByDescending(p => p.UpdatedAt)
-            .Select(p => new { p.Id, p.UpdatedAt })
+            .Select(p => new { p.Id, p.CreatorId, p.UpdatedAt })
             .ToListAsync();
 
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        // Read Profile/{id}.json for each profile in parallel
-        var metaTasks = dbProfiles.Select(async dbProfile =>
+        // Read profile data for each profile in parallel
+        var profileTasks = dbProfiles.Select(async dbProfile =>
         {
             try
             {
-                var profileData = await ReadJsonAsync<ProfileDTO>(bucketName, GetProfilePath(dbProfile.Id));
+                var profileData = await ReadJsonAsync<ProfileStorageDTO>(bucketName, GetProfilePath(dbProfile.Id));
                 if (profileData == null) return null;
 
-                return new ProfileMetaDTO
+                return new ProfileDTO
                 {
-                    Id = profileData.Id,
-                    Name = profileData.Name,
+                    Id = dbProfile.Id,
+                    CreatorId = dbProfile.CreatorId,
+                    Name = profileData.Name ?? "Unnamed Profile",
+                    Description = profileData.Description,
+                    IsPublic = profileData.IsPublic,
                     CreatedAt = profileData.CreatedAt,
-                    UpdatedAt = profileData.UpdatedAt
+                    UpdatedAt = dbProfile.UpdatedAt
                 };
             }
             catch (Exception ex)
@@ -69,25 +77,95 @@ public class ProfileService : IProfileService
             }
         });
 
-        var metas = await Task.WhenAll(metaTasks);
-        return metas.Where(m => m != null).Cast<ProfileMetaDTO>().ToList();
+        var profiles = (await Task.WhenAll(profileTasks))
+            .Where(p => p != null)
+            .Cast<ProfileDTO>()
+            .ToList();
+
+        // If includePublic, also get public profiles from other users
+        if (includePublic)
+        {
+            var otherUsersProfiles = await _context.Profiles
+                .Where(p => p.CreatorId != userId)
+                .OrderByDescending(p => p.UpdatedAt)
+                .Select(p => new { p.Id, p.CreatorId, p.UpdatedAt })
+                .ToListAsync();
+
+            foreach (var dbProfile in otherUsersProfiles)
+            {
+                try
+                {
+                    var otherBucketName = GetBucketName(dbProfile.CreatorId);
+                    await EnsureBucketExistsAsync(otherBucketName);
+                    
+                    var profileData = await ReadJsonAsync<ProfileStorageDTO>(otherBucketName, GetProfilePath(dbProfile.Id));
+                    if (profileData != null && profileData.IsPublic)
+                    {
+                        profiles.Add(new ProfileDTO
+                        {
+                            Id = dbProfile.Id,
+                            CreatorId = dbProfile.CreatorId,
+                            Name = profileData.Name ?? "Unnamed Profile",
+                            Description = profileData.Description,
+                            IsPublic = profileData.IsPublic,
+                            CreatedAt = profileData.CreatedAt,
+                            UpdatedAt = dbProfile.UpdatedAt
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to read public profile {ProfileId}", dbProfile.Id);
+                }
+            }
+        }
+
+        return profiles;
     }
 
-    public async Task<ProfileDTO?> GetProfileByIdAsync(Guid id, Guid userId)
+    public async Task<ProfileWithDataDTO?> GetProfileWithDataAsync(Guid id, Guid userId)
     {
+        // First try to find in user's own profiles
         var profile = await _context.Profiles
             .FirstOrDefaultAsync(p => p.Id == id && p.CreatorId == userId);
 
-        if (profile == null) return null;
+        Guid ownerId = userId;
+        
+        if (profile == null)
+        {
+            // Try to find public profile from another user
+            profile = await _context.Profiles.FirstOrDefaultAsync(p => p.Id == id);
+            if (profile == null) return null;
+            
+            ownerId = profile.CreatorId;
+        }
 
-        var bucketName = GetBucketName(userId);
+        var bucketName = GetBucketName(ownerId);
         await EnsureBucketExistsAsync(bucketName);
 
-        var profileData = await ReadJsonAsync<ProfileDTO>(bucketName, GetProfilePath(id));
-        return profileData;
+        var storageData = await ReadJsonAsync<ProfileStorageDTO>(bucketName, GetProfilePath(id));
+        if (storageData == null) return null;
+
+        // If profile belongs to another user, it must be public
+        if (profile.CreatorId != userId && !storageData.IsPublic)
+        {
+            return null;
+        }
+
+        return new ProfileWithDataDTO
+        {
+            Id = id,
+            CreatorId = profile.CreatorId,
+            Name = storageData.Name ?? "Unnamed Profile",
+            Description = storageData.Description,
+            IsPublic = storageData.IsPublic,
+            CreatedAt = storageData.CreatedAt,
+            UpdatedAt = profile.UpdatedAt,
+            Data = storageData.Data ?? new ProfileData()
+        };
     }
 
-    public async Task<ProfileDTO> CreateProfileAsync(CreateProfileDTO dto, Guid userId)
+    public async Task<ProfileDTO> CreateProfileAsync(Guid userId, CreateProfileDTO dto)
     {
         var profileId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -105,35 +183,54 @@ public class ProfileService : IProfileService
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
+        // Try to load default profile configuration
+        var defaultData = new ProfileData();
         var defaultProfilePath = Path.Combine(AppContext.BaseDirectory, "Config", "DefaultProfile.json");
-        var defaultProfile = new ProfileDTO();
         if (File.Exists(defaultProfilePath))
         {
-            var defaultProfileJson = await File.ReadAllTextAsync(defaultProfilePath);
-            var jsonOptions = new JsonSerializerOptions
+            try
             {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                PropertyNameCaseInsensitive = true
-            };
-            defaultProfile = JsonSerializer.Deserialize<ProfileDTO>(defaultProfileJson, jsonOptions) ?? new ProfileDTO();
+                var defaultJson = await File.ReadAllTextAsync(defaultProfilePath);
+                defaultData = JsonSerializer.Deserialize<ProfileData>(defaultJson, JsonOptions) ?? new ProfileData();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load default profile configuration");
+            }
         }
 
-        defaultProfile.Id = profileId;
-        defaultProfile.Name = dto.Name;
-        defaultProfile.CreatedAt = now;
-        defaultProfile.UpdatedAt = now;
+        var storageData = new ProfileStorageDTO
+        {
+            Name = dto.Name,
+            Description = dto.Description,
+            IsPublic = dto.IsPublic,
+            CreatedAt = now,
+            Data = dto.Data ?? defaultData
+        };
 
-        await WriteJsonAsync(bucketName, GetProfilePath(profileId), defaultProfile);
+        await WriteJsonAsync(bucketName, GetProfilePath(profileId), storageData);
 
-        return defaultProfile;
+        return new ProfileDTO
+        {
+            Id = profileId,
+            CreatorId = userId,
+            Name = storageData.Name,
+            Description = storageData.Description,
+            IsPublic = storageData.IsPublic,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
     }
 
-    public async Task<ProfileDTO?> UpdateProfileAsync(Guid id, UpdateProfileDTO dto, Guid userId)
+    public async Task<ProfileDTO> UpdateProfileAsync(Guid id, Guid userId, UpdateProfileDTO dto)
     {
         var profile = await _context.Profiles
             .FirstOrDefaultAsync(p => p.Id == id && p.CreatorId == userId);
 
-        if (profile == null) return null;
+        if (profile == null)
+        {
+            throw new FileNotFoundException($"Profile {id} not found");
+        }
 
         profile.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -141,33 +238,41 @@ public class ProfileService : IProfileService
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        var profileData = await ReadJsonAsync<ProfileDTO>(bucketName, GetProfilePath(id));
-        if (profileData == null) return null;
-
-        if (dto.Name != null) profileData.Name = dto.Name;
-        if (dto.Page != null)
+        var storageData = await ReadJsonAsync<ProfileStorageDTO>(bucketName, GetProfilePath(id));
+        if (storageData == null)
         {
-            if (profileData.Page == null) profileData.Page = new ProfilePageDTO();
-            if (dto.Page.Size != null) profileData.Page.Size = dto.Page.Size;
-            if (dto.Page.Orientation != null) profileData.Page.Orientation = dto.Page.Orientation;
-            if (dto.Page.Margins != null) profileData.Page.Margins = dto.Page.Margins;
-            if (dto.Page.PageNumbers != null) profileData.Page.PageNumbers = dto.Page.PageNumbers;
+            throw new FileNotFoundException($"Profile data for {id} not found in storage");
         }
-        if (dto.Entities != null) profileData.Entities = dto.Entities;
 
-        profileData.UpdatedAt = profile.UpdatedAt;
+        // Update fields if provided
+        if (dto.Name != null) storageData.Name = dto.Name;
+        if (dto.Description != null) storageData.Description = dto.Description;
+        if (dto.IsPublic.HasValue) storageData.IsPublic = dto.IsPublic.Value;
+        if (dto.Data != null) storageData.Data = dto.Data;
 
-        await WriteJsonAsync(bucketName, GetProfilePath(id), profileData);
+        await WriteJsonAsync(bucketName, GetProfilePath(id), storageData);
 
-        return profileData;
+        return new ProfileDTO
+        {
+            Id = id,
+            CreatorId = userId,
+            Name = storageData.Name ?? "Unnamed Profile",
+            Description = storageData.Description,
+            IsPublic = storageData.IsPublic,
+            CreatedAt = storageData.CreatedAt,
+            UpdatedAt = profile.UpdatedAt
+        };
     }
 
-    public async Task<bool> DeleteProfileAsync(Guid id, Guid userId)
+    public async Task DeleteProfileAsync(Guid id, Guid userId)
     {
         var profile = await _context.Profiles
             .FirstOrDefaultAsync(p => p.Id == id && p.CreatorId == userId);
 
-        if (profile == null) return false;
+        if (profile == null)
+        {
+            throw new FileNotFoundException($"Profile {id} not found");
+        }
 
         var bucketName = GetBucketName(userId);
         var profilePath = GetProfilePath(id);
@@ -186,8 +291,70 @@ public class ProfileService : IProfileService
 
         _context.Profiles.Remove(profile);
         await _context.SaveChangesAsync();
+    }
 
-        return true;
+    public async Task<ProfileDTO> DuplicateProfileAsync(Guid id, Guid userId, string? newName = null)
+    {
+        // Get the source profile (can be user's own or public)
+        var sourceProfile = await _context.Profiles.FirstOrDefaultAsync(p => p.Id == id);
+        if (sourceProfile == null)
+        {
+            throw new FileNotFoundException($"Profile {id} not found");
+        }
+
+        var sourceBucketName = GetBucketName(sourceProfile.CreatorId);
+        await EnsureBucketExistsAsync(sourceBucketName);
+
+        var sourceData = await ReadJsonAsync<ProfileStorageDTO>(sourceBucketName, GetProfilePath(id));
+        if (sourceData == null)
+        {
+            throw new FileNotFoundException($"Profile data for {id} not found");
+        }
+
+        // Check access: must be own profile or public
+        if (sourceProfile.CreatorId != userId && !sourceData.IsPublic)
+        {
+            throw new UnauthorizedAccessException("Cannot duplicate private profile from another user");
+        }
+
+        // Create new profile
+        var newProfileId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var newProfile = new Profile
+        {
+            Id = newProfileId,
+            CreatorId = userId,
+            UpdatedAt = now
+        };
+
+        _context.Profiles.Add(newProfile);
+        await _context.SaveChangesAsync();
+
+        var targetBucketName = GetBucketName(userId);
+        await EnsureBucketExistsAsync(targetBucketName);
+
+        var newStorageData = new ProfileStorageDTO
+        {
+            Name = newName ?? $"{sourceData.Name} (копия)",
+            Description = sourceData.Description,
+            IsPublic = false, // Duplicated profiles are private by default
+            CreatedAt = now,
+            Data = sourceData.Data
+        };
+
+        await WriteJsonAsync(targetBucketName, GetProfilePath(newProfileId), newStorageData);
+
+        return new ProfileDTO
+        {
+            Id = newProfileId,
+            CreatorId = userId,
+            Name = newStorageData.Name ?? "Unnamed Profile",
+            Description = newStorageData.Description,
+            IsPublic = newStorageData.IsPublic,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
     }
 
     private async Task EnsureBucketExistsAsync(string bucketName)
@@ -214,7 +381,7 @@ public class ProfileService : IProfileService
             await _minioClient.GetObjectAsync(getArgs);
             memoryStream.Position = 0;
             var content = Encoding.UTF8.GetString(memoryStream.ToArray());
-            return JsonSerializer.Deserialize<T>(content);
+            return JsonSerializer.Deserialize<T>(content, JsonOptions);
         }
         catch (ObjectNotFoundException)
         {
@@ -224,7 +391,7 @@ public class ProfileService : IProfileService
 
     private async Task WriteJsonAsync<T>(string bucketName, string objectName, T data)
     {
-        var json = JsonSerializer.Serialize(data);
+        var json = JsonSerializer.Serialize(data, JsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
         var stream = new MemoryStream(bytes);
 
@@ -236,5 +403,15 @@ public class ProfileService : IProfileService
             .WithContentType("application/json");
 
         await _minioClient.PutObjectAsync(putArgs);
+    }
+
+    // Internal DTO for storage
+    private class ProfileStorageDTO
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public bool IsPublic { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public ProfileData? Data { get; set; }
     }
 }

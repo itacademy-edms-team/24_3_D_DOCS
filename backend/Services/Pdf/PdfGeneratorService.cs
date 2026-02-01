@@ -2,8 +2,8 @@ using System.Text.Json;
 using PuppeteerSharp;
 using PuppeteerSharp.Media;
 using RusalProject.Services.Documents;
-using RusalProject.Services.Profile;
-using RusalProject.Services.TitlePage;
+using RusalProject.Services.Profiles;
+using RusalProject.Services.TitlePages;
 using RusalProject.Services.Storage;
 using System.Text.RegularExpressions;
 

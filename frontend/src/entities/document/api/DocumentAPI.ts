@@ -82,13 +82,18 @@ class DocumentAPI extends HttpClient {
 	}
 
 	async getEmbeddingStatus(id: string): Promise<EmbeddingStatus> {
-		return this.get<EmbeddingStatus>(`/api/documents/${id}/embeddings/status`);
+		void id;
+		return {
+			coveragePercentage: 0,
+			totalLines: 0,
+			coveredLines: 0,
+			lineStatuses: [],
+		};
 	}
 
 	async updateEmbeddings(id: string): Promise<void> {
-		return this.post<void>(`/api/documents/${id}/embeddings/update`, {}, {
-			timeout: 30 * 60 * 1000, // 30 minutes timeout for embedding generation
-		});
+		void id;
+		return Promise.resolve();
 	}
 
 	async exportDocument(id: string): Promise<Blob> {

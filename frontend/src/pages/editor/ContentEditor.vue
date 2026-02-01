@@ -129,24 +129,6 @@
 					</button>
 				</div>
 
-				<div class="content-editor__embedding-controls">
-					<EmbeddingCoverageChart
-						v-if="embeddingCoverage !== null"
-						:coverage-percentage="embeddingCoverage"
-					/>
-					<button
-						class="content-editor__header-btn"
-						@click="handleUpdateEmbeddings"
-						:disabled="isUpdatingEmbeddings"
-						title="Обновить эмбеддинги"
-					>
-						<svg v-if="!isUpdatingEmbeddings" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-							<path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-						</svg>
-						<span v-else class="spinner-small"></span>
-					</button>
-				</div>
-				
 				<div class="action-group">
 					<button 
 						class="content-editor__header-btn ai-btn"
@@ -179,7 +161,6 @@
 				<!-- Markdown Editor -->
 				<MarkdownEditor
 					v-if="activeTab === 'editor'"
-					ref="markdownEditorRef"
 					v-model="content"
 					:documentId="documentId"
 					:diffChanges="diffChanges"
@@ -199,7 +180,7 @@
 			<div class="content-editor__preview-panel" v-show="showPreview">
 				<DocumentPreview
 					:content="content"
-					:profileId="document?.profileId"
+					:profileId="currentDocument?.profileId"
 					:titlePageId="selectedTitlePageId"
 					:titlePageVariables="titlePageVariables"
 					:documentId="documentId"
@@ -233,7 +214,6 @@ import MarkdownEditor from '@/widgets/markdown-editor/MarkdownEditor.vue';
 import DocumentPreview from '@/widgets/document-preview/DocumentPreview.vue';
 import TitlePageVariablesPanel from '@/widgets/title-page-variables/TitlePageVariablesPanel.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
-import EmbeddingCoverageChart from '@/shared/ui/EmbeddingCoverageChart/EmbeddingCoverageChart.vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
@@ -245,15 +225,12 @@ const route = useRoute();
 const router = useRouter();
 const documentId = computed(() => route.params.id as string);
 
-const document = ref<Document | null>(null);
+const currentDocument = ref<Document | null>(null);
 const content = ref('');
 const showEditor = ref(true);
 const showPreview = ref(true);
 const swapped = ref(false);
 const activeTab = ref<'editor' | 'titlePage'>('editor');
-const markdownEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null);
-const embeddingCoverage = ref<number | null>(null);
-const isUpdatingEmbeddings = ref(false);
 const isDownloadingPdf = ref(false);
 const isExportingDdoc = ref(false);
 
@@ -268,18 +245,18 @@ const selectedTitlePageId = ref<string>('');
 const isUpdatingTitlePage = ref(false);
 
 const currentProfileId = computed(() => {
-	return document.value?.profileId || '';
+	return currentDocument.value?.profileId || '';
 });
 
 const currentTitlePageId = computed(() => {
-	return document.value?.titlePageId || '';
+	return currentDocument.value?.titlePageId || '';
 });
 
 const titlePageVariables = computed<Record<string, string>>(() => {
-	if (!document.value?.metadata) {
+	if (!currentDocument.value?.metadata) {
 		return {};
 	}
-	const meta = document.value.metadata;
+	const meta = currentDocument.value.metadata;
 	const vars: Record<string, string> = {};
 	
 	// Маппинг стандартных полей
@@ -324,8 +301,7 @@ const handleSettings = () => {
 const downloadFile = (blob: Blob, filename: string) => {
 	try {
 		const url = URL.createObjectURL(blob);
-		// Используем window.document чтобы избежать проблем с минификацией
-		const doc = typeof window !== 'undefined' ? window.document : document;
+		const doc = window.document;
 		const link = doc.createElement('a');
 		link.href = url;
 		link.download = filename;
@@ -345,8 +321,8 @@ const handleDownloadPdf = async () => {
 	isDownloadingPdf.value = true;
 
 	try {
-		const filename = document.value?.name 
-			? `${document.value.name}.pdf` 
+		const filename = currentDocument.value?.name 
+			? `${currentDocument.value.name}.pdf` 
 			: `document-${documentId.value}.pdf`;
 		
 		// Always generate a new PDF to ensure it's up-to-date with the latest content
@@ -383,8 +359,8 @@ const handleExportDdoc = async () => {
 	isExportingDdoc.value = true;
 
 	try {
-		const filename = document.value?.name 
-			? `${document.value.name}.ddoc` 
+		const filename = currentDocument.value?.name 
+			? `${currentDocument.value.name}.ddoc` 
 			: `document-${documentId.value}.ddoc`;
 		
 		const blob = await DocumentAPI.exportDocument(documentId.value);
@@ -409,66 +385,13 @@ const handleExportDdoc = async () => {
 	}
 };
 
-const handleUpdateEmbeddings = async () => {
-	if (!documentId.value || isUpdatingEmbeddings.value) return;
-
-	const startTime = Date.now();
-	isUpdatingEmbeddings.value = true;
-	console.log('🔄 Начато обновление эмбеддингов...');
-	
-	// #region agent log
-	fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:239',message:'handleUpdateEmbeddings started',data:{documentId:documentId.value,startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-	// #endregion
-	
-	try {
-		const apiStartTime = Date.now();
-		await DocumentAPI.updateEmbeddings(documentId.value);
-		const apiEndTime = Date.now();
-		const apiDuration = apiEndTime - apiStartTime;
-		
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:250',message:'API updateEmbeddings completed',data:{apiDuration,apiStartTime,apiEndTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-		
-		console.log('✅ Эмбеддинги успешно обновлены');
-		
-		// Reload embedding status after update
-		const statusStartTime = Date.now();
-		await nextTick();
-		if (markdownEditorRef.value) {
-			await markdownEditorRef.value.loadEmbeddingStatus();
-		}
-		const statusEndTime = Date.now();
-		const statusDuration = statusEndTime - statusStartTime;
-		
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:260',message:'Status reload completed',data:{statusDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-		
-		const totalDuration = Date.now() - startTime;
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:265',message:'handleUpdateEmbeddings completed',data:{totalDuration,apiDuration,statusDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-	} catch (error: any) {
-		const errorTime = Date.now();
-		const errorDuration = errorTime - startTime;
-		console.error('❌ Ошибка при обновлении эмбеддингов:', error);
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:272',message:'handleUpdateEmbeddings error',data:{errorDuration,errorType:error?.constructor?.name,errorMessage:error?.message,errorResponse:error?.response?.data,errorStatus:error?.response?.status,errorStack:error?.stack?.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-		alert(`Ошибка при обновлении эмбеддингов: ${error?.message || error?.toString() || 'Неизвестная ошибка'}. Проверьте консоль для подробностей.`);
-	} finally {
-		isUpdatingEmbeddings.value = false;
-	}
-};
-
 const documentName = ref<string>('');
 
 const handleNameChange = useDebounceFn(async () => {
-	if (!document.value) return;
+	if (!currentDocument.value) return;
 	
 	const newName = documentName.value.trim() || 'Документ';
-	const previousName = document.value.name;
+	const previousName = currentDocument.value.name;
 	
 	// Пропускаем если название не изменилось
 	if (newName === previousName) return;
@@ -478,7 +401,7 @@ const handleNameChange = useDebounceFn(async () => {
 			name: newName,
 		});
 		// Обновляем локальное состояние после успешного сохранения
-		document.value.name = newName;
+		currentDocument.value.name = newName;
 	} catch (error) {
 		console.error('Failed to update document name:', error);
 		// Откатываем к предыдущему значению при ошибке
@@ -488,7 +411,7 @@ const handleNameChange = useDebounceFn(async () => {
 }, 1000);
 
 const handleContentChange = useDebounceFn(async (newContent: string) => {
-	if (document.value) {
+	if (currentDocument.value) {
 		try {
 			await DocumentAPI.updateContent(documentId.value, newContent);
 		} catch (error) {
@@ -498,7 +421,7 @@ const handleContentChange = useDebounceFn(async (newContent: string) => {
 }, 1000);
 
 const handleProfileChange = useDebounceFn(async (event: Event) => {
-	if (!document.value) return;
+	if (!currentDocument.value) return;
 
 	const target = event.target as HTMLSelectElement;
 	const newProfileId = target.value || undefined;
@@ -508,7 +431,7 @@ const handleProfileChange = useDebounceFn(async (event: Event) => {
 		await DocumentAPI.update(documentId.value, {
 			profileId: newProfileId,
 		});
-		document.value.profileId = newProfileId;
+		currentDocument.value.profileId = newProfileId;
 	} catch (error) {
 		console.error('Failed to update profile:', error);
 		// Revert selection on error
@@ -519,7 +442,7 @@ const handleProfileChange = useDebounceFn(async (event: Event) => {
 }, 300);
 
 const handleTitlePageChange = useDebounceFn(async (event: Event) => {
-	if (!document.value) return;
+	if (!currentDocument.value) return;
 
 	const target = event.target as HTMLSelectElement;
 	const newTitlePageId = target.value || undefined;
@@ -529,7 +452,7 @@ const handleTitlePageChange = useDebounceFn(async (event: Event) => {
 		await DocumentAPI.update(documentId.value, {
 			titlePageId: newTitlePageId,
 		});
-		document.value.titlePageId = newTitlePageId;
+		currentDocument.value.titlePageId = newTitlePageId;
 	} catch (error) {
 		console.error('Failed to update title page:', error);
 		// Revert selection on error
@@ -540,11 +463,11 @@ const handleTitlePageChange = useDebounceFn(async (event: Event) => {
 }, 300);
 
 const handleVariablesUpdate = async (newVariables: Record<string, string>) => {
-	if (!document.value) return;
+	if (!currentDocument.value) return;
 	
 	// Преобразуем переменные обратно в metadata
 	const metadata: DocumentMetadata = {
-		...document.value.metadata,
+		...currentDocument.value.metadata,
 		title: newVariables.Title,
 		author: newVariables.Author,
 		year: newVariables.Year,
@@ -568,8 +491,8 @@ const handleVariablesUpdate = async (newVariables: Record<string, string>) => {
 	
 	try {
 		await DocumentAPI.updateMetadata(documentId.value, metadata);
-		if (document.value) {
-			document.value.metadata = metadata;
+		if (currentDocument.value) {
+			currentDocument.value.metadata = metadata;
 		}
 	} catch (error) {
 		console.error('Failed to update metadata:', error);
@@ -603,7 +526,7 @@ const loadTitlePages = async () => {
 const loadDocument = async () => {
 	try {
 		const doc = await DocumentAPI.getById(documentId.value);
-		document.value = doc;
+		currentDocument.value = doc;
 		documentName.value = doc.name || 'Документ';
 		content.value = doc.content || '';
 		selectedProfileId.value = doc.profileId || '';
@@ -616,11 +539,6 @@ const loadDocument = async () => {
 const handleDocumentUpdated = async () => {
 	// Reload document content after agent edits
 	await loadDocument();
-	// Update embedding status after document is updated
-	await nextTick();
-	if (markdownEditorRef.value) {
-		markdownEditorRef.value.loadEmbeddingStatus();
-	}
 	// Don't clear diff changes - they should remain visible until accepted/rejected
 };
 
@@ -902,42 +820,13 @@ const handleDiscardChatChanges = async (chatId: string) => {
 	saveDiffChanges();
 };
 
-// Update embedding coverage from editor status
-watch(
-	() => markdownEditorRef.value?.embeddingStatus,
-	(status) => {
-		if (status) {
-			embeddingCoverage.value = status.coveragePercentage;
-		} else {
-			embeddingCoverage.value = null;
-		}
-	},
-	{ deep: true }
-);
-
-// Update status when AI panel opens (as embeddings are updated when agent processes)
-watch(
-	() => showAIPanel.value,
-	(isOpen) => {
-		if (isOpen && markdownEditorRef.value) {
-			// Status will be updated when agent processes the document
-			// We can trigger a refresh after a delay to account for embedding update
-			setTimeout(() => {
-				if (markdownEditorRef.value) {
-					markdownEditorRef.value.loadEmbeddingStatus();
-				}
-			}, 2000);
-		}
-	}
-);
-
 // Handle window resize to prevent preview "shaking"
 const handleWindowResize = useDebounceFn(() => {
 	// Force reflow to prevent visual glitches
 	if (showPreview.value) {
 		nextTick(() => {
-			// Trigger a minimal reflow to stabilize layout
-			const previewPanel = document.querySelector('.content-editor__preview-panel');
+			// Use explicit global document reference in browser context
+			const previewPanel = typeof window !== 'undefined' ? window.document.querySelector('.content-editor__preview-panel') : null;
 			if (previewPanel) {
 				previewPanel.scrollTop = previewPanel.scrollTop;
 			}
@@ -964,7 +853,7 @@ onUnmounted(() => {
 
 // Sync selectedProfileId with document profileId when document changes
 watch(
-	() => document.value?.profileId,
+	() => currentDocument.value?.profileId,
 	(newProfileId) => {
 		if (selectedProfileId.value !== (newProfileId || '')) {
 			selectedProfileId.value = newProfileId || '';
@@ -975,7 +864,7 @@ watch(
 
 // Sync selectedTitlePageId with document titlePageId when document changes
 watch(
-	() => document.value?.titlePageId,
+	() => currentDocument.value?.titlePageId,
 	(newTitlePageId) => {
 		if (selectedTitlePageId.value !== (newTitlePageId || '')) {
 			selectedTitlePageId.value = newTitlePageId || '';
@@ -986,7 +875,7 @@ watch(
 
 // Sync documentName with document.name when document changes
 watch(
-	() => document.value?.name,
+	() => currentDocument.value?.name,
 	(newName) => {
 		if (newName && documentName.value !== newName) {
 			documentName.value = newName;

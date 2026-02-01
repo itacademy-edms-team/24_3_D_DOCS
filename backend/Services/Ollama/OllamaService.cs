@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.IO;
+using System.Linq;
 
 namespace RusalProject.Services.Ollama;
 
@@ -24,8 +25,8 @@ public class OllamaService : IOllamaService
         _logger = logger;
         var baseUrl = configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
         _embeddingModel = configuration["Ollama:EmbeddingModel"] ?? "nomic-embed-text";
-        _llmModel = configuration["Ollama:LlmModel"] ?? "qwen3-vl:235b-instruct-cloud";
-        _visionModel = configuration["Ollama:Vision"] ?? "qwen3-vl:235b-instruct-cloud";
+        _llmModel = configuration["Ollama:LlmModel"] ?? "qwen2.5:7b";
+        _visionModel = configuration["Ollama:Vision"] ?? "qwen2.5vl:7b";
         _timeout = int.Parse(configuration["Ollama:Timeout"] ?? "300");
         _temperature = float.Parse(configuration["Ollama:Temperature"] ?? "0.2", System.Globalization.CultureInfo.InvariantCulture);
         _topP = float.Parse(configuration["Ollama:TopP"] ?? "0.9", System.Globalization.CultureInfo.InvariantCulture);
@@ -190,6 +191,7 @@ public class OllamaService : IOllamaService
     {
         try
         {
+            var modelToUse = await ResolveAvailableModelAsync(_llmModel, cancellationToken);
             var chatMessages = new List<object>();
 
             if (!string.IsNullOrEmpty(systemPrompt))
@@ -232,7 +234,7 @@ public class OllamaService : IOllamaService
 
             var request = new
             {
-                model = _llmModel,
+                model = modelToUse,
                 messages = chatMessages,
                 stream = false,
                 options = new
@@ -270,6 +272,7 @@ public class OllamaService : IOllamaService
     {
         try
         {
+            var modelToUse = await ResolveAvailableModelAsync(_llmModel, cancellationToken);
             var chatMessages = new List<object>();
 
             if (!string.IsNullOrEmpty(systemPrompt))
@@ -324,7 +327,7 @@ public class OllamaService : IOllamaService
 
             var request = new
             {
-                model = _llmModel,
+                model = modelToUse,
                 messages = chatMessages,
                 tools = toolsList,
                 stream = false,
@@ -342,7 +345,7 @@ public class OllamaService : IOllamaService
             };
 
             _logger.LogDebug("Ollama chat API request: Model={Model}, MessagesCount={MessagesCount}, ToolsCount={ToolsCount}", 
-                _llmModel, chatMessages.Count, toolsList.Count);
+                modelToUse, chatMessages.Count, toolsList.Count);
 
             var response = await _httpClient.PostAsJsonAsync("/api/chat", request, jsonOptions, cancellationToken);
             
@@ -350,12 +353,12 @@ public class OllamaService : IOllamaService
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("Ollama chat API error: Status={StatusCode}, Response={ErrorContent}, Model={Model}, ToolsCount={ToolsCount}", 
-                    response.StatusCode, errorContent, _llmModel, toolsList.Count);
+                    response.StatusCode, errorContent, modelToUse, toolsList.Count);
                 
                 // Provide more helpful error message for 500 errors with tools
                 if (response.StatusCode == System.Net.HttpStatusCode.InternalServerError && toolsList.Count > 0)
                 {
-                    var errorMessage = $"Ollama API вернул ошибку 500 при использовании tools. Модель '{_llmModel}' может не поддерживать function calling/tools. " +
+                    var errorMessage = $"Ollama API вернул ошибку 500 при использовании tools. Модель '{modelToUse}' может не поддерживать function calling/tools. " +
                         $"Vision модели (например, qwen3-vl) обычно не поддерживают tools. Попробуйте использовать модель с поддержкой function calling (например, qwen2.5:7b, qwen2.5:14b, llama3.2). " +
                         $"Ошибка от сервера: {errorContent}";
                     throw new HttpRequestException(errorMessage);
@@ -405,6 +408,7 @@ public class OllamaService : IOllamaService
     {
         try
         {
+            var modelToUse = await ResolveAvailableModelAsync(_visionModel, cancellationToken);
             // Ollama vision API format: content is a string, images are passed separately
             // Format: messages with content as string, and images array with base64 strings
             var messages = new List<object>
@@ -419,7 +423,7 @@ public class OllamaService : IOllamaService
 
             var request = new
             {
-                model = _visionModel,
+                model = modelToUse,
                 messages = messages,
                 stream = false,
                 options = new
@@ -453,6 +457,48 @@ public class OllamaService : IOllamaService
         {
             _logger.LogError(ex, "Error generating vision chat response");
             throw;
+        }
+    }
+
+    private async Task<string> ResolveAvailableModelAsync(string preferredModel, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync("/api/tags", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return preferredModel;
+            }
+
+            var tags = await response.Content.ReadFromJsonAsync<TagsResponse>(cancellationToken: cancellationToken);
+            var availableModels = tags?.Models?
+                .Select(m => m.Name)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .ToList() ?? new List<string>();
+
+            if (availableModels.Count == 0)
+            {
+                return preferredModel;
+            }
+
+            if (availableModels.Contains(preferredModel))
+            {
+                return preferredModel;
+            }
+
+            var fallback = availableModels[0];
+            _logger.LogWarning(
+                "Preferred Ollama model '{PreferredModel}' is unavailable. Falling back to '{FallbackModel}'. Available: {AvailableModels}",
+                preferredModel,
+                fallback,
+                string.Join(", ", availableModels));
+
+            return fallback;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not resolve available Ollama model, using preferred model '{PreferredModel}'", preferredModel);
+            return preferredModel;
         }
     }
 
@@ -496,5 +542,17 @@ public class OllamaService : IOllamaService
 
         [JsonPropertyName("arguments")]
         public object? Arguments { get; set; }
+    }
+
+    private class TagsResponse
+    {
+        [JsonPropertyName("models")]
+        public List<TagsModel>? Models { get; set; }
+    }
+
+    private class TagsModel
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
     }
 }

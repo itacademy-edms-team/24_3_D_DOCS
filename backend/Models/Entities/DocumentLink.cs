@@ -41,7 +41,7 @@ public class DocumentLink
     public string? ConversionLog { get; set; } // Лог ошибок конвертации
 
     [Column("profile_id")]
-    public Guid? ProfileId { get; set; } // FK к SchemaLink (профиль стилей)
+    public Guid? ProfileId { get; set; } // FK к Profile (профиль стилей из profiles)
 
     [Column("title_page_id")]
     public Guid? TitlePageId { get; set; } // FK к TitlePage
@@ -66,7 +66,7 @@ public class DocumentLink
     public virtual User? Creator { get; set; }
 
     [ForeignKey("ProfileId")]
-    public virtual SchemaLink? Profile { get; set; }
+    public virtual Profile? Profile { get; set; }
 
     [ForeignKey("TitlePageId")]
     public virtual TitlePage? TitlePage { get; set; }

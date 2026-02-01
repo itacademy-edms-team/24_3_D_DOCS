@@ -13,30 +13,6 @@ export function useAgent() {
 	const abortController = ref<AbortController | null>(null);
 
 	const sendMessage = async (request: AgentRequestDTO) => {
-		// #region agent log
-		try {
-			fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sessionId: 'debug-session',
-					runId: 'run1',
-					hypothesisId: 'A',
-					location: 'useAgent.ts:14',
-					message: 'sendMessage entry',
-					data: {
-						documentId: request.documentId,
-						userMessage: request.userMessage.substring(0, Math.min(50, request.userMessage.length)),
-						mode: request.mode,
-						startLine: request.startLine,
-						endLine: request.endLine
-					},
-					timestamp: Date.now()
-				})
-			}).catch(() => {});
-		} catch {}
-		// #endregion
-
 		// Отменяем предыдущий запрос, если он ещё идёт
 		if (abortController.value) {
 			abortController.value.abort();
@@ -50,24 +26,6 @@ export function useAgent() {
 		currentResponse.value = null;
 
 		try {
-			// #region agent log
-			try {
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						sessionId: 'debug-session',
-						runId: 'run1',
-						hypothesisId: 'B',
-						location: 'useAgent.ts:32',
-						message: 'Before AIAPI.agent call',
-						data: { request },
-						timestamp: Date.now()
-					})
-				}).catch(() => {});
-			} catch {}
-			// #endregion
-
 			// Обработка шагов в реальном времени через callback
 			const response = await AIAPI.agent(request, (step) => {
 				console.log('=== onStep callback called ===');
@@ -101,28 +59,6 @@ export function useAgent() {
 				});
 			}, abortController.value.signal);
 
-			// #region agent log
-			try {
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						sessionId: 'debug-session',
-						runId: 'run1',
-						hypothesisId: 'B',
-						location: 'useAgent.ts:40',
-						message: 'AIAPI.agent completed successfully',
-						data: {
-							isComplete: response.isComplete,
-							stepsCount: response.steps?.length ?? 0,
-							finalMessageLength: response.finalMessage?.length ?? 0
-						},
-						timestamp: Date.now()
-					})
-				}).catch(() => {});
-			} catch {}
-			// #endregion
-
 			currentResponse.value = response;
 			// Дополняем шаги из финального ответа (на случай если некоторые не пришли через SSE)
 			if (response.steps && response.steps.length > 0) {
@@ -148,29 +84,6 @@ export function useAgent() {
 				console.warn('Agent request aborted by user');
 				return;
 			}
-			// #region agent log
-			try {
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						sessionId: 'debug-session',
-						runId: 'run1',
-						hypothesisId: 'B',
-						location: 'useAgent.ts:57',
-						message: 'sendMessage error',
-						data: {
-							errorType: err?.constructor?.name,
-							errorMessage: err?.message,
-							responseStatus: err?.response?.status,
-							responseData: err?.response?.data
-						},
-						timestamp: Date.now()
-					})
-				}).catch(() => {});
-			} catch {}
-			// #endregion
-
 			const errorMessage =
 				err.response?.data?.message || err.message || 'Ошибка при обращении к агенту';
 			error.value = errorMessage;

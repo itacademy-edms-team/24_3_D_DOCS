@@ -55,28 +55,16 @@ export function renderImages(
 		const alt = img.getAttribute('alt') || '';
 		const elId = generateElementId('img', src + alt, usedIds);
 		
-		// #region agent log
-		const logData1 = {location:'imageRenderer.ts:16',message:'Image found in render',data:{originalSrc:src,hasToken:src.includes('token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-		if (typeof console !== 'undefined') console.log('[DEBUG]', logData1);
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData1)}).catch((e)=>{if(typeof console !== 'undefined')console.warn('[DEBUG] Log fetch failed:',e)});
-		// #endregion
-		
 		// Update image src with fresh token if it's a local asset URL
 		// This ensures images always have a valid token when rendering
 		if (src && (src.startsWith('/api/upload/') || src.includes('/api/upload/'))) {
 			try {
 				// Get current token from localStorage
 				const authData = typeof localStorage !== 'undefined' ? localStorage.getItem('auth-storage') : null;
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imageRenderer.ts:25',message:'Checking auth data',data:{hasAuthData:!!authData,isUploadUrl:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-				// #endregion
 				if (authData) {
 					try {
 						const parsed = JSON.parse(authData);
 						const currentToken = parsed?.state?.accessToken || parsed?.accessToken;
-						// #region agent log
-						fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imageRenderer.ts:30',message:'Token extracted',data:{hasToken:!!currentToken,tokenLength:currentToken?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-						// #endregion
 						if (currentToken) {
 							// Parse URL and update token
 							try {
@@ -99,9 +87,6 @@ export function renderImages(
 								} else {
 									src = url.toString();
 								}
-								// #region agent log
-								fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imageRenderer.ts:44',message:'URL updated with token',data:{newSrc:src,hasTokenInUrl:src.includes('token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-								// #endregion
 							} catch (urlError) {
 								// If URL parsing fails, try to replace or append token manually
 								try {
@@ -113,9 +98,6 @@ export function renderImages(
 									
 									const separator = '?';
 									src = urlWithoutToken + separator + params.toString();
-									// #region agent log
-									fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imageRenderer.ts:62',message:'URL updated with token (fallback)',data:{newSrc:src,hasTokenInUrl:src.includes('token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-									// #endregion
 								} catch (fallbackError) {
 									// Last resort: simple append
 									const separator = src.includes('?') ? '&' : '?';
@@ -125,26 +107,17 @@ export function renderImages(
 									const params = new URLSearchParams(existingParams);
 									params.set('token', currentToken);
 									src = baseUrl + '?' + params.toString();
-									// #region agent log
-									fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imageRenderer.ts:71',message:'URL updated with token (last resort)',data:{newSrc:src,hasTokenInUrl:src.includes('token'),error:fallbackError?.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-									// #endregion
 								}
 							}
 						}
 					} catch (parseError) {
 						// Ignore parse errors
 						console.warn('Failed to parse auth data for image token:', parseError);
-						// #region agent log
-						fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imageRenderer.ts:52',message:'Failed to parse auth data',data:{error:parseError?.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-						// #endregion
 					}
 				}
 			} catch (error) {
 				// Ignore errors in token update
 				console.warn('Failed to update image token:', error);
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imageRenderer.ts:57',message:'Failed to update token',data:{error:error?.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-				// #endregion
 			}
 		}
 		
@@ -153,11 +126,6 @@ export function renderImages(
 			img.setAttribute('src', src);
 			// Don't set crossorigin attribute - it can cause issues with query parameters
 			// Images will load normally without CORS preflight
-				// #region agent log
-				const logData2 = {location:'imageRenderer.ts:88',message:'Src attribute set',data:{finalSrc:src,hasToken:src.includes('token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-				if (typeof console !== 'undefined') console.log('[DEBUG]', logData2);
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData2)}).catch((e)=>{if(typeof console !== 'undefined')console.warn('[DEBUG] Log fetch failed:',e)});
-				// #endregion
 		}
 
 		const imageStyle = getFinalStyle('image' as EntityType, elId, profile, overrides);

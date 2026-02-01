@@ -1,12 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Minio;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
-using RusalProject.Models.DTOs.TitlePages;
+using RusalProject.Models.DTOs.TitlePage;
 using RusalProject.Models.Entities;
+using RusalProject.Models.Types;
 using RusalProject.Provider.Database;
 
 namespace RusalProject.Services.TitlePages;
@@ -18,14 +18,11 @@ public class TitlePageService : ITitlePageService
     private readonly IConfiguration _configuration;
     private readonly ILogger<TitlePageService> _logger;
 
-    // Internal class for deserializing meta.json
-    private class TitlePageMetaJson
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        public string id { get; set; } = string.Empty;
-        public string name { get; set; } = string.Empty;
-        public DateTime createdAt { get; set; }
-        public DateTime updatedAt { get; set; }
-    }
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
 
     public TitlePageService(
         ApplicationDbContext context,
@@ -40,48 +37,74 @@ public class TitlePageService : ITitlePageService
     }
 
     private string GetBucketName(Guid userId) => $"user-{userId}";
-    private string GetTitlePagePath(Guid titlePageId) => $"TitlePage/{titlePageId}";
-    private string GetMetaPath(Guid titlePageId) => $"{GetTitlePagePath(titlePageId)}/meta.json";
-    private string GetElementsPath(Guid titlePageId) => $"{GetTitlePagePath(titlePageId)}/elements.json";
-    private string GetVariablesPath(Guid titlePageId) => $"{GetTitlePagePath(titlePageId)}/variables.json";
+    private string GetTitlePagePath(Guid titlePageId) => $"TitlePage/{titlePageId}.json";
 
-    public async Task<List<TitlePageMetaDTO>> GetAllTitlePagesAsync(Guid userId)
+    public async Task<List<TitlePageDTO>> GetTitlePagesAsync(Guid userId)
     {
-        // Get title pages from DB (only id and updatedAt for sorting)
         var dbTitlePages = await _context.TitlePages
             .Where(tp => tp.CreatorId == userId)
             .OrderByDescending(tp => tp.UpdatedAt)
-            .Select(tp => new { tp.Id, tp.UpdatedAt })
+            .Select(tp => new { tp.Id, tp.CreatorId, tp.UpdatedAt })
             .ToListAsync();
 
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        // Read meta.json for each title page in parallel
-        var metaTasks = dbTitlePages.Select(async dbTitlePage =>
+        var titlePageTasks = dbTitlePages.Select(async dbTitlePage =>
         {
             try
             {
-                var metaJson = await ReadJsonAsync<TitlePageMetaJson>(bucketName, GetMetaPath(dbTitlePage.Id));
-                if (metaJson == null) return null;
+                var storageData = await ReadJsonAsync<TitlePageStorageDTO>(bucketName, GetTitlePagePath(dbTitlePage.Id));
+                if (storageData == null) return null;
 
-                return new TitlePageMetaDTO
+                return new TitlePageDTO
                 {
-                    Id = Guid.Parse(metaJson.id),
-                    Name = metaJson.name,
-                    CreatedAt = metaJson.createdAt,
-                    UpdatedAt = metaJson.updatedAt
+                    Id = dbTitlePage.Id,
+                    CreatorId = dbTitlePage.CreatorId,
+                    Name = storageData.Name ?? "Untitled",
+                    Description = storageData.Description,
+                    CreatedAt = storageData.CreatedAt,
+                    UpdatedAt = dbTitlePage.UpdatedAt
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to read meta.json for title page {TitlePageId}", dbTitlePage.Id);
+                _logger.LogWarning(ex, "Failed to read title page JSON for {TitlePageId}", dbTitlePage.Id);
                 return null;
             }
         });
 
-        var metas = await Task.WhenAll(metaTasks);
-        return metas.Where(m => m != null).Cast<TitlePageMetaDTO>().ToList();
+        var titlePages = (await Task.WhenAll(titlePageTasks))
+            .Where(tp => tp != null)
+            .Cast<TitlePageDTO>()
+            .ToList();
+
+        return titlePages;
+    }
+
+    public async Task<TitlePageWithDataDTO?> GetTitlePageWithDataAsync(Guid id, Guid userId)
+    {
+        var titlePage = await _context.TitlePages
+            .FirstOrDefaultAsync(tp => tp.Id == id && tp.CreatorId == userId);
+
+        if (titlePage == null) return null;
+
+        var bucketName = GetBucketName(userId);
+        await EnsureBucketExistsAsync(bucketName);
+
+        var storageData = await ReadJsonAsync<TitlePageStorageDTO>(bucketName, GetTitlePagePath(id));
+        if (storageData == null) return null;
+
+        return new TitlePageWithDataDTO
+        {
+            Id = id,
+            CreatorId = titlePage.CreatorId,
+            Name = storageData.Name ?? "Untitled",
+            Description = storageData.Description,
+            CreatedAt = storageData.CreatedAt,
+            UpdatedAt = titlePage.UpdatedAt,
+            Data = storageData.Data ?? new TitlePageData()
+        };
     }
 
     public async Task<TitlePageDTO?> GetTitlePageByIdAsync(Guid id, Guid userId)
@@ -94,24 +117,21 @@ public class TitlePageService : ITitlePageService
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        var metaJson = await ReadJsonAsync<TitlePageMetaJson>(bucketName, GetMetaPath(id));
-        if (metaJson == null) return null;
-
-        var elements = await ReadJsonAsync<List<TitlePageElementDTO>>(bucketName, GetElementsPath(id)) ?? new List<TitlePageElementDTO>();
-        var variables = await ReadJsonAsync<Dictionary<string, string>>(bucketName, GetVariablesPath(id)) ?? new Dictionary<string, string>();
+        var storageData = await ReadJsonAsync<TitlePageStorageDTO>(bucketName, GetTitlePagePath(id));
+        if (storageData == null) return null;
 
         return new TitlePageDTO
         {
-            Id = Guid.Parse(metaJson.id),
-            Name = metaJson.name,
-            Elements = elements,
-            Variables = variables,
-            CreatedAt = metaJson.createdAt,
-            UpdatedAt = metaJson.updatedAt
+            Id = id,
+            CreatorId = titlePage.CreatorId,
+            Name = storageData.Name ?? "Untitled",
+            Description = storageData.Description,
+            CreatedAt = storageData.CreatedAt,
+            UpdatedAt = titlePage.UpdatedAt
         };
     }
 
-    public async Task<TitlePageDTO> CreateTitlePageAsync(CreateTitlePageDTO dto, Guid userId)
+    public async Task<TitlePageDTO> CreateTitlePageAsync(Guid userId, CreateTitlePageDTO dto)
     {
         var titlePageId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -129,35 +149,36 @@ public class TitlePageService : ITitlePageService
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        var meta = new TitlePageMetaJson
+        var storageData = new TitlePageStorageDTO
         {
-            id = titlePageId.ToString(),
-            name = dto.Name ?? "Новый титульный лист",
-            createdAt = now,
-            updatedAt = now
+            Name = dto.Name,
+            Description = dto.Description,
+            CreatedAt = now,
+            Data = dto.Data ?? new TitlePageData()
         };
 
-        await WriteJsonAsync(bucketName, GetMetaPath(titlePageId), meta);
-        await WriteJsonAsync(bucketName, GetElementsPath(titlePageId), new List<TitlePageElementDTO>());
-        await WriteJsonAsync(bucketName, GetVariablesPath(titlePageId), new Dictionary<string, string>());
+        await WriteJsonAsync(bucketName, GetTitlePagePath(titlePageId), storageData);
 
         return new TitlePageDTO
         {
             Id = titlePageId,
-            Name = meta.name,
-            Elements = new List<TitlePageElementDTO>(),
-            Variables = new Dictionary<string, string>(),
+            CreatorId = userId,
+            Name = storageData.Name,
+            Description = storageData.Description,
             CreatedAt = now,
             UpdatedAt = now
         };
     }
 
-    public async Task<TitlePageDTO?> UpdateTitlePageAsync(Guid id, UpdateTitlePageDTO dto, Guid userId)
+    public async Task<TitlePageDTO> UpdateTitlePageAsync(Guid id, Guid userId, UpdateTitlePageDTO dto)
     {
         var titlePage = await _context.TitlePages
             .FirstOrDefaultAsync(tp => tp.Id == id && tp.CreatorId == userId);
 
-        if (titlePage == null) return null;
+        if (titlePage == null)
+        {
+            throw new FileNotFoundException($"Title page {id} not found");
+        }
 
         titlePage.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -165,89 +186,63 @@ public class TitlePageService : ITitlePageService
         var bucketName = GetBucketName(userId);
         await EnsureBucketExistsAsync(bucketName);
 
-        // Read existing meta
-        var metaJson = await ReadJsonAsync<TitlePageMetaJson>(bucketName, GetMetaPath(id));
-        if (metaJson == null) return null;
-
-        // Update meta if needed
-        if (dto.Name != null) metaJson.name = dto.Name;
-        metaJson.updatedAt = titlePage.UpdatedAt;
-
-        if (dto.Elements != null)
+        var storageData = await ReadJsonAsync<TitlePageStorageDTO>(bucketName, GetTitlePagePath(id));
+        if (storageData == null)
         {
-            await WriteJsonAsync(bucketName, GetElementsPath(id), dto.Elements);
+            throw new FileNotFoundException($"Title page data for {id} not found in storage");
         }
 
-        if (dto.Variables != null)
-        {
-            await WriteJsonAsync(bucketName, GetVariablesPath(id), dto.Variables);
-        }
+        // Update fields if provided
+        if (dto.Name != null) storageData.Name = dto.Name;
+        if (dto.Description != null) storageData.Description = dto.Description;
+        if (dto.Data != null) storageData.Data = dto.Data;
 
-        await WriteJsonAsync(bucketName, GetMetaPath(id), metaJson);
-
-        var elements = dto.Elements ?? await ReadJsonAsync<List<TitlePageElementDTO>>(bucketName, GetElementsPath(id)) ?? new List<TitlePageElementDTO>();
-        var variables = dto.Variables ?? await ReadJsonAsync<Dictionary<string, string>>(bucketName, GetVariablesPath(id)) ?? new Dictionary<string, string>();
+        await WriteJsonAsync(bucketName, GetTitlePagePath(id), storageData);
 
         return new TitlePageDTO
         {
             Id = id,
-            Name = metaJson.name,
-            Elements = elements,
-            Variables = variables,
-            CreatedAt = metaJson.createdAt,
-            UpdatedAt = metaJson.updatedAt
+            CreatorId = userId,
+            Name = storageData.Name ?? "Untitled",
+            Description = storageData.Description,
+            CreatedAt = storageData.CreatedAt,
+            UpdatedAt = titlePage.UpdatedAt
         };
     }
 
-    public async Task<bool> DeleteTitlePageAsync(Guid id, Guid userId)
+    public async Task DeleteTitlePageAsync(Guid id, Guid userId)
     {
         var titlePage = await _context.TitlePages
             .FirstOrDefaultAsync(tp => tp.Id == id && tp.CreatorId == userId);
 
-        if (titlePage == null) return false;
+        if (titlePage == null)
+        {
+            throw new FileNotFoundException($"Title page {id} not found");
+        }
 
         var bucketName = GetBucketName(userId);
+        var titlePagePath = GetTitlePagePath(id);
 
         try
         {
-            var filesToDelete = new[]
-            {
-                GetMetaPath(id),
-                GetElementsPath(id),
-                GetVariablesPath(id)
-            };
-
-            foreach (var filePath in filesToDelete)
-            {
-                try
-                {
-                    var removeArgs = new RemoveObjectArgs()
-                        .WithBucket(bucketName)
-                        .WithObject(filePath);
-                    await _minioClient.RemoveObjectAsync(removeArgs);
-                }
-                catch (ObjectNotFoundException)
-                {
-                    // File doesn't exist, skip
-                }
-            }
+            var removeArgs = new RemoveObjectArgs()
+                .WithBucket(bucketName)
+                .WithObject(titlePagePath);
+            await _minioClient.RemoveObjectAsync(removeArgs);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to delete files from MinIO for title page {TitlePageId}", id);
+            _logger.LogWarning(ex, "Failed to delete title page file from MinIO for {TitlePageId}", id);
         }
 
         _context.TitlePages.Remove(titlePage);
         await _context.SaveChangesAsync();
-
-        return true;
     }
 
     private async Task EnsureBucketExistsAsync(string bucketName)
     {
         var bucketExistsArgs = new BucketExistsArgs().WithBucket(bucketName);
         var exists = await _minioClient.BucketExistsAsync(bucketExistsArgs);
-
         if (!exists)
         {
             var makeBucketArgs = new MakeBucketArgs().WithBucket(bucketName);
@@ -255,7 +250,7 @@ public class TitlePageService : ITitlePageService
         }
     }
 
-    private async Task<string?> ReadFileAsync(string bucketName, string objectName)
+    private async Task<T?> ReadJsonAsync<T>(string bucketName, string objectName)
     {
         try
         {
@@ -267,52 +262,37 @@ public class TitlePageService : ITitlePageService
 
             await _minioClient.GetObjectAsync(getArgs);
             memoryStream.Position = 0;
-            return Encoding.UTF8.GetString(memoryStream.ToArray());
+            var content = Encoding.UTF8.GetString(memoryStream.ToArray());
+            return JsonSerializer.Deserialize<T>(content, JsonOptions);
         }
         catch (ObjectNotFoundException)
         {
-            return null;
+            return default;
         }
-    }
-
-    private async Task WriteFileAsync(string bucketName, string objectName, string content)
-    {
-        var bytes = Encoding.UTF8.GetBytes(content);
-        using var stream = new MemoryStream(bytes);
-        stream.Position = 0;
-
-        var putArgs = new PutObjectArgs()
-            .WithBucket(bucketName)
-            .WithObject(objectName)
-            .WithStreamData(stream)
-            .WithObjectSize((long)bytes.Length)
-            .WithContentType("application/json");
-
-        await _minioClient.PutObjectAsync(putArgs);
-    }
-
-    private async Task<T?> ReadJsonAsync<T>(string bucketName, string objectName)
-    {
-        var content = await ReadFileAsync(bucketName, objectName);
-        if (content == null) return default;
-
-        return JsonSerializer.Deserialize<T>(content);
     }
 
     private async Task WriteJsonAsync<T>(string bucketName, string objectName, T data)
     {
-        var json = JsonSerializer.Serialize(data);
+        var json = JsonSerializer.Serialize(data, JsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
-        using var stream = new MemoryStream(bytes);
-        stream.Position = 0;
+        var stream = new MemoryStream(bytes);
 
         var putArgs = new PutObjectArgs()
             .WithBucket(bucketName)
             .WithObject(objectName)
             .WithStreamData(stream)
-            .WithObjectSize((long)bytes.Length)
+            .WithObjectSize(bytes.Length)
             .WithContentType("application/json");
 
         await _minioClient.PutObjectAsync(putArgs);
+    }
+
+    // Internal DTO for storage
+    private class TitlePageStorageDTO
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public TitlePageData? Data { get; set; }
     }
 }

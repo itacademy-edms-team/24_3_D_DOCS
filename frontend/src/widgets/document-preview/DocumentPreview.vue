@@ -351,11 +351,6 @@ async function generateRenderedHTML(): Promise<string> {
 		overrides: {},
 		selectable: false,
 	});
-	
-	// #region agent log
-	fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:230',message:'Rendered HTML generated',data:{htmlLength:renderedHtml.length,hasImages:renderedHtml.includes('<img'),imageCount:(renderedHtml.match(/<img/g)||[]).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-	// #endregion
-
 	return renderedHtml;
 }
 
@@ -396,23 +391,12 @@ async function updatePages() {
 					contentHeight.value,
 					contentWidth.value
 				);
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:272',message:'Pages split, setting pages value',data:{pagesCount:splitPages.length,htmlLength:renderedHtml.length,hasImages:renderedHtml.includes('<img')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-				// #endregion
 				pages.value = splitPages;
-				
-				// After pages are set, handle image loading in the DOM
 				nextTick(() => {
-					// #region agent log
-					fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:280',message:'nextTick after splitPages, calling handleImageLoading',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-					// #endregion
 					handleImageLoading();
 				});
 			} catch (error) {
 				console.error('Failed to split pages:', error);
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:284',message:'Split pages error, using full HTML',data:{error:error?.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-				// #endregion
 				pages.value = [renderedHtml];
 				nextTick(() => {
 					handleImageLoading();
@@ -441,44 +425,20 @@ function handleImageLoading() {
 	
 	handleImageLoadingTimeout = setTimeout(() => {
 		const contentElements = document.querySelectorAll('.document-preview__content');
-		// #region agent log
-		const logData1 = {location:'DocumentPreview.vue:318',message:'handleImageLoading called',data:{contentElementsCount:contentElements.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-		console.log('[DEBUG]', logData1);
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData1)}).catch((e)=>console.warn('[DEBUG] Log fetch failed:',e));
-		// #endregion
-	
 		contentElements.forEach((contentEl) => {
 		const images = contentEl.querySelectorAll('img');
-		// #region agent log
-		const logData2 = {location:'DocumentPreview.vue:322',message:'Images found in content element',data:{imagesCount:images.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-		console.log('[DEBUG]', logData2);
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData2)}).catch((e)=>console.warn('[DEBUG] Log fetch failed:',e));
-		// #endregion
-		
 		images.forEach((img) => {
 			// Skip if already processed
 			if (img.dataset.processed === 'true') {
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:334',message:'Image already processed, skipping',data:{src:img.src,complete:img.complete},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-				// #endregion
 				return;
 			}
 			
 			img.dataset.processed = 'true';
 			
-			// #region agent log
-			const logData3 = {location:'DocumentPreview.vue:341',message:'Processing image',data:{src:img.src,hasToken:img.src.includes('token'),complete:img.complete,naturalWidth:img.naturalWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'};
-			console.log('[DEBUG]', logData3);
-			fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData3)}).catch((e)=>console.warn('[DEBUG] Log fetch failed:',e));
-			// #endregion
-			
 			// Check if image is already loaded (from cache or previous load)
 			if (img.complete && img.naturalWidth > 0) {
 				// Image already loaded, show it immediately
 				img.style.opacity = '1';
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:351',message:'Image already loaded from cache',data:{src:img.src},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-				// #endregion
 				return;
 			}
 			
@@ -488,17 +448,11 @@ function handleImageLoading() {
 			
 			// Handle successful load
 			img.onload = () => {
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:360',message:'Image loaded successfully',data:{src:img.src,naturalWidth:img.naturalWidth},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-				// #endregion
 				img.style.opacity = '1';
 			};
 			
 			// Handle load error
 			img.onerror = (event) => {
-				// #region agent log
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:362',message:'Image load error',data:{src:img.src,hasToken:img.src.includes('token'),retryCount:parseInt(img.dataset.retryCount||'0')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-				// #endregion
 				console.error('Failed to load image:', img.src, event);
 				
 				// Prevent infinite retry loops
@@ -518,9 +472,6 @@ function handleImageLoading() {
 				// Try to reload with fresh token if current one failed
 				try {
 					const currentToken = getCurrentAuthToken();
-					// #region agent log
-					fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:377',message:'Getting token for retry',data:{hasToken:!!currentToken,retryCount:retryCount+1},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-					// #endregion
 					if (currentToken && img.src) {
 						let url: URL;
 						try {
@@ -541,10 +492,6 @@ function handleImageLoading() {
 						url.searchParams.set('token', currentToken);
 						const newSrc = url.toString();
 						
-						// #region agent log
-						fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:394',message:'Retrying with new token',data:{newSrc,oldSrc:img.src,retryCount:retryCount+1},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-						// #endregion
-						
 						// Remove error handlers temporarily to avoid recursion
 						const oldOnError = img.onerror;
 						img.onerror = null;
@@ -563,9 +510,6 @@ function handleImageLoading() {
 					}
 				} catch (urlError) {
 					console.error('Failed to parse image URL:', urlError);
-					// #region agent log
-					fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:410',message:'URL parse error',data:{error:urlError?.toString(),src:img.src},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-					// #endregion
 				}
 				
 				// Add error styling only if reload didn't help
@@ -573,10 +517,6 @@ function handleImageLoading() {
 				img.style.padding = '10px';
 				img.style.backgroundColor = '#ffeeee';
 			};
-			
-			// #region agent log
-			fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentPreview.vue:463',message:'Image handlers attached',data:{src:img.src,complete:img.complete},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-			// #endregion
 		});
 		});
 	}, 100); // Debounce delay

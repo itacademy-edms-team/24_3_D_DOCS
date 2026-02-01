@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.TitlePage;
 using RusalProject.Services.Pdf;
-using RusalProject.Services.TitlePage;
+using RusalProject.Services.TitlePages;
 using System.Security.Claims;
 
 namespace RusalProject.Controllers;

@@ -16,7 +16,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<SchemaLink> SchemaLinks { get; set; }
     public DbSet<DocumentLink> DocumentLinks { get; set; }
+    // Alias for backward compatibility - DocumentService uses Documents
+    public DbSet<DocumentLink> Documents => DocumentLinks;
     public DbSet<TitlePage> TitlePages { get; set; }
+    public DbSet<Profile> Profiles { get; set; }
     public DbSet<DocumentBlock> DocumentBlocks { get; set; }
     public DbSet<BlockEmbedding> BlockEmbeddings { get; set; }
     public DbSet<ChatSession> ChatSessions { get; set; }
@@ -129,7 +132,7 @@ public class ApplicationDbContext : DbContext
                       v => v == null ? null : JsonDocument.Parse(v, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip }),
                       v => v == null ? null : v.RootElement.GetRawText());
 
-            // Foreign keys
+            // Foreign keys - ProfileId references profiles (стили), not schema_links
             entity.HasOne(d => d.Profile)
                   .WithMany()
                   .HasForeignKey(d => d.ProfileId)
@@ -154,6 +157,23 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.UpdatedAt)
                   .HasDefaultValueSql("NOW()");
+        });
+
+        // Configure Profile entity
+        modelBuilder.Entity<Profile>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.CreatorId)
+                  .HasDatabaseName("IX_Profiles_CreatorId");
+
+            entity.Property(e => e.UpdatedAt)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.HasOne(e => e.Creator)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatorId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure DocumentBlock entity

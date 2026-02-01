@@ -6,7 +6,6 @@ using System.Text.Json;
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Services.Agent.Tools;
 using RusalProject.Services.Documents;
-using RusalProject.Services.Embedding;
 using RusalProject.Services.Ollama;
 
 namespace RusalProject.Services.Agent;
@@ -14,7 +13,6 @@ namespace RusalProject.Services.Agent;
 public class AgentService : IAgentService
 {
     private readonly IOllamaService _ollamaService;
-    private readonly IEmbeddingStorageService _embeddingStorageService;
     private readonly IDocumentService _documentService;
     private readonly List<ITool> _tools;
     private readonly ILogger<AgentService> _logger;
@@ -27,7 +25,6 @@ public class AgentService : IAgentService
 
     public AgentService(
         IOllamaService ollamaService,
-        IEmbeddingStorageService embeddingStorageService,
         IDocumentService documentService,
         RAGSearchTool ragSearchTool,
         TableSearchTool tableSearchTool,
@@ -42,7 +39,6 @@ public class AgentService : IAgentService
         ILogger<AgentService> logger)
     {
         _ollamaService = ollamaService;
-        _embeddingStorageService = embeddingStorageService;
         _documentService = documentService;
         _logger = logger;
 
@@ -133,22 +129,6 @@ public class AgentService : IAgentService
             _logger.LogInformation("AgentService: Документ прочитан. DocumentId={DocumentId}, ContentLength={ContentLength}", request.DocumentId, contentLength);
             // snapshot initial document content for verification after tool calls
             documentSnapshot = document.Content ?? string.Empty;
-
-            // Step 2: Update embeddings
-            stepNumber++;
-            var embedStep = new AgentStepDTO
-            {
-                StepNumber = stepNumber,
-                Description = "🔄 Обновление эмбеддингов (сравнение хешей)..."
-            };
-            steps.Add(embedStep);
-            await NotifyStepUpdate(embedStep);
-
-            await _embeddingStorageService.UpdateEmbeddingsAsync(request.DocumentId, document.Content ?? string.Empty, cancellationToken);
-            
-            embedStep.Description = "✅ Эмбеддинги обновлены (только изменённые блоки)";
-            await NotifyStepUpdate(embedStep);
-            _logger.LogInformation("AgentService: Эмбеддинги обновлены. DocumentId={DocumentId}", request.DocumentId);
 
             // Step 2: Get unified system prompt
             var systemPrompt = GetSystemPrompt();
