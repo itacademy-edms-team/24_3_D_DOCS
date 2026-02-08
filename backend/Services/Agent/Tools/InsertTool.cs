@@ -1,5 +1,5 @@
 using System.Text.Json;
-using RusalProject.Services.Documents;
+using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Agent.Tools;
 
@@ -61,10 +61,9 @@ public class InsertTool : ITool
             var id = GetIntValueFlexible(arguments, "id");
             var content = GetStringValue(arguments, "content");
 
-            if (id < 0)
+            if (id <= 0)
             {
-                // Исправляем очевидную ошибку (например, 0-based номер)
-                id += 1;
+                return "Ошибка: id должен быть >= 1 для insert";
             }
 
             // Загружаем документ

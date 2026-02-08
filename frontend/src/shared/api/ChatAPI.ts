@@ -23,12 +23,12 @@ export interface ChatSessionWithMessages extends ChatSession {
 	messages: ChatMessage[];
 }
 
-export interface CreateChatSession {
+interface CreateChatSession {
 	documentId: string;
 	title?: string;
 }
 
-export interface UpdateChatSession {
+interface UpdateChatSession {
 	title?: string;
 }
 

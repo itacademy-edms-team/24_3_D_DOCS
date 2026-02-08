@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Services.Auth;
-using RusalProject.Services.Documents;
+using RusalProject.Services.Document;
 using RusalProject.Services.Storage;
 using System.Security.Claims;
 

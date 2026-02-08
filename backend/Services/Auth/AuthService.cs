@@ -55,21 +55,17 @@ public class AuthService : IAuthService
         // Сохраняем код в Redis (на 10 минут)
         await _redisService.SaveVerificationCodeAsync(request.Email, code, TimeSpan.FromMinutes(10));
         
-        // Отправляем email асинхронно (fire-and-forget), чтобы не блокировать ответ
-        // Запускаем отправку email в фоне, не дожидаясь завершения
-        _ = Task.Run(async () =>
+        // Отправляем email
+        try
         {
-            try
-            {
-                await _emailService.SendVerificationCodeAsync(request.Email, code);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send verification email to {Email}", request.Email);
-                // Не выбрасываем исключение - код уже сохранен в Redis,
-                // пользователь может попробовать запросить повторно
-            }
-        });
+            await _emailService.SendVerificationCodeAsync(request.Email, code);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send verification email to {Email}", request.Email);
+            // Не выбрасываем исключение - код уже сохранен в Redis,
+            // пользователь может попробовать запросить повторно
+        }
     }
 
     public async Task<LoginResponseDTO> RegisterAsync(VerifyEmailRequestDTO request)

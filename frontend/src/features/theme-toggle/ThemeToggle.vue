@@ -5,7 +5,12 @@
 		@click="toggleTheme"
 		:aria-label="isDark ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'"
 	>
-		<Icon :name="isDark ? 'moon' : 'sun'" size="20" class="theme-toggle__icon" />
+		<Icon
+			:name="isDark ? 'moon' : 'sun'"
+			size="20"
+			class="theme-toggle__icon"
+			color="var(--text-primary)"
+		/>
 	</button>
 </template>
 
@@ -23,6 +28,7 @@ const { isDark, toggleTheme } = useTheme();
 	border-radius: var(--radius-md);
 	background: var(--bg-secondary);
 	border: 1px solid var(--border-color);
+	color: var(--text-primary);
 	cursor: pointer;
 	display: flex;
 	align-items: center;
@@ -39,5 +45,6 @@ const { isDark, toggleTheme } = useTheme();
 .theme-toggle__icon {
 	display: block;
 	line-height: 1;
+	color: var(--text-primary);
 }
 </style>

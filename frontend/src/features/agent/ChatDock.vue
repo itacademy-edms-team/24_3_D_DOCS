@@ -8,14 +8,9 @@
 			:documentId="documentId"
 			:startLine="startLine"
 			:endLine="endLine"
-			:pendingChangesByChat="pendingChangesByChat"
 			@close="emit('update:open', false)"
 			@clearSelection="handleClearSelection"
 			@documentUpdated="handleDocumentUpdated"
-			@documentChanged="handleDocumentChanged"
-			@acceptChanges="handleAcceptChanges"
-			@rejectChanges="handleRejectChanges"
-			@discardChatChanges="handleDiscardChatChanges"
 		/>
 	</div>
 </template>
@@ -30,7 +25,6 @@ interface Props {
 	documentId: string;
 	startLine?: number;
 	endLine?: number;
-	pendingChangesByChat?: Record<string, boolean>;
 }
 
 const props = defineProps<Props>();
@@ -40,15 +34,6 @@ const emit = defineEmits<{
 	'width-changed': [width: number];
 	clearSelection: [];
 	documentUpdated: [];
-	documentChanged: [change: {
-		stepNumber: number;
-		operation: string;
-		chatId: string;
-		changes: Array<{ lineNumber: number; type: 'added' | 'deleted'; text?: string }>;
-	}];
-	acceptChanges: [stepNumber: number];
-	rejectChanges: [stepNumber: number];
-	discardChatChanges: [chatId: string];
 }>();
 
 // Chat dock width with persistence
@@ -112,27 +97,6 @@ const handleClearSelection = () => {
 
 const handleDocumentUpdated = () => {
 	emit('documentUpdated');
-};
-
-const handleDocumentChanged = (change: {
-	stepNumber: number;
-	operation: string;
-	chatId: string;
-	changes: Array<{ lineNumber: number; type: 'added' | 'deleted'; text?: string }>;
-}) => {
-	emit('documentChanged', change);
-};
-
-const handleAcceptChanges = (stepNumber: number) => {
-	emit('acceptChanges', stepNumber);
-};
-
-const handleRejectChanges = (stepNumber: number) => {
-	emit('rejectChanges', stepNumber);
-};
-
-const handleDiscardChatChanges = (chatId: string) => {
-	emit('discardChatChanges', chatId);
 };
 
 </script>

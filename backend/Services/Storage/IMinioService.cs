@@ -10,5 +10,4 @@ public interface IMinioService
     Task DeleteDirectoryAsync(string bucketName, string prefix);
     Task<List<string>> ListFilesAsync(string bucketName, string prefix);
     Task<string> GetPresignedUrlAsync(string bucketName, string objectName, int expirySeconds = 3600);
-    Task<string> GetPresignedPutUrlAsync(string bucketName, string objectName, int expirySeconds = 3600);
 }

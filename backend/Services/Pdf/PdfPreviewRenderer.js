@@ -634,6 +634,40 @@
         return Math.max(0, level - 1);
     }
 
+    const BLOCK_TAGS = new Set([
+        'P', 'DIV', 'BLOCKQUOTE', 'PRE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+        'UL', 'OL', 'TABLE', 'FIGURE', 'HR'
+    ]);
+
+    function injectMarkerIntoFirstBlock(li, markerText) {
+        const firstChild = li.firstElementChild;
+        if (!firstChild || !BLOCK_TAGS.has(firstChild.tagName)) {
+            return false;
+        }
+        if (firstChild.tagName === 'INPUT' || firstChild.tagName === 'LABEL') {
+            return false;
+        }
+        const span = li.ownerDocument.createElement('span');
+        span.className = 'list-item-marker';
+        span.textContent = markerText;
+        firstChild.insertBefore(span, firstChild.firstChild);
+        return true;
+    }
+
+    function getFirstItemTextIndentCm(style, profile) {
+        if (style.listUseParagraphTextIndent === true) {
+            const paragraphStyle = profile?.entityStyles?.['paragraph'];
+            if (paragraphStyle?.textIndent !== undefined && paragraphStyle.textIndent > 0) {
+                return paragraphStyle.textIndent;
+            }
+            return 0;
+        }
+        if (style.textIndent !== undefined && style.textIndent > 0) {
+            return style.textIndent;
+        }
+        return 0;
+    }
+
     function calculateListIndent(style, profile, nestingLevel) {
         if (style.listUseParagraphTextIndent === true) {
             const paragraphStyle = profile?.entityStyles?.['paragraph'];
@@ -661,20 +695,37 @@
 
             el.id = elId;
             el.setAttribute('data-type', 'unordered-list');
-            el.setAttribute('style', styleToCSS(listStyle));
-            if (selectable) el.classList.add('element-selectable');
 
-            const listItems = el.querySelectorAll('li');
-            listItems.forEach((li) => {
+            const firstItemTextIndentCm = getFirstItemTextIndentCm(style, profile);
+            const listItems = Array.from(el.querySelectorAll(':scope > li'));
+            let hasInjectedMarker = false;
+            listItems.forEach((li, index) => {
+                const injected = injectMarkerIntoFirstBlock(li, '\u2022 ');
+                if (injected) hasInjectedMarker = true;
+
                 const nestingLevel = calculateListItemLevel(li);
+                const parts = [];
+
                 const indentValue = calculateListIndent(style, profile, nestingLevel);
-                
                 if (indentValue !== null && indentValue !== 0) {
                     const indentPt = indentValue * 2.83465;
-                    const currentStyle = li.getAttribute('style') || '';
-                    li.setAttribute('style', `${currentStyle}; margin-left: ${indentPt}pt;`.trim());
+                    parts.push('margin-left: ' + indentPt + 'pt');
                 }
+
+                if (index === 0 && firstItemTextIndentCm > 0) {
+                    parts.push('text-indent: ' + firstItemTextIndentCm + 'cm');
+                } else {
+                    parts.push('text-indent: 0');
+                }
+
+                const currentStyle = li.getAttribute('style') || '';
+                const newStyle = [currentStyle].concat(parts).filter(Boolean).join('; ').replace(/;+/g, ';').trim();
+                li.setAttribute('style', newStyle);
             });
+
+            const listCss = styleToCSS(listStyle) + (hasInjectedMarker ? '; list-style: none' : '; list-style-position: inside');
+            el.setAttribute('style', listCss);
+            if (selectable) el.classList.add('element-selectable');
         });
     }
 
@@ -689,20 +740,40 @@
 
             el.id = elId;
             el.setAttribute('data-type', 'ordered-list');
-            el.setAttribute('style', styleToCSS(listStyle));
-            if (selectable) el.classList.add('element-selectable');
 
-            const listItems = el.querySelectorAll('li');
-            listItems.forEach((li) => {
+            const firstItemTextIndentCm = getFirstItemTextIndentCm(style, profile);
+            const start = el.start !== undefined ? el.start : 1;
+
+            const listItems = Array.from(el.querySelectorAll(':scope > li'));
+            let hasInjectedMarker = false;
+            listItems.forEach((li, index) => {
+                const markerNum = start + index;
+                const injected = injectMarkerIntoFirstBlock(li, markerNum + '. ');
+                if (injected) hasInjectedMarker = true;
+
                 const nestingLevel = calculateListItemLevel(li);
+                const parts = [];
+
                 const indentValue = calculateListIndent(style, profile, nestingLevel);
-                
                 if (indentValue !== null && indentValue !== 0) {
                     const indentPt = indentValue * 2.83465;
-                    const currentStyle = li.getAttribute('style') || '';
-                    li.setAttribute('style', `${currentStyle}; margin-left: ${indentPt}pt;`.trim());
+                    parts.push('margin-left: ' + indentPt + 'pt');
                 }
+
+                if (index === 0 && firstItemTextIndentCm > 0) {
+                    parts.push('text-indent: ' + firstItemTextIndentCm + 'cm');
+                } else {
+                    parts.push('text-indent: 0');
+                }
+
+                const currentStyle = li.getAttribute('style') || '';
+                const newStyle = [currentStyle].concat(parts).filter(Boolean).join('; ').replace(/;+/g, ';').trim();
+                li.setAttribute('style', newStyle);
             });
+
+            const listCss = styleToCSS(listStyle) + (hasInjectedMarker ? '; list-style: none' : '; list-style-position: inside');
+            el.setAttribute('style', listCss);
+            if (selectable) el.classList.add('element-selectable');
         });
     }
 
@@ -1534,8 +1605,12 @@
                 const fontFamily = pageNumbers.fontFamily ? `font-family: ${pageNumbers.fontFamily};` : '';
                 const fontStyle = pageNumbers.fontStyle ? `font-style: ${pageNumbers.fontStyle};` : '';
                 const textAlign = `text-align: ${pageNumbers.align || 'center'};`;
+                // Get bottomOffset from profile settings (supports null/undefined, converts to number)
+                const bottomOffset = (pageNumbers.bottomOffset !== undefined && pageNumbers.bottomOffset !== null) ? Number(pageNumbers.bottomOffset) : 0;
+                // Use margin-bottom instead of padding-bottom to create space from the bottom of the footer
+                const marginBottom = bottomOffset > 0 ? `margin-bottom: ${bottomOffset}px;` : '';
 
-                footer.innerHTML = `<div style="${fontFamily} ${fontStyle} font-size: ${fontSize}pt; ${textAlign} width: 100%; color: #000;">${format}</div>`;
+                footer.innerHTML = `<div style="${fontFamily} ${fontStyle} font-size: ${fontSize}pt; ${textAlign} width: 100%; color: #000; ${marginBottom}">${format}</div>`;
                 pageDiv.appendChild(footer);
             }
 
@@ -1564,22 +1639,6 @@
                         }
                     });
 
-                    // Draw a translucent marker for footer area (if footer exists)
-                    const footerEl = pageEl.querySelector('.document-preview__footer');
-                    if (footerEl) {
-                        const fh = footerEl.getBoundingClientRect().height || footerEl.offsetHeight || 0;
-                        const marker = document.createElement('div');
-                        marker.style.position = 'absolute';
-                        marker.style.left = '0';
-                        marker.style.right = '0';
-                        marker.style.height = `${fh}px`;
-                        marker.style.bottom = '0';
-                        marker.style.background = 'rgba(0,0,255,0.06)';
-                        marker.style.pointerEvents = 'none';
-                        marker.style.zIndex = '9999';
-                        pageEl.appendChild(marker);
-                        console.log(`Footer marker added on page ${pageIndex + 1}, footerHeight=${Math.round(fh)}px`);
-                    }
                 });
             } catch (err) {
                 console.warn('debugPageLayout failed', err);

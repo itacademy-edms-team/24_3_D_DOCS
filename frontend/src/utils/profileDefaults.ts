@@ -131,6 +131,7 @@ export function getDefaultProfileData(): ProfileData {
 				fontWeight: 'normal',
 				fontStyle: 'normal',
 				textAlign: 'left',
+				textIndent: 1.25, // см, красная строка для первого элемента (когда не из параграфа)
 				lineHeight: defaultLineHeight,
 				lineHeightUseGlobal: true,
 				marginTop: 6,
@@ -145,6 +146,7 @@ export function getDefaultProfileData(): ProfileData {
 				fontWeight: 'normal',
 				fontStyle: 'normal',
 				textAlign: 'left',
+				textIndent: 1.25, // см, красная строка для первого элемента (когда не из параграфа)
 				lineHeight: defaultLineHeight,
 				lineHeightUseGlobal: true,
 				marginTop: 6,

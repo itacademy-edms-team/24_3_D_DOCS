@@ -10,7 +10,7 @@ import HttpError from './error/HttpError';
 import NotFoundError from './error/NotFoundError';
 import ServerError from './error/ServerError';
 
-export interface HttpClientOptions {
+interface HttpClientOptions {
 	baseURL: string;
 	headers?: Record<string, string>;
 }

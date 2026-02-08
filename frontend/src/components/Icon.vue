@@ -110,7 +110,7 @@ const ariaRole = computed(() => (props.decorative ? 'img' : 'img'))
   flex-shrink: 0;
 }
 
-.icon svg {
+.icon :deep(svg) {
   width: 100%;
   height: 100%;
   display: block;

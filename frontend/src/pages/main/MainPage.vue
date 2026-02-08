@@ -118,6 +118,7 @@
 					:isLoading="isLoading"
 					:sortBy="sortBy"
 					:sortOrder="sortOrder"
+					:generatingStates="generatingStates"
 					@update:selectedIds="selectedItems = $event"
 					@update:sortBy="sortBy = $event"
 					@update:sortOrder="sortOrder = $event"
@@ -323,6 +324,12 @@ import ThemeToggle from '@/features/theme-toggle/ThemeToggle.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import Icon from '@/components/Icon.vue';
 import { getDefaultProfileData } from '@/utils/profileDefaults';
+import {
+	saveGenerationState,
+	removeGenerationState,
+	getGenerationStates,
+	isGenerating,
+} from '@/utils/generationState';
 import type { Profile } from '@/entities/profile/types';
 import type { DocumentMeta } from '@/entities/document/types';
 
@@ -342,6 +349,9 @@ const documents = ref<DocumentMeta[]>([]);
 const titlePages = ref<any[]>([]);
 const showCreateModal = ref(false);
 const isCreating = ref(false);
+
+// Состояние генерации для каждого документа
+const generatingStates = ref<Map<string, Set<'pdf' | 'ddoc'>>>(new Map());
 
 const user = computed(() => authStore.user);
 
@@ -579,6 +589,21 @@ function handleDocumentCreated(documentId: string) {
 	loadData();
 }
 
+function updateGeneratingState(documentId: string, type: 'pdf' | 'ddoc', isGenerating: boolean) {
+	if (!generatingStates.value.has(documentId)) {
+		generatingStates.value.set(documentId, new Set());
+	}
+	const types = generatingStates.value.get(documentId)!;
+	if (isGenerating) {
+		types.add(type);
+	} else {
+		types.delete(type);
+	}
+	if (types.size === 0) {
+		generatingStates.value.delete(documentId);
+	}
+}
+
 function handleDocumentAction(document: DocumentMeta, action: string) {
 	if (action === 'open') {
 		router.push(`/document/${document.id}`);
@@ -601,37 +626,74 @@ function handleDownload(item: Profile | DocumentMeta) {
 	// TODO: Implement download functionality
 }
 
+function downloadFile(blob: Blob, filename: string) {
+	const url = URL.createObjectURL(blob);
+	const link = window.document.createElement('a');
+	link.href = url;
+	link.download = filename;
+	window.document.body.appendChild(link);
+	link.click();
+	window.document.body.removeChild(link);
+	URL.revokeObjectURL(url);
+}
+
 async function handleExportPdf(document: DocumentMeta) {
+	if (isGenerating(document.id, 'pdf')) {
+		return; // Уже идет генерация
+	}
+
+	// Сохраняем состояние генерации
+	saveGenerationState(document.id, 'pdf');
+	updateGeneratingState(document.id, 'pdf', true);
+
 	try {
 		const blob = await DocumentAPI.generatePdf(document.id);
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `${document.name}.pdf`;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
-	} catch (error) {
+		downloadFile(blob, `${document.name}.pdf`);
+	} catch (error: any) {
 		console.error('Failed to export PDF:', error);
-		alert('Ошибка при экспорте PDF');
+		let errorMessage = 'Ошибка при экспорте PDF. ';
+		if (error?.response?.status === 500) {
+			errorMessage += 'Ошибка на сервере при генерации PDF.';
+		} else if (error?.response?.status === 404) {
+			errorMessage += 'Документ не найден.';
+		} else if (error?.message) {
+			errorMessage += error.message;
+		}
+		alert(errorMessage);
+	} finally {
+		// Удаляем состояние генерации
+		removeGenerationState(document.id, 'pdf');
+		updateGeneratingState(document.id, 'pdf', false);
 	}
 }
 
 async function handleExportDdoc(document: DocumentMeta) {
+	if (isGenerating(document.id, 'ddoc')) {
+		return; // Уже идет генерация
+	}
+
+	// Сохраняем состояние генерации
+	saveGenerationState(document.id, 'ddoc');
+	updateGeneratingState(document.id, 'ddoc', true);
+
 	try {
 		const blob = await DocumentAPI.exportDocument(document.id);
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `${document.name}.ddoc`;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
-	} catch (error) {
+		downloadFile(blob, `${document.name}.ddoc`);
+	} catch (error: any) {
 		console.error('Failed to export .ddoc:', error);
-		alert('Ошибка при экспорте документа');
+		let errorMessage = 'Ошибка при экспорте документа. ';
+		if (error?.response?.status === 500) {
+			errorMessage += 'Ошибка на сервере при экспорте.';
+		} else if (error?.response?.status === 404) {
+			errorMessage += 'Документ не найден.';
+		} else if (error?.message) {
+			errorMessage += error.message;
+		}
+		alert(errorMessage);
+	} finally {
+		// Удаляем состояние генерации
+		removeGenerationState(document.id, 'ddoc');
+		updateGeneratingState(document.id, 'ddoc', false);
 	}
 }
 
@@ -671,6 +733,13 @@ watch([activeTab, debouncedSearchQuery], () => {
 });
 
 onMounted(async () => {
+	// Восстанавливаем состояние генерации из localStorage
+	// Это позволяет видеть процесс генерации даже после обновления страницы
+	const savedStates = getGenerationStates();
+	savedStates.forEach((state) => {
+		updateGeneratingState(state.documentId, state.type, true);
+	});
+
 	// Проверяем авторизацию перед загрузкой данных
 	if (authStore.isAuth) {
 		try {

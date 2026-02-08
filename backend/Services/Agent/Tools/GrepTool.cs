@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using RusalProject.Services.Documents;
+using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Agent.Tools;
 

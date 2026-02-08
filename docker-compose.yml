@@ -92,7 +92,6 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:5159
-      Ollama__BaseUrl: http://host.docker.internal:11434
     ports:
       - "5159:5159"
     volumes:

@@ -5,7 +5,7 @@ import { getElementBounds, type ElementBounds } from './elementUtils';
 /**
  * Result of applying snap
  */
-export interface SnapResult {
+interface SnapResult {
 	x: number;
 	y: number;
 	activeGuides: ActiveSnapGuide[];

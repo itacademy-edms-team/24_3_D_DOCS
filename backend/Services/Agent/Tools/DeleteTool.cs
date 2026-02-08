@@ -1,5 +1,5 @@
 using System.Text.Json;
-using RusalProject.Services.Documents;
+using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Agent.Tools;
 

@@ -15,7 +15,7 @@ export const PAGE_SIZES = {
 	A5: { width: 148, height: 210 },
 } as const;
 
-export type PageSizeName = keyof typeof PAGE_SIZES;
+type PageSizeName = keyof typeof PAGE_SIZES;
 
 /**
  * Page dimensions in pixels

@@ -1,6 +1,6 @@
 import HttpClient from './HttpClient';
 
-export interface UploadAssetResponseDTO {
+interface UploadAssetResponseDTO {
 	fileName: string;
 	originalFileName: string;
 	size: number;

@@ -165,6 +165,25 @@
 						/>
 						Использовать красную строку из параграфа
 					</label>
+					<small class="entity-style-form__hint">
+						Красная строка применяется только к первой строке первого элемента списка
+					</small>
+				</div>
+				<div
+					v-if="!localStyle.listUseParagraphTextIndent"
+					class="entity-style-form__field"
+				>
+					<label class="entity-style-form__label">Отступ первой строки</label>
+					<Slider
+						v-model="localStyle.textIndent"
+						:min="0"
+						:max="5"
+						:step="0.1"
+						unit="см"
+					/>
+					<small class="entity-style-form__hint">
+						Красная строка только для первого элемента
+					</small>
 				</div>
 				<div
 					v-if="!localStyle.listUseParagraphTextIndent"

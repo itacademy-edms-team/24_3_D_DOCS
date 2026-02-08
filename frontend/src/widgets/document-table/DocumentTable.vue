@@ -91,17 +91,23 @@
 							</button>
 							<button
 								class="document-table__action-btn"
+								:class="{ 'document-table__action-btn--generating': isGeneratingPdf(document.id) }"
 								@click.stop="handleAction(document, 'export-pdf')"
+								:disabled="isGeneratingPdf(document.id)"
 								title="Экспорт PDF"
 							>
-								<Icon name="description" size="18" />
+								<span v-if="isGeneratingPdf(document.id)" class="document-table__spinner"></span>
+								<Icon v-else name="description" size="18" />
 							</button>
 							<button
 								class="document-table__action-btn"
+								:class="{ 'document-table__action-btn--generating': isGeneratingDdoc(document.id) }"
 								@click.stop="handleAction(document, 'export-ddoc')"
+								:disabled="isGeneratingDdoc(document.id)"
 								title="Экспорт .ddoc"
 							>
-								<Icon name="archive" size="18" />
+								<span v-if="isGeneratingDdoc(document.id)" class="document-table__spinner"></span>
+								<Icon v-else name="archive" size="18" />
 							</button>
 							<button
 								class="document-table__action-btn document-table__action-btn--delete"
@@ -134,13 +140,23 @@ interface Props {
 	isLoading?: boolean;
 	sortBy?: 'name' | 'updatedAt';
 	sortOrder?: 'asc' | 'desc';
+	generatingStates?: Map<string, Set<'pdf' | 'ddoc'>>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	isLoading: false,
 	sortBy: 'updatedAt',
 	sortOrder: 'desc',
+	generatingStates: () => new Map(),
 });
+
+const isGeneratingPdf = (documentId: string): boolean => {
+	return props.generatingStates?.get(documentId)?.has('pdf') ?? false;
+};
+
+const isGeneratingDdoc = (documentId: string): boolean => {
+	return props.generatingStates?.get(documentId)?.has('ddoc') ?? false;
+};
 
 const emit = defineEmits<{
 	'update:selectedIds': [ids: Set<string>];
@@ -379,6 +395,7 @@ const formatDate = (dateString: string): string => {
 	justify-content: center;
 	color: var(--text-secondary);
 	transition: all 0.2s ease;
+	position: relative;
 }
 
 .document-table__action-btn:hover {
@@ -389,13 +406,88 @@ const formatDate = (dateString: string): string => {
 }
 
 .document-table__action-btn:active {
-	transform: translateY(0);
+	transform: translateY(0) scale(0.95);
+}
+
+.document-table__action-btn:not(:disabled):active {
+	background: var(--bg-tertiary);
 }
 
 .document-table__action-btn--delete:hover {
 	background: rgba(239, 68, 68, 0.1);
 	color: var(--danger);
 	border-color: var(--danger);
+}
+
+.document-table__action-btn--generating {
+	background: var(--accent-light) !important;
+	border-color: var(--accent) !important;
+	color: var(--accent) !important;
+	cursor: not-allowed;
+	pointer-events: none;
+	animation: generatingPulse 2s ease-in-out infinite;
+	position: relative;
+	overflow: hidden;
+}
+
+.document-table__action-btn--generating::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: -100%;
+	width: 100%;
+	height: 100%;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		rgba(var(--accent-rgb, 16, 185, 129), 0.3),
+		transparent
+	);
+	animation: shimmer 2s infinite;
+}
+
+.document-table__action-btn:disabled {
+	cursor: not-allowed;
+}
+
+.document-table__action-btn:disabled:hover {
+	transform: none;
+	background: transparent;
+}
+
+.document-table__spinner {
+	display: inline-block;
+	width: 18px;
+	height: 18px;
+	border: 2px solid var(--accent-light);
+	border-top-color: var(--accent);
+	border-right-color: var(--accent);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes generatingPulse {
+	0%, 100% {
+		box-shadow: 0 0 0 0 rgba(var(--accent-rgb, 16, 185, 129), 0.4);
+	}
+	50% {
+		box-shadow: 0 0 0 4px rgba(var(--accent-rgb, 16, 185, 129), 0);
+	}
+}
+
+@keyframes shimmer {
+	0% {
+		left: -100%;
+	}
+	100% {
+		left: 100%;
+	}
 }
 
 .document-table__empty-row {

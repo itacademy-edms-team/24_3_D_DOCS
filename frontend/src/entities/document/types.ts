@@ -56,17 +56,3 @@ export interface UpdateDocumentContentDTO {
 export interface UpdateDocumentOverridesDTO {
 	overrides: Record<string, any>;
 }
-
-export interface LineEmbeddingStatus {
-	lineNumber: number; // 0-based
-	isCovered: boolean;
-	blockId?: string;
-	isEmpty: boolean;
-}
-
-export interface EmbeddingStatus {
-	coveragePercentage: number;
-	totalLines: number;
-	coveredLines: number;
-	lineStatuses: LineEmbeddingStatus[];
-}

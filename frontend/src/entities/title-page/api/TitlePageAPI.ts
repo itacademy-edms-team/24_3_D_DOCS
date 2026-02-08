@@ -1,6 +1,6 @@
 import HttpClient from '@/shared/api/HttpClient';
 
-export interface TitlePage {
+interface TitlePage {
 	id: string;
 	creatorId: string;
 	name: string;

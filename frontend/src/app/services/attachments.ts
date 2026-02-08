@@ -1,6 +1,6 @@
 import HttpClient from '@/shared/api/HttpClient';
 
-export type AttachmentItem = {
+type AttachmentItem = {
 	id: string;
 	creatorId: string;
 	documentId?: string | null;

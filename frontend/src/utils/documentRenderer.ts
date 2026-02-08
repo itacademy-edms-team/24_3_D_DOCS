@@ -36,6 +36,16 @@ interface RenderDocumentOptions {
 	selectable?: boolean;
 }
 
+const markdownParser = new MarkdownIt({
+	html: true,
+	linkify: true,
+	breaks: false,
+});
+markdownParser.enable(['table']);
+markdownParser.use(markdownItSup);
+markdownParser.use(markdownItSub);
+markdownParser.use(markdownItMark);
+
 /**
  * Render markdown document to HTML with applied styles
  * Pure function - no side effects (except DOM manipulation inside, but isolated)
@@ -88,25 +98,8 @@ export function renderDocument(options: RenderDocumentOptions): string {
 	// 2. Process LaTeX formulas (after preprocessing, before markdown parsing)
 	const contentWithFormulas = renderLatexText(preprocessedMarkdown);
 
-	// 3. Markdown -> HTML using markdown-it with plugins
-	// Configure markdown-it with GFM and plugins for sup/sub/mark
-	const md = new MarkdownIt({
-		html: true,
-		linkify: true,
-		breaks: false, // Don't convert single line breaks to <br>
-	});
-
-	// Use GFM table syntax and strikethrough (though we handle it manually)
-	md.enable(['table']);
-
-	// Add plugins for superscript, subscript, and highlight
-	// Note: markdown-it-sup supports ^text^ (single caret) by default
-	// We handle ^^text^^ (double caret) in preprocessing step above
-	md.use(markdownItSup); // Supports ^text^ (single caret)
-	md.use(markdownItSub); // Supports ~text~ (single tilde, but not ~~text~~ which is strikethrough, handled in preprocessing)
-	md.use(markdownItMark); // Supports ==text==
-
-	const rawHtml = md.render(contentWithFormulas);
+	// 3. Markdown -> HTML using a shared markdown-it parser instance
+	const rawHtml = markdownParser.render(contentWithFormulas);
 
 	// 3. Parse HTML for style application
 	const parser = new DOMParser();

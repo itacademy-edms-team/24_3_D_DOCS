@@ -11,6 +11,5 @@ public enum BlockType
     Formula,
     Image,
     Quote,
-    HorizontalRule,
-    Link
+    HorizontalRule
 }

@@ -7,14 +7,26 @@ import type { EntityType } from '../renderUtils';
  * Render LaTeX formulas in markdown text
  * Pure function - no side effects
  */
+const getKatexOptions = (displayMode: boolean) => ({
+	displayMode,
+	throwOnError: false,
+	strict: 'ignore' as const,
+});
+
 export function renderLatex(text: string): string {
+	const displayFormulaCache = new Map<string, string>();
+	const inlineFormulaCache = new Map<string, string>();
+
 	// Block formulas: $$...$$ or \[...\]
 	text = text.replace(/\$\$([^$]+)\$\$/g, (_, formula) => {
 		try {
-			const html = katex.renderToString(formula.trim(), {
-				displayMode: true,
-				throwOnError: false,
-			});
+			const normalized = formula.trim();
+			const cached = displayFormulaCache.get(normalized);
+			if (cached) {
+				return `<div class="formula-block">${cached}</div>`;
+			}
+			const html = katex.renderToString(normalized, getKatexOptions(true));
+			displayFormulaCache.set(normalized, html);
 			return `<div class="formula-block">${html}</div>`;
 		} catch {
 			return `<div class="formula-block formula-error">${formula}</div>`;
@@ -24,10 +36,13 @@ export function renderLatex(text: string): string {
 	// Block formulas: \[...\]
 	text = text.replace(/\\\[([^\]]+)\\\]/g, (_, formula) => {
 		try {
-			const html = katex.renderToString(formula.trim(), {
-				displayMode: true,
-				throwOnError: false,
-			});
+			const normalized = formula.trim();
+			const cached = displayFormulaCache.get(normalized);
+			if (cached) {
+				return `<div class="formula-block">${cached}</div>`;
+			}
+			const html = katex.renderToString(normalized, getKatexOptions(true));
+			displayFormulaCache.set(normalized, html);
 			return `<div class="formula-block">${html}</div>`;
 		} catch {
 			return `<div class="formula-block formula-error">${formula}</div>`;
@@ -37,10 +52,14 @@ export function renderLatex(text: string): string {
 	// Inline formulas: $...$ or \(...\)
 	text = text.replace(/\$([^$\n]+)\$/g, (_, formula) => {
 		try {
-			return katex.renderToString(formula.trim(), {
-				displayMode: false,
-				throwOnError: false,
-			});
+			const normalized = formula.trim();
+			const cached = inlineFormulaCache.get(normalized);
+			if (cached) {
+				return `<span class="formula-inline">${cached}</span>`;
+			}
+			const html = katex.renderToString(normalized, getKatexOptions(false));
+			inlineFormulaCache.set(normalized, html);
+			return `<span class="formula-inline">${html}</span>`;
 		} catch {
 			return `<span class="formula-error">${formula}</span>`;
 		}
@@ -49,10 +68,14 @@ export function renderLatex(text: string): string {
 	// Inline formulas: \(...\)
 	text = text.replace(/\\\(([^)]+)\\\)/g, (_, formula) => {
 		try {
-			return katex.renderToString(formula.trim(), {
-				displayMode: false,
-				throwOnError: false,
-			});
+			const normalized = formula.trim();
+			const cached = inlineFormulaCache.get(normalized);
+			if (cached) {
+				return `<span class="formula-inline">${cached}</span>`;
+			}
+			const html = katex.renderToString(normalized, getKatexOptions(false));
+			inlineFormulaCache.set(normalized, html);
+			return `<span class="formula-inline">${html}</span>`;
 		} catch {
 			return `<span class="formula-error">${formula}</span>`;
 		}
@@ -161,5 +184,25 @@ export function renderFormulas(
 				parent.insertBefore(caption, formulaWrapper.nextSibling);
 			}
 		}
+	});
+
+	// Apply formula style to inline formulas as well
+	const inlineFormulas = Array.from(doc.querySelectorAll('.formula-inline')) as Element[];
+	inlineFormulas.forEach((inlineFormula) => {
+		const content = inlineFormula.textContent || '';
+		const inlineId = generateElementId('formula-inline', content.slice(0, 50), usedIds);
+		const inlineStyle = getFinalStyle('formula' as EntityType, inlineId, profile, overrides);
+		const inlineFinalStyle: EntityStyle = {
+			...inlineStyle,
+			marginTop: undefined,
+			marginBottom: undefined,
+			marginLeft: undefined,
+			marginRight: undefined,
+		};
+
+		inlineFormula.setAttribute('id', inlineId);
+		inlineFormula.setAttribute('data-type', 'formula-inline');
+		inlineFormula.setAttribute('style', styleToCSS(inlineFinalStyle));
+		if (selectable) (inlineFormula as HTMLElement).classList.add('element-selectable');
 	});
 }

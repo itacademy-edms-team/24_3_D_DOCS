@@ -5,5 +5,7 @@ public enum AgentMode
     Default,
     CaptionGeneration,
     ExplainSelection,
-    Refactor
+    Refactor,
+    QuestionAnswering,
+    DocumentEditing
 }

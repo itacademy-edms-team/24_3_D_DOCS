@@ -7,7 +7,6 @@ import type {
 	UpdateDocumentContentDTO,
 	UpdateDocumentOverridesDTO,
 	DocumentMetadata,
-	EmbeddingStatus,
 } from '../types';
 
 class DocumentAPI extends HttpClient {
@@ -79,16 +78,6 @@ class DocumentAPI extends HttpClient {
 
 	async downloadPdf(id: string): Promise<Blob> {
 		return this.getBlob(`/api/documents/${id}/pdf`);
-	}
-
-	async getEmbeddingStatus(id: string): Promise<EmbeddingStatus> {
-		return this.get<EmbeddingStatus>(`/api/documents/${id}/embeddings/status`);
-	}
-
-	async updateEmbeddings(id: string): Promise<void> {
-		return this.post<void>(`/api/documents/${id}/embeddings/update`, {}, {
-			timeout: 30 * 60 * 1000, // 30 minutes timeout for embedding generation
-		});
 	}
 
 	async exportDocument(id: string): Promise<Blob> {

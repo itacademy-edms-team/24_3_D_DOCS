@@ -26,4 +26,5 @@ public class PageNumberSettings
     public double FontSize { get; set; } = 12; // pt
     public string FontStyle { get; set; } = "normal"; // normal, italic
     public string FontFamily { get; set; } = "Times New Roman";
+    public double? BottomOffset { get; set; } // Отступ снизу для номера страницы (px)
 }

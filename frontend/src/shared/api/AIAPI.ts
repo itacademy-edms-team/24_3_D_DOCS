@@ -1,4 +1,14 @@
 import HttpClient from './HttpClient';
+import { getAccessToken } from '@/shared/auth/tokenStorage';
+
+export enum AgentMode {
+	Default = 'Default',
+	CaptionGeneration = 'CaptionGeneration',
+	ExplainSelection = 'ExplainSelection',
+	Refactor = 'Refactor',
+	QuestionAnswering = 'QuestionAnswering',
+	DocumentEditing = 'DocumentEditing'
+}
 
 export interface AgentRequestDTO {
 	documentId: string;
@@ -6,6 +16,7 @@ export interface AgentRequestDTO {
 	startLine?: number;
 	endLine?: number;
 	chatId?: string;
+	mode?: AgentMode;
 }
 
 export interface AgentResponseDTO {
@@ -27,22 +38,6 @@ export interface ToolCallDTO {
 	result?: string;
 }
 
-export interface RAGSearchRequestDTO {
-	documentId: string;
-	query: string;
-	topK?: number;
-}
-
-export interface RAGSearchResultDTO {
-	blockId: string;
-	blockType: string;
-	startLine: number;
-	endLine: number;
-	rawText: string;
-	normalizedText: string;
-	score: number;
-}
-
 class AIAPI extends HttpClient {
 	constructor() {
 		super();
@@ -60,40 +55,9 @@ class AIAPI extends HttpClient {
 		onStep?: (step: AgentStepDTO) => void,
 		signal?: AbortSignal
 	): Promise<AgentResponseDTO> {
-		// #region agent log
-		try {
-			fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sessionId: 'debug-session',
-					runId: 'run1',
-					hypothesisId: 'B',
-					location: 'AIAPI.ts:54',
-					message: 'AIAPI.agent HTTP request',
-					data: {
-						url: '/api/ai/agent',
-						requestBody: request
-					},
-					timestamp: Date.now()
-				})
-			}).catch(() => {});
-		} catch {}
-		// #endregion
-
 		// Получаем baseURL и токен авторизации
 		const baseURL = this.instance.defaults.baseURL || 'http://localhost:5159';
-		const authData = localStorage.getItem('auth-storage');
-		let accessToken = '';
-		if (authData) {
-			try {
-				const parsed = JSON.parse(authData);
-				accessToken = parsed?.state?.accessToken || parsed?.accessToken || '';
-			} catch {
-				// Игнорируем ошибки парсинга
-			}
-		}
-
+		const accessToken = getAccessToken() || '';
 		const url = `${baseURL}/api/ai/agent`;
 		const headers: HeadersInit = {
 			'Content-Type': 'application/json',
@@ -166,27 +130,6 @@ class AIAPI extends HttpClient {
 						if (done) {
 							console.log('Stream ended. Total chunks received:', chunkCount, 'Final response:', finalResponse ? 'present' : 'missing');
 							if (finalResponse) {
-								// #region agent log
-								try {
-									fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-										method: 'POST',
-										headers: { 'Content-Type': 'application/json' },
-										body: JSON.stringify({
-											sessionId: 'debug-session',
-											runId: 'run1',
-											hypothesisId: 'B',
-											location: 'AIAPI.ts:74',
-											message: 'AIAPI.agent SSE stream completed',
-											data: {
-												isComplete: finalResponse.isComplete,
-												stepsCount: finalResponse.steps?.length ?? 0,
-												finalMessageLength: finalResponse.finalMessage?.length ?? 0
-											},
-											timestamp: Date.now()
-										})
-									}).catch(() => {});
-								} catch {}
-								// #endregion
 								resolve(finalResponse);
 							} else {
 								reject(new Error('Stream ended without complete event'));
@@ -287,33 +230,6 @@ class AIAPI extends HttpClient {
 
 			processChunk();
 		});
-	}
-
-	/**
-	 * RAG поиск по документу
-	 */
-	async ragSearch(
-		documentId: string,
-		query: string,
-		topK: number = 5
-	): Promise<RAGSearchResultDTO[]> {
-		const request: RAGSearchRequestDTO = {
-			documentId,
-			query,
-			topK,
-		};
-		return this.instance
-			.post<RAGSearchResultDTO[]>('/api/ai/rag/search', request)
-			.then((response) => response.data);
-	}
-
-	/**
-	 * Обновить эмбеддинги документа (заглушка)
-	 */
-	async updateEmbeddings(documentId: string): Promise<void> {
-		return this.instance
-			.post(`/api/ai/embeddings/update/${documentId}`)
-			.then(() => undefined);
 	}
 }
 

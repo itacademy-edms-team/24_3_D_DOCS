@@ -6,12 +6,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Chat;
-using RusalProject.Models.DTOs.RAG;
 using RusalProject.Services.Agent;
 using RusalProject.Services.Chat;
-using RusalProject.Services.Embedding;
-using RusalProject.Services.Ollama;
-using RusalProject.Services.RAG;
 
 namespace RusalProject.Controllers;
 
@@ -21,25 +17,19 @@ namespace RusalProject.Controllers;
 public class AIController : ControllerBase
 {
     private readonly IAgentService _agentService;
-    private readonly IRAGService _ragService;
-    private readonly IEmbeddingStorageService _embeddingStorageService;
-    private readonly IOllamaService _ollamaService;
     private readonly IChatService _chatService;
+    private readonly IAgentLogService _logService;
     private readonly ILogger<AIController> _logger;
 
     public AIController(
         IAgentService agentService,
-        IRAGService ragService,
-        IEmbeddingStorageService embeddingStorageService,
-        IOllamaService ollamaService,
         IChatService chatService,
+        IAgentLogService logService,
         ILogger<AIController> logger)
     {
         _agentService = agentService;
-        _ragService = ragService;
-        _embeddingStorageService = embeddingStorageService;
-        _ollamaService = ollamaService;
         _chatService = chatService;
+        _logService = logService;
         _logger = logger;
     }
 
@@ -87,12 +77,12 @@ public class AIController : ControllerBase
 
         // Настройка SSE (делаем это в начале, чтобы можно было отправлять события в любом случае)
         Response.ContentType = "text/event-stream";
-        Response.Headers.Add("Cache-Control", "no-cache");
-        Response.Headers.Add("Connection", "keep-alive");
-        Response.Headers.Add("X-Accel-Buffering", "no"); // Отключаем буферизацию в nginx
+        Response.Headers.Append("Cache-Control", "no-cache");
+        Response.Headers.Append("Connection", "keep-alive");
+        Response.Headers.Append("X-Accel-Buffering", "no"); // Отключаем буферизацию в nginx
         
         // Отключаем буферизацию ответа для streaming
-        Response.Headers.Add("X-Content-Type-Options", "nosniff");
+        Response.Headers.Append("X-Content-Type-Options", "nosniff");
         
         // Отправляем начальный комментарий для инициализации SSE соединения
         await SendSSEComment("SSE connection established");
@@ -319,106 +309,23 @@ public class AIController : ControllerBase
     }
 
     /// <summary>
-    /// Прямой RAG поиск по документу
+    /// Получить логи работы агента для документа
     /// </summary>
-    [HttpPost("rag/search")]
-    [ProducesResponseType(typeof(List<RAGSearchResult>), StatusCodes.Status200OK)]
+    [HttpGet("logs/{documentId}")]
+    [ProducesResponseType(typeof(List<AgentLogDTO>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> RAGSearch([FromBody] RAGSearchRequestDTO request)
+    public async Task<IActionResult> GetAgentLogs(Guid documentId, [FromQuery] Guid? chatSessionId = null)
     {
         try
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
             var userId = GetUserId();
-            var results = await _ragService.SearchAsync(
-                request.DocumentId,
-                userId,
-                request.Query,
-                request.TopK ?? 5
-            );
-
-            return Ok(results);
+            var logs = await _logService.GetLogsAsync(documentId, userId, chatSessionId);
+            return Ok(logs);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error performing RAG search");
-            return StatusCode(500, new { message = "Внутренняя ошибка сервера", details = ex.Message });
-        }
-    }
-
-    /// <summary>
-    /// Ручное обновление эмбеддингов для документа
-    /// </summary>
-    [HttpPost("embeddings/update/{documentId}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Task<IActionResult> UpdateEmbeddings(Guid documentId)
-    {
-        // Embeddings are updated automatically when using the agent endpoint
-        return Task.FromResult<IActionResult>(StatusCode(501, new { message = "Используйте endpoint агента - эмбеддинги обновляются автоматически" }));
-    }
-
-    /// <summary>
-    /// Тестовый endpoint для проверки работы LLM
-    /// </summary>
-    [HttpPost("test/llm")]
-    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> TestLLM([FromBody] TestLLMRequestDTO request)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(request.Message))
-            {
-                return BadRequest(new { message = "Message is required" });
-            }
-
-            var systemPrompt = "Ты - полезный ассистент. Отвечай кратко и по делу.";
-            var response = await _ollamaService.GenerateChatAsync(
-                systemPrompt,
-                request.Message,
-                null
-            );
-
-            return Ok(new { response });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error testing LLM");
-            return StatusCode(500, new { message = "Ошибка при обращении к LLM", details = ex.Message });
-        }
-    }
-
-    /// <summary>
-    /// Тестовый endpoint для проверки работы эмбеддингов
-    /// </summary>
-    [HttpPost("test/embedding")]
-    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> TestEmbedding([FromBody] TestEmbeddingRequestDTO request)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(request.Text))
-            {
-                return BadRequest(new { message = "Text is required" });
-            }
-
-            var embedding = await _ollamaService.GenerateEmbeddingAsync(request.Text);
-
-            return Ok(new { 
-                embeddingLength = embedding.Length,
-                firstFewValues = embedding.Take(5).ToArray()
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error testing embedding");
-            return StatusCode(500, new { message = "Ошибка при генерации эмбеддинга", details = ex.Message });
+            _logger.LogError(ex, "Error getting agent logs");
+            return StatusCode(500, new { message = "Ошибка при получении логов агента", details = ex.Message });
         }
     }
 }

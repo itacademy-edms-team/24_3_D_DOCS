@@ -9,24 +9,20 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
 using RusalProject.Services.Agent;
-using RusalProject.Services.Agent.Tools;
 using RusalProject.Services.Auth;
-using RusalProject.Services.Documents;
+using RusalProject.Services.Document;
 using RusalProject.Services.Attachment;
 using RusalProject.Services.Email;
-using RusalProject.Services.Embedding;
 using RusalProject.Services.Markdown;
-using RusalProject.Services.Ollama;
 using RusalProject.Services.Pdf;
 using RusalProject.Services.Profile;
-using RusalProject.Services.RAG;
 using RusalProject.Services.Storage;
 using RusalProject.Services.TitlePage;
 using RusalProject.Services.Chat;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Kestrel request timeout for long-running operations like embedding generation
+// Configure Kestrel request timeout for long-running operations
 builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
 {
     options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(30);
@@ -123,31 +119,12 @@ builder.Services.AddScoped<ITitlePageService, TitlePageService>();
 // PDF Services
 builder.Services.AddScoped<IPdfGeneratorService, PdfGeneratorService>();
 
-// Ollama Services
-builder.Services.AddSingleton<IOllamaService, OllamaService>();
-
 // Markdown Services
 builder.Services.AddScoped<IMarkdownParserService, MarkdownParserService>();
 
-// Embedding Services
-builder.Services.AddScoped<IEmbeddingStorageService, EmbeddingStorageService>();
-
-// RAG Services
-builder.Services.AddScoped<IRAGService, RAGService>();
-
-// Agent Tools
-builder.Services.AddScoped<RAGSearchTool>();
-builder.Services.AddScoped<TableSearchTool>();
-builder.Services.AddScoped<InsertTool>();
-builder.Services.AddScoped<EditTool>();
-builder.Services.AddScoped<DeleteTool>();
-builder.Services.AddScoped<WebSearchTool>();
-builder.Services.AddScoped<ImageAnalysisTool>();
-builder.Services.AddScoped<GetHeaderTool>();
-builder.Services.AddScoped<GetDateTimeTool>();
-builder.Services.AddScoped<GrepTool>();
-
 // Agent Services
+builder.Services.AddScoped<IAgentLogService, AgentLogService>();
+builder.Services.AddScoped<IDocumentAgent, DocumentAgent>();
 builder.Services.AddScoped<IAgentService, AgentService>();
 
 // Chat Services
@@ -202,31 +179,89 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    
     try
     {
         // Apply migrations
         var context = services.GetRequiredService<ApplicationDbContext>();
-        var pendingMigrations = context.Database.GetPendingMigrations().ToList();
-        Console.WriteLine($"Pending migrations: {string.Join(", ", pendingMigrations)}");
-        var appliedMigrations = context.Database.GetAppliedMigrations().ToList();
-        Console.WriteLine($"Applied migrations: {string.Join(", ", appliedMigrations)}");
-        context.Database.Migrate();
-        Console.WriteLine("Database migrations applied successfully.");
         
-        // Warm-up database connection (prevents cold start delay)
-        var userCount = context.Users.Count();
-        Console.WriteLine($"Database warm-up completed. Users count: {userCount}");
+        // Wait for database to be ready (retry logic)
+        var maxRetries = 10;
+        var retryDelay = TimeSpan.FromSeconds(2);
+        var dbReady = false;
+        
+        for (int i = 0; i < maxRetries; i++)
+        {
+            try
+            {
+                if (context.Database.CanConnect())
+                {
+                    dbReady = true;
+                    logger.LogInformation("Database connection established.");
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning($"Database connection attempt {i + 1}/{maxRetries} failed: {ex.Message}");
+                if (i < maxRetries - 1)
+                {
+                    Task.Delay(retryDelay).GetAwaiter().GetResult();
+                }
+            }
+        }
+        
+        if (!dbReady)
+        {
+            throw new InvalidOperationException("Failed to connect to database after multiple retries. Please check database configuration and ensure it is running.");
+        }
+        
+        var pendingMigrations = context.Database.GetPendingMigrations().ToList();
+        var appliedMigrations = context.Database.GetAppliedMigrations().ToList();
+        
+        logger.LogInformation($"Applied migrations: {string.Join(", ", appliedMigrations)}");
+        
+        if (pendingMigrations.Any())
+        {
+            logger.LogInformation($"Applying pending migrations: {string.Join(", ", pendingMigrations)}");
+            context.Database.Migrate();
+            logger.LogInformation("Database migrations applied successfully.");
+        }
+        else
+        {
+            logger.LogInformation("No pending migrations. Database is up to date.");
+        }
+        
+        // Verify migrations were applied by checking if Users table exists
+        try
+        {
+            var userCount = context.Users.Count();
+            logger.LogInformation($"Database warm-up completed. Users count: {userCount}");
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Database migrations appear to have failed. Users table is not accessible: {ex.Message}", ex);
+        }
         
         // Warm-up Redis connection
-        var redisService = services.GetRequiredService<IRedisService>();
-        redisService.SetAsync("warmup:check", "ready", TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-        var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
-        redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
-        Console.WriteLine($"Redis warm-up completed. Check: {warmupCheck}");
+        try
+        {
+            var redisService = services.GetRequiredService<IRedisService>();
+            redisService.SetAsync("warmup:check", "ready", TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+            var warmupCheck = redisService.GetAsync("warmup:check").GetAwaiter().GetResult();
+            redisService.DeleteAsync("warmup:check").GetAwaiter().GetResult();
+            logger.LogInformation($"Redis warm-up completed. Check: {warmupCheck}");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning($"Redis warm-up failed: {ex.Message}. Continuing anyway...");
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"An error occurred during startup: {ex.Message}");
+        logger.LogError(ex, "CRITICAL: Failed to initialize database. Application will not start.");
+        throw; // Re-throw to prevent application from starting with broken database
     }
 }
 

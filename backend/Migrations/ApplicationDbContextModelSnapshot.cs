@@ -22,6 +22,248 @@ namespace RusalProject.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("RusalProject.Models.Entities.AgentLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ChatSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("chat_session_id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<int>("IterationNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("iteration_number");
+
+                    b.Property<string>("LogType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("log_type");
+
+                    b.Property<string>("Metadata")
+                        .HasColumnType("text")
+                        .HasColumnName("metadata");
+
+                    b.Property<int?>("StepNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("step_number");
+
+                    b.Property<DateTime>("Timestamp")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("timestamp")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatSessionId")
+                        .HasDatabaseName("IX_AgentLogs_ChatSessionId");
+
+                    b.HasIndex("DocumentId")
+                        .HasDatabaseName("IX_AgentLogs_DocumentId");
+
+                    b.HasIndex("LogType")
+                        .HasDatabaseName("IX_AgentLogs_LogType");
+
+                    b.HasIndex("Timestamp")
+                        .HasDatabaseName("IX_AgentLogs_Timestamp");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_AgentLogs_UserId");
+
+                    b.ToTable("agent_logs");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("file_name");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("storage_path");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("version_number");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorId")
+                        .HasDatabaseName("IX_Attachments_CreatorId");
+
+                    b.HasIndex("DeletedAt")
+                        .HasDatabaseName("IX_Attachments_DeletedAt");
+
+                    b.HasIndex("DocumentId")
+                        .HasDatabaseName("IX_Attachments_DocumentId");
+
+                    b.ToTable("attachments");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ChatSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("chat_session_id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("role");
+
+                    b.Property<int?>("StepNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("step_number");
+
+                    b.Property<string>("ToolCalls")
+                        .HasColumnType("text")
+                        .HasColumnName("tool_calls");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatSessionId")
+                        .HasDatabaseName("IX_ChatMessages_ChatSessionId");
+
+                    b.ToTable("chat_messages");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.ChatSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<bool>("IsArchived")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_archived");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeletedAt")
+                        .HasDatabaseName("IX_ChatSessions_DeletedAt");
+
+                    b.HasIndex("DocumentId")
+                        .HasDatabaseName("IX_ChatSessions_DocumentId");
+
+                    b.HasIndex("IsArchived")
+                        .HasDatabaseName("IX_ChatSessions_IsArchived");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_ChatSessions_UserId");
+
+                    b.ToTable("chat_sessions");
+                });
+
             modelBuilder.Entity("RusalProject.Models.Entities.DocumentLink", b =>
                 {
                     b.Property<Guid>("Id")
@@ -43,16 +285,30 @@ namespace RusalProject.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("creator_id");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("description");
+
+                    b.Property<bool>("IsArchived")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_archived");
 
                     b.Property<string>("MdMinioPath")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("md_minio_path");
+
+                    b.Property<string>("Metadata")
+                        .HasColumnType("text")
+                        .HasColumnName("metadata");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -65,6 +321,10 @@ namespace RusalProject.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("pdf_minio_path");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("profile_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -72,6 +332,10 @@ namespace RusalProject.Migrations
                         .HasColumnType("character varying(50)")
                         .HasDefaultValue("draft")
                         .HasColumnName("status");
+
+                    b.Property<Guid?>("TitlePageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("title_page_id");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -84,8 +348,20 @@ namespace RusalProject.Migrations
                     b.HasIndex("CreatorId")
                         .HasDatabaseName("IX_DocumentLinks_CreatorId");
 
+                    b.HasIndex("DeletedAt")
+                        .HasDatabaseName("IX_DocumentLinks_DeletedAt");
+
+                    b.HasIndex("IsArchived")
+                        .HasDatabaseName("IX_DocumentLinks_IsArchived");
+
+                    b.HasIndex("ProfileId")
+                        .HasDatabaseName("IX_DocumentLinks_ProfileId");
+
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_DocumentLinks_Status");
+
+                    b.HasIndex("TitlePageId")
+                        .HasDatabaseName("IX_DocumentLinks_TitlePageId");
 
                     b.ToTable("document_links");
                 });
@@ -149,6 +425,54 @@ namespace RusalProject.Migrations
                     b.ToTable("schema_links");
                 });
 
+            modelBuilder.Entity("RusalProject.Models.Entities.TitlePage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("CreatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creator_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("MinioPath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("minio_path");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorId")
+                        .HasDatabaseName("IX_TitlePages_CreatorId");
+
+                    b.ToTable("title_pages");
+                });
+
             modelBuilder.Entity("RusalProject.Models.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -206,6 +530,80 @@ namespace RusalProject.Migrations
                     b.ToTable("users");
                 });
 
+            modelBuilder.Entity("RusalProject.Models.Entities.AgentLog", b =>
+                {
+                    b.HasOne("RusalProject.Models.Entities.ChatSession", "ChatSession")
+                        .WithMany()
+                        .HasForeignKey("ChatSessionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("RusalProject.Models.Entities.DocumentLink", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RusalProject.Models.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChatSession");
+
+                    b.Navigation("Document");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.Attachment", b =>
+                {
+                    b.HasOne("RusalProject.Models.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RusalProject.Models.Entities.DocumentLink", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Document");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.ChatMessage", b =>
+                {
+                    b.HasOne("RusalProject.Models.Entities.ChatSession", "ChatSession")
+                        .WithMany("Messages")
+                        .HasForeignKey("ChatSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChatSession");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.ChatSession", b =>
+                {
+                    b.HasOne("RusalProject.Models.Entities.DocumentLink", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RusalProject.Models.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("RusalProject.Models.Entities.DocumentLink", b =>
                 {
                     b.HasOne("RusalProject.Models.Entities.User", "Creator")
@@ -214,7 +612,21 @@ namespace RusalProject.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("RusalProject.Models.Entities.SchemaLink", "Profile")
+                        .WithMany()
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("RusalProject.Models.Entities.TitlePage", "TitlePage")
+                        .WithMany()
+                        .HasForeignKey("TitlePageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Creator");
+
+                    b.Navigation("Profile");
+
+                    b.Navigation("TitlePage");
                 });
 
             modelBuilder.Entity("RusalProject.Models.Entities.SchemaLink", b =>
@@ -226,6 +638,22 @@ namespace RusalProject.Migrations
                         .IsRequired();
 
                     b.Navigation("Creator");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.TitlePage", b =>
+                {
+                    b.HasOne("RusalProject.Models.Entities.User", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Creator");
+                });
+
+            modelBuilder.Entity("RusalProject.Models.Entities.ChatSession", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("RusalProject.Models.Entities.User", b =>

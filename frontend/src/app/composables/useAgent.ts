@@ -1,9 +1,24 @@
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed } from 'vue';
 import AIAPI, {
 	type AgentRequestDTO,
 	type AgentResponseDTO,
 	type AgentStepDTO,
 } from '@/shared/api/AIAPI';
+
+type AgentEvent =
+	| {
+			id: string;
+			type: 'tool';
+			stepNumber: number;
+			toolName: string;
+			result?: string;
+			arguments?: Record<string, any>;
+	  }
+	| {
+			id: string;
+			type: 'final';
+			content: string;
+	  };
 
 export function useAgent() {
 	const isProcessing = ref(false);
@@ -13,29 +28,6 @@ export function useAgent() {
 	const abortController = ref<AbortController | null>(null);
 
 	const sendMessage = async (request: AgentRequestDTO) => {
-		// #region agent log
-		try {
-			fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sessionId: 'debug-session',
-					runId: 'run1',
-					hypothesisId: 'A',
-					location: 'useAgent.ts:14',
-					message: 'sendMessage entry',
-					data: {
-						documentId: request.documentId,
-						userMessage: request.userMessage.substring(0, Math.min(50, request.userMessage.length)),
-						mode: request.mode,
-						startLine: request.startLine,
-						endLine: request.endLine
-					},
-					timestamp: Date.now()
-				})
-			}).catch(() => {});
-		} catch {}
-		// #endregion
 
 		// Отменяем предыдущий запрос, если он ещё идёт
 		if (abortController.value) {
@@ -50,30 +42,8 @@ export function useAgent() {
 		currentResponse.value = null;
 
 		try {
-			// #region agent log
-			try {
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						sessionId: 'debug-session',
-						runId: 'run1',
-						hypothesisId: 'B',
-						location: 'useAgent.ts:32',
-						message: 'Before AIAPI.agent call',
-						data: { request },
-						timestamp: Date.now()
-					})
-				}).catch(() => {});
-			} catch {}
-			// #endregion
-
 			// Обработка шагов в реальном времени через callback
 			const response = await AIAPI.agent(request, (step) => {
-				console.log('=== onStep callback called ===');
-				console.log('Step received:', step);
-				console.log('Current steps before update:', steps.value.length, steps.value.map(s => s.stepNumber));
-				
 				// Обновляем или добавляем шаг в список
 				const existingIndex = steps.value.findIndex(
 					(s) => s.stepNumber === step.stepNumber
@@ -84,44 +54,11 @@ export function useAgent() {
 					const newSteps = [...steps.value];
 					newSteps[existingIndex] = { ...step };
 					steps.value = newSteps;
-					console.log('Updated existing step at index:', existingIndex);
 				} else {
 					// Добавляем новый шаг - создаем новый массив для реактивности Vue
 					steps.value = [...steps.value, { ...step }];
-					console.log('Added new step, total steps now:', steps.value.length);
 				}
-				
-				console.log('Steps after update:', steps.value.length);
-				console.log('Step numbers:', steps.value.map(s => s.stepNumber));
-				console.log('Step descriptions:', steps.value.map(s => s.description));
-				
-				// Принудительно обновляем Vue
-				nextTick(() => {
-					console.log('Vue nextTick - steps should be updated in UI');
-				});
 			}, abortController.value.signal);
-
-			// #region agent log
-			try {
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						sessionId: 'debug-session',
-						runId: 'run1',
-						hypothesisId: 'B',
-						location: 'useAgent.ts:40',
-						message: 'AIAPI.agent completed successfully',
-						data: {
-							isComplete: response.isComplete,
-							stepsCount: response.steps?.length ?? 0,
-							finalMessageLength: response.finalMessage?.length ?? 0
-						},
-						timestamp: Date.now()
-					})
-				}).catch(() => {});
-			} catch {}
-			// #endregion
 
 			currentResponse.value = response;
 			// Дополняем шаги из финального ответа (на случай если некоторые не пришли через SSE)
@@ -148,29 +85,6 @@ export function useAgent() {
 				console.warn('Agent request aborted by user');
 				return;
 			}
-			// #region agent log
-			try {
-				fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						sessionId: 'debug-session',
-						runId: 'run1',
-						hypothesisId: 'B',
-						location: 'useAgent.ts:57',
-						message: 'sendMessage error',
-						data: {
-							errorType: err?.constructor?.name,
-							errorMessage: err?.message,
-							responseStatus: err?.response?.status,
-							responseData: err?.response?.data
-						},
-						timestamp: Date.now()
-					})
-				}).catch(() => {});
-			} catch {}
-			// #endregion
-
 			const errorMessage =
 				err.response?.data?.message || err.message || 'Ошибка при обращении к агенту';
 			error.value = errorMessage;
@@ -206,6 +120,36 @@ export function useAgent() {
 	});
 
 	const totalSteps = computed(() => steps.value.length);
+
+	const events = computed<AgentEvent[]>(() => {
+		const toolEvents: AgentEvent[] = [];
+		for (const step of steps.value) {
+			if (!step.toolCalls || step.toolCalls.length === 0) continue;
+			step.toolCalls.forEach((toolCall, idx) => {
+				toolEvents.push({
+					id: `tool-${step.stepNumber}-${idx}-${toolCall.toolName}`,
+					type: 'tool',
+					stepNumber: step.stepNumber,
+					toolName: toolCall.toolName,
+					result: toolCall.result,
+					arguments: toolCall.arguments,
+				});
+			});
+		}
+
+		const finalMessage = currentResponse.value?.finalMessage?.trim();
+		const finalEvent = finalMessage
+			? [
+					{
+						id: `final-${steps.value.length}-${finalMessage.length}`,
+						type: 'final' as const,
+						content: finalMessage,
+					},
+			  ]
+			: [];
+
+		return [...toolEvents, ...finalEvent];
+	});
 
 	/**
 	 * Парсит изменения документа из toolCalls шага
@@ -249,7 +193,7 @@ export function useAgent() {
 				
 				if (!isNaN(id) && content) {
 					const contentLines = content.split('\n');
-					contentLines.forEach((line, index) => {
+					contentLines.forEach((line: string, index: number) => {
 						changes.push({
 							lineNumber: id + index, // id (1-based) -> id-1 (0-based) + index + 1 = id + index (0-based)
 							type: 'added',
@@ -287,7 +231,7 @@ export function useAgent() {
 					}
 					
 					// Добавляем новые строки
-					contentLines.forEach((line, index) => {
+					contentLines.forEach((line: string, index: number) => {
 						changes.push({
 							lineNumber: lineIndex + index,
 							type: 'added',
@@ -330,6 +274,7 @@ export function useAgent() {
 	return {
 		isProcessing,
 		steps,
+		events,
 		currentResponse,
 		error,
 		currentStep,

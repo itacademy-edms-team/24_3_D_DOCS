@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RusalProject.Models.Entities;
@@ -17,11 +16,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<SchemaLink> SchemaLinks { get; set; }
     public DbSet<DocumentLink> DocumentLinks { get; set; }
     public DbSet<TitlePage> TitlePages { get; set; }
-    public DbSet<DocumentBlock> DocumentBlocks { get; set; }
-    public DbSet<BlockEmbedding> BlockEmbeddings { get; set; }
     public DbSet<ChatSession> ChatSessions { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<Attachment> Attachments { get; set; }
+    public DbSet<AgentLog> AgentLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -120,14 +118,10 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                   .HasDefaultValueSql("NOW()");
 
-            // Configure Metadata as jsonb
-            // Convert string to JsonDocument for proper jsonb storage in PostgreSQL
-            // Npgsql requires JsonDocument for jsonb type, not plain string
+            // Configure Metadata as text (changed from jsonb to avoid conversion issues)
+            // The Metadata is stored as serialized JSON string
             entity.Property(e => e.Metadata)
-                  .HasColumnType("jsonb")
-                  .HasConversion(
-                      v => v == null ? null : JsonDocument.Parse(v, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip }),
-                      v => v == null ? null : v.RootElement.GetRawText());
+                  .HasColumnType("text");
 
             // Foreign keys
             entity.HasOne(d => d.Profile)
@@ -154,32 +148,6 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.UpdatedAt)
                   .HasDefaultValueSql("NOW()");
-        });
-
-        // Configure DocumentBlock entity
-        modelBuilder.Entity<DocumentBlock>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            
-            entity.HasIndex(e => e.DocumentId)
-                  .HasDatabaseName("IX_DocumentBlocks_DocumentId");
-
-            entity.HasIndex(e => e.ContentHash)
-                  .HasDatabaseName("IX_DocumentBlocks_ContentHash");
-
-            entity.HasIndex(e => e.DeletedAt)
-                  .HasDatabaseName("IX_DocumentBlocks_DeletedAt");
-
-            entity.Property(e => e.CreatedAt)
-                  .HasDefaultValueSql("NOW()");
-
-            entity.Property(e => e.UpdatedAt)
-                  .HasDefaultValueSql("NOW()");
-
-            entity.HasOne(d => d.Document)
-                  .WithMany()
-                  .HasForeignKey(d => d.DocumentId)
-                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure Attachment entity
@@ -217,28 +185,6 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(a => a.DocumentId)
                   .OnDelete(DeleteBehavior.SetNull);
-        });
-
-        // Configure BlockEmbedding entity
-        modelBuilder.Entity<BlockEmbedding>(entity =>
-        {
-            entity.HasKey(e => e.BlockId);
-            
-            entity.HasIndex(e => e.Model)
-                  .HasDatabaseName("IX_BlockEmbeddings_Model");
-
-            entity.Property(e => e.CreatedAt)
-                  .HasDefaultValueSql("NOW()");
-
-            // Configure vector type - use PostgreSQL array type as workaround
-            // Vector operations will be done via raw SQL queries
-            entity.Property(e => e.Embedding)
-                  .HasColumnType("real[]"); // Use PostgreSQL real array instead of vector for now
-
-            entity.HasOne(e => e.Block)
-                  .WithOne(b => b.Embedding)
-                  .HasForeignKey<BlockEmbedding>(e => e.BlockId)
-                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure ChatSession entity
@@ -294,6 +240,45 @@ public class ApplicationDbContext : DbContext
                   .HasForeignKey(m => m.ChatSessionId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // Configure AgentLog entity
+        modelBuilder.Entity<AgentLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.DocumentId)
+                  .HasDatabaseName("IX_AgentLogs_DocumentId");
+            
+            entity.HasIndex(e => e.UserId)
+                  .HasDatabaseName("IX_AgentLogs_UserId");
+            
+            entity.HasIndex(e => e.ChatSessionId)
+                  .HasDatabaseName("IX_AgentLogs_ChatSessionId");
+            
+            entity.HasIndex(e => e.Timestamp)
+                  .HasDatabaseName("IX_AgentLogs_Timestamp");
+            
+            entity.HasIndex(e => e.LogType)
+                  .HasDatabaseName("IX_AgentLogs_LogType");
+
+            entity.Property(e => e.Timestamp)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.HasOne(a => a.Document)
+                  .WithMany()
+                  .HasForeignKey(a => a.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.User)
+                  .WithMany()
+                  .HasForeignKey(a => a.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.ChatSession)
+                  .WithMany()
+                  .HasForeignKey(a => a.ChatSessionId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
     }
 
     // Override SaveChanges to automatically update UpdatedAt
@@ -331,10 +316,6 @@ public class ApplicationDbContext : DbContext
             else if (entry.Entity is TitlePage titlePage)
             {
                 titlePage.UpdatedAt = DateTime.UtcNow;
-            }
-            else if (entry.Entity is DocumentBlock documentBlock)
-            {
-                documentBlock.UpdatedAt = DateTime.UtcNow;
             }
             else if (entry.Entity is ChatSession chatSession)
             {

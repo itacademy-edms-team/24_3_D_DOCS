@@ -12,3 +12,4 @@ public interface IAttachmentService
     Task DeleteAttachmentAsync(Guid id, Guid userId);
     Task<string> GetPresignedUrlAsync(Guid id, Guid userId, int expirySeconds = 3600);
 }
+

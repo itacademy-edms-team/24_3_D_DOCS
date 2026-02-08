@@ -278,22 +278,4 @@ public class MinioService : IMinioService
             throw;
         }
     }
-
-    public async Task<string> GetPresignedPutUrlAsync(string bucketName, string objectName, int expirySeconds = 3600)
-    {
-        try
-        {
-            var presignedPutArgs = new PresignedPutObjectArgs()
-                .WithBucket(bucketName)
-                .WithObject(objectName)
-                .WithExpiry(expirySeconds);
-
-            return await _minioClient.PresignedPutObjectAsync(presignedPutArgs);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error generating presigned PUT URL: {BucketName}/{ObjectName}", bucketName, objectName);
-            throw;
-        }
-    }
 }

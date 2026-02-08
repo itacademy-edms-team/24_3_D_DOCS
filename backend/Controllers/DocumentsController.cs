@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Document;
-using RusalProject.Services.Documents;
-using RusalProject.Services.Embedding;
+using RusalProject.Services.Document;
 using RusalProject.Services.Pdf;
 using RusalProject.Services.Storage;
 using System.Security.Claims;
@@ -18,20 +17,17 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentService _documentService;
     private readonly IPdfGeneratorService _pdfGeneratorService;
     private readonly IMinioService _minioService;
-    private readonly IEmbeddingStorageService _embeddingStorageService;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         IDocumentService documentService,
         IPdfGeneratorService pdfGeneratorService,
         IMinioService minioService,
-        IEmbeddingStorageService embeddingStorageService,
         ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
         _pdfGeneratorService = pdfGeneratorService;
         _minioService = minioService;
-        _embeddingStorageService = embeddingStorageService;
         _logger = logger;
     }
 
@@ -165,70 +161,6 @@ public class DocumentsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating document content {DocumentId}", id);
-            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
-        }
-    }
-
-    /// <summary>
-    /// Получить статус покрытия эмбеддингами
-    /// </summary>
-    [HttpGet("{id}/embeddings/status")]
-    [ProducesResponseType(typeof(EmbeddingStatusDTO), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetEmbeddingStatus(Guid id)
-    {
-        try
-        {
-            var userId = GetUserId();
-            var document = await _documentService.GetDocumentWithContentAsync(id, userId);
-            
-            if (document == null)
-                return NotFound(new { message = "Документ не найден" });
-
-            var status = await _embeddingStorageService.GetEmbeddingStatusAsync(
-                id, 
-                document.Content ?? string.Empty, 
-                HttpContext.RequestAborted
-            );
-
-            return Ok(status);
-        }
-        catch (FileNotFoundException)
-        {
-            return NotFound(new { message = "Документ не найден" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting embedding status for document {DocumentId}", id);
-            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
-        }
-    }
-
-    /// <summary>
-    /// Обновить эмбеддинги для документа (фоновое обновление)
-    /// </summary>
-    [HttpPost("{id}/embeddings/update")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateEmbeddings(Guid id)
-    {
-        _logger.LogInformation("📥 POST /api/documents/{DocumentId}/embeddings/update - Запрос получен", id);
-        try
-        {
-            var userId = GetUserId();
-            _logger.LogInformation("🔄 Начало обновления эмбеддингов для документа {DocumentId}, userId {UserId}", id, userId);
-            await _embeddingStorageService.UpdateEmbeddingsForDocumentAsync(id, userId, HttpContext.RequestAborted);
-            _logger.LogInformation("✅ Завершено обновление эмбеддингов для документа {DocumentId}", id);
-            return NoContent();
-        }
-        catch (FileNotFoundException ex)
-        {
-            _logger.LogWarning("❌ Документ {DocumentId} не найден: {Message}", id, ex.Message);
-            return NotFound(new { message = "Документ не найден" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "❌ Ошибка при обновлении эмбеддингов для документа {DocumentId}: {Message}", id, ex.Message);
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }
@@ -510,7 +442,20 @@ public class DocumentsController : ControllerBase
 
             var exportStream = await _documentService.ExportDocumentAsync(id, userId);
             var fileName = $"{document.Name}.ddoc";
-            
+
+            try
+            {
+                if (exportStream.CanSeek)
+                {
+                    _logger.LogInformation("Exporting document {DocumentId} as .ddoc, size {Length} bytes", id, exportStream.Length);
+                    exportStream.Position = 0;
+                }
+            }
+            catch (Exception logEx)
+            {
+                _logger.LogWarning(logEx, "Failed to read export stream length for document {DocumentId}", id);
+            }
+
             return File(exportStream, "application/x-tar", fileName);
         }
         catch (FileNotFoundException)

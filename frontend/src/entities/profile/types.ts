@@ -44,6 +44,7 @@ export interface PageSettings {
 		fontSize: number;
 		fontStyle: string;
 		fontFamily: string;
+		bottomOffset?: number;
 	};
 	globalLineHeight?: number;
 }

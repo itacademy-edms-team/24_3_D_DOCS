@@ -94,6 +94,41 @@
 						placeholder="{n}"
 					/>
 				</div>
+				<div v-if="localSettings.pageNumbers.enabled" class="page-settings-card__font-settings">
+					<div class="page-settings-card__field">
+						<label class="page-settings-card__field-label">Шрифт</label>
+						<Dropdown
+							v-model="localSettings.pageNumbers.fontFamily"
+							:options="fontOptions"
+						/>
+					</div>
+					<div class="page-settings-card__field">
+						<label class="page-settings-card__field-label">Размер шрифта</label>
+						<Slider
+							v-model="localSettings.pageNumbers.fontSize"
+							:min="8"
+							:max="72"
+							unit="pt"
+						/>
+					</div>
+					<div class="page-settings-card__field">
+						<label class="page-settings-card__field-label">Стиль шрифта</label>
+						<Dropdown
+							v-model="localSettings.pageNumbers.fontStyle"
+							:options="fontStyleOptions"
+						/>
+					</div>
+				</div>
+				<div v-if="localSettings.pageNumbers.enabled && localSettings.pageNumbers.position === 'bottom'" class="page-settings-card__field">
+					<label class="page-settings-card__field-label">Отступ снизу</label>
+					<Slider
+						:model-value="localSettings.pageNumbers.bottomOffset ?? 0"
+						@update:model-value="(val) => localSettings.pageNumbers.bottomOffset = val"
+						:min="0"
+						:max="50"
+						unit="px"
+					/>
+				</div>
 			</div>
 
 			<div class="page-settings-card__row">
@@ -185,6 +220,20 @@ const alignOptions = [
 	{ value: 'left', label: 'Слева' },
 	{ value: 'center', label: 'Центр' },
 	{ value: 'right', label: 'Справа' },
+];
+
+const fontOptions = [
+	{ value: 'Times New Roman', label: 'Times New Roman' },
+	{ value: 'Arial', label: 'Arial' },
+	{ value: 'Calibri', label: 'Calibri' },
+	{ value: 'Georgia', label: 'Georgia' },
+	{ value: 'Verdana', label: 'Verdana' },
+	{ value: 'Courier New', label: 'Courier New' },
+];
+
+const fontStyleOptions = [
+	{ value: 'normal', label: 'Обычный' },
+	{ value: 'italic', label: 'Курсив' },
 ];
 </script>
 
@@ -284,5 +333,12 @@ const alignOptions = [
 	font-size: 13px;
 	font-weight: 500;
 	color: var(--text-secondary);
+}
+
+.page-settings-card__font-settings {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--spacing-md);
+	margin-top: var(--spacing-sm);
 }
 </style>

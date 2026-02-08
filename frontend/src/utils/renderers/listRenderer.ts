@@ -23,7 +23,54 @@ function calculateListItemLevel(li: Element): number {
 }
 
 /**
- * Calculate indent value for list items
+ * Get text-indent value (red line) in cm for the FIRST list item only.
+ * Used for typographic red line: first line of first element indents, rest do not.
+ */
+function getFirstItemTextIndentCm(
+	style: EntityStyle,
+	profile: ProfileData | null
+): number {
+	if (style.listUseParagraphTextIndent === true) {
+		const paragraphStyle = profile?.entityStyles?.['paragraph'];
+		if (paragraphStyle?.textIndent !== undefined && paragraphStyle.textIndent > 0) {
+			return paragraphStyle.textIndent;
+		}
+		return 0;
+	}
+	if (style.textIndent !== undefined && style.textIndent > 0) {
+		return style.textIndent;
+	}
+	return 0;
+}
+
+/** Block-level tags: when li's first child is one of these, marker and content split onto separate lines. */
+const BLOCK_TAGS = new Set([
+	'P', 'DIV', 'BLOCKQUOTE', 'PRE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+	'UL', 'OL', 'TABLE', 'FIGURE', 'HR',
+]);
+
+/**
+ * Inject explicit marker into first block child of li for loose list items.
+ * Returns true if injection was done (so caller can set list-style: none).
+ */
+function injectMarkerIntoFirstBlock(li: Element, markerText: string): boolean {
+	const firstChild = li.firstElementChild;
+	if (!firstChild || !BLOCK_TAGS.has(firstChild.tagName)) {
+		return false;
+	}
+	// Skip task list items (input/label structure)
+	if (firstChild.tagName === 'INPUT' || firstChild.tagName === 'LABEL') {
+		return false;
+	}
+	const span = li.ownerDocument.createElement('span');
+	span.className = 'list-item-marker';
+	span.textContent = markerText;
+	firstChild.insertBefore(span, firstChild.firstChild);
+	return true;
+}
+
+/**
+ * Calculate margin-left for nested list items (not for red line).
  * Pure function - no side effects
  */
 function calculateListIndent(
@@ -31,21 +78,16 @@ function calculateListIndent(
 	profile: ProfileData | null,
 	nestingLevel: number
 ): number | null {
-	// If useParagraphTextIndent is enabled, use textIndent from paragraph styles
 	if (style.listUseParagraphTextIndent === true) {
 		const paragraphStyle = profile?.entityStyles?.['paragraph'];
 		if (paragraphStyle?.textIndent !== undefined && paragraphStyle.textIndent > 0) {
-			// Convert cm to mm, then multiply by nesting level
 			return (paragraphStyle.textIndent * 10) * nestingLevel;
 		}
 		return null;
 	}
-	
-	// Otherwise use listAdditionalIndent
 	if (style.listAdditionalIndent !== undefined) {
 		return style.listAdditionalIndent * nestingLevel;
 	}
-	
 	return null;
 }
 
@@ -69,25 +111,43 @@ export function renderUnorderedLists(
 
 		el.id = elId;
 		el.setAttribute('data-type', 'unordered-list');
-		el.setAttribute('style', styleToCSS(listStyle));
-		if (selectable) el.classList.add('element-selectable');
 
-		// Apply indentation to list items based on nesting level
-		const listItems = el.querySelectorAll('li');
-		listItems.forEach((li) => {
+		// Red line (text-indent): only for the first list item
+		const firstItemTextIndentCm = getFirstItemTextIndentCm(style, profile);
+
+		// Apply indentation and inject markers for loose items (first child is block)
+		const listItems = Array.from(el.querySelectorAll(':scope > li'));
+		let hasInjectedMarker = false;
+		listItems.forEach((li, index) => {
+			const injected = injectMarkerIntoFirstBlock(li, '\u2022 ');
+			if (injected) hasInjectedMarker = true;
 			const nestingLevel = calculateListItemLevel(li);
+			const parts: string[] = [];
+
+			// Margin-left for nested lists
 			const indentValue = calculateListIndent(style, profile, nestingLevel);
-			
 			if (indentValue !== null && indentValue !== 0) {
-				// Convert mm to pt (1 mm = 2.83465 pt)
 				const indentPt = indentValue * 2.83465;
-				const currentStyle = (li as HTMLElement).getAttribute('style') || '';
-				(li as HTMLElement).setAttribute(
-					'style',
-					`${currentStyle}; margin-left: ${indentPt}pt;`.trim()
-				);
+				parts.push(`margin-left: ${indentPt}pt`);
 			}
+
+			// Красная строка: только первый элемент
+			if (index === 0 && firstItemTextIndentCm > 0) {
+				parts.push(`text-indent: ${firstItemTextIndentCm}cm`);
+			} else {
+				parts.push('text-indent: 0');
+			}
+
+			const currentStyle = (li as HTMLElement).getAttribute('style') || '';
+			const newStyle = [currentStyle, ...parts].filter(Boolean).join('; ').replace(/;+/g, ';').trim();
+			(li as HTMLElement).setAttribute('style', newStyle);
 		});
+
+		const listCss =
+			styleToCSS(listStyle) +
+			(hasInjectedMarker ? '; list-style: none' : '; list-style-position: inside');
+		el.setAttribute('style', listCss);
+		if (selectable) el.classList.add('element-selectable');
 	});
 }
 
@@ -111,25 +171,47 @@ export function renderOrderedLists(
 
 		el.id = elId;
 		el.setAttribute('data-type', 'ordered-list');
-		el.setAttribute('style', styleToCSS(listStyle));
-		if (selectable) el.classList.add('element-selectable');
 
-		// Apply indentation to list items based on nesting level
-		const listItems = el.querySelectorAll('li');
-		listItems.forEach((li) => {
+		// Red line (text-indent): only for the first list item
+		const firstItemTextIndentCm = getFirstItemTextIndentCm(style, profile);
+
+		const start = (el as HTMLOListElement).start !== undefined ? (el as HTMLOListElement).start : 1;
+
+		// Apply indentation and inject markers for loose items (first child is block)
+		const listItems = Array.from(el.querySelectorAll(':scope > li'));
+		let hasInjectedMarker = false;
+		listItems.forEach((li, index) => {
+			const markerNum = start + index;
+			const injected = injectMarkerIntoFirstBlock(li, `${markerNum}. `);
+			if (injected) hasInjectedMarker = true;
+
 			const nestingLevel = calculateListItemLevel(li);
+			const parts: string[] = [];
+
+			// Margin-left for nested lists
 			const indentValue = calculateListIndent(style, profile, nestingLevel);
-			
 			if (indentValue !== null && indentValue !== 0) {
-				// Convert mm to pt (1 mm = 2.83465 pt)
 				const indentPt = indentValue * 2.83465;
-				const currentStyle = (li as HTMLElement).getAttribute('style') || '';
-				(li as HTMLElement).setAttribute(
-					'style',
-					`${currentStyle}; margin-left: ${indentPt}pt;`.trim()
-				);
+				parts.push(`margin-left: ${indentPt}pt`);
 			}
+
+			// Красная строка: только первый элемент
+			if (index === 0 && firstItemTextIndentCm > 0) {
+				parts.push(`text-indent: ${firstItemTextIndentCm}cm`);
+			} else {
+				parts.push('text-indent: 0');
+			}
+
+			const currentStyle = (li as HTMLElement).getAttribute('style') || '';
+			const newStyle = [currentStyle, ...parts].filter(Boolean).join('; ').replace(/;+/g, ';').trim();
+			(li as HTMLElement).setAttribute('style', newStyle);
 		});
+
+		const listCss =
+			styleToCSS(listStyle) +
+			(hasInjectedMarker ? '; list-style: none' : '; list-style-position: inside');
+		el.setAttribute('style', listCss);
+		if (selectable) el.classList.add('element-selectable');
 	});
 }
 

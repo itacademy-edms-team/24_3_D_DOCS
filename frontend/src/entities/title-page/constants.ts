@@ -132,12 +132,3 @@ export interface MousePosition {
 	y: number;
 }
 
-/**
- * Font family option
- */
-export type FontFamily = typeof FONT_FAMILIES[number];
-
-/**
- * Zoom option
- */
-export type ZoomOption = typeof ZOOM_OPTIONS[number];

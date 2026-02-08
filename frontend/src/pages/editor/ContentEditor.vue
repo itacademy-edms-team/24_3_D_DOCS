@@ -129,24 +129,6 @@
 					</button>
 				</div>
 
-				<div class="content-editor__embedding-controls">
-					<EmbeddingCoverageChart
-						v-if="embeddingCoverage !== null"
-						:coverage-percentage="embeddingCoverage"
-					/>
-					<button
-						class="content-editor__header-btn"
-						@click="handleUpdateEmbeddings"
-						:disabled="isUpdatingEmbeddings"
-						title="Обновить эмбеддинги"
-					>
-						<svg v-if="!isUpdatingEmbeddings" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-							<path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-						</svg>
-						<span v-else class="spinner-small"></span>
-					</button>
-				</div>
-				
 				<div class="action-group">
 					<button 
 						class="content-editor__header-btn ai-btn"
@@ -169,10 +151,8 @@
 		<div
 			class="content-editor__layout"
 			:class="{
-				'content-editor__layout--swapped': swapped,
-				'content-editor__layout--with-ai': showAIPanel
+				'content-editor__layout--swapped': swapped
 			}"
-			:style="showAIPanel ? { marginRight: `${chatDockWidth}px` } : {}"
 		>
 			<!-- Editor Panel -->
 			<div class="content-editor__editor-panel" v-show="showEditor">
@@ -182,7 +162,6 @@
 					ref="markdownEditorRef"
 					v-model="content"
 					:documentId="documentId"
-					:diffChanges="diffChanges"
 					@update:modelValue="handleContentChange"
 				/>
 				<!-- Title Page Variables Panel -->
@@ -213,13 +192,8 @@
 			:documentId="documentId"
 			:startLine="selectedStartLine"
 			:endLine="selectedEndLine"
-			:pendingChangesByChat="pendingChangesByChat"
 			@clearSelection="selectedStartLine = undefined; selectedEndLine = undefined"
 			@documentUpdated="handleDocumentUpdated"
-			@documentChanged="handleDocumentChanged"
-			@acceptChanges="handleAcceptChanges"
-			@rejectChanges="handleRejectChanges"
-			@discardChatChanges="handleDiscardChatChanges"
 			@width-changed="handleChatDockWidthChanged"
 		/>
 	</div>
@@ -233,7 +207,6 @@ import MarkdownEditor from '@/widgets/markdown-editor/MarkdownEditor.vue';
 import DocumentPreview from '@/widgets/document-preview/DocumentPreview.vue';
 import TitlePageVariablesPanel from '@/widgets/title-page-variables/TitlePageVariablesPanel.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
-import EmbeddingCoverageChart from '@/shared/ui/EmbeddingCoverageChart/EmbeddingCoverageChart.vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
@@ -252,8 +225,6 @@ const showPreview = ref(true);
 const swapped = ref(false);
 const activeTab = ref<'editor' | 'titlePage'>('editor');
 const markdownEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null);
-const embeddingCoverage = ref<number | null>(null);
-const isUpdatingEmbeddings = ref(false);
 const isDownloadingPdf = ref(false);
 const isExportingDdoc = ref(false);
 
@@ -406,59 +377,6 @@ const handleExportDdoc = async () => {
 		alert(errorMessage);
 	} finally {
 		isExportingDdoc.value = false;
-	}
-};
-
-const handleUpdateEmbeddings = async () => {
-	if (!documentId.value || isUpdatingEmbeddings.value) return;
-
-	const startTime = Date.now();
-	isUpdatingEmbeddings.value = true;
-	console.log('🔄 Начато обновление эмбеддингов...');
-	
-	// #region agent log
-	fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:239',message:'handleUpdateEmbeddings started',data:{documentId:documentId.value,startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-	// #endregion
-	
-	try {
-		const apiStartTime = Date.now();
-		await DocumentAPI.updateEmbeddings(documentId.value);
-		const apiEndTime = Date.now();
-		const apiDuration = apiEndTime - apiStartTime;
-		
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:250',message:'API updateEmbeddings completed',data:{apiDuration,apiStartTime,apiEndTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-		
-		console.log('✅ Эмбеддинги успешно обновлены');
-		
-		// Reload embedding status after update
-		const statusStartTime = Date.now();
-		await nextTick();
-		if (markdownEditorRef.value) {
-			await markdownEditorRef.value.loadEmbeddingStatus();
-		}
-		const statusEndTime = Date.now();
-		const statusDuration = statusEndTime - statusStartTime;
-		
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:260',message:'Status reload completed',data:{statusDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-		
-		const totalDuration = Date.now() - startTime;
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:265',message:'handleUpdateEmbeddings completed',data:{totalDuration,apiDuration,statusDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-	} catch (error: any) {
-		const errorTime = Date.now();
-		const errorDuration = errorTime - startTime;
-		console.error('❌ Ошибка при обновлении эмбеддингов:', error);
-		// #region agent log
-		fetch('http://127.0.0.1:7246/ingest/55665079-6617-4fe4-9acd-dbe7baa4d7c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ContentEditor.vue:272',message:'handleUpdateEmbeddings error',data:{errorDuration,errorType:error?.constructor?.name,errorMessage:error?.message,errorResponse:error?.response?.data,errorStatus:error?.response?.status,errorStack:error?.stack?.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
-		alert(`Ошибка при обновлении эмбеддингов: ${error?.message || error?.toString() || 'Неизвестная ошибка'}. Проверьте консоль для подробностей.`);
-	} finally {
-		isUpdatingEmbeddings.value = false;
 	}
 };
 
@@ -616,320 +534,7 @@ const loadDocument = async () => {
 const handleDocumentUpdated = async () => {
 	// Reload document content after agent edits
 	await loadDocument();
-	// Update embedding status after document is updated
-	await nextTick();
-	if (markdownEditorRef.value) {
-		markdownEditorRef.value.loadEmbeddingStatus();
-	}
-	// Don't clear diff changes - they should remain visible until accepted/rejected
 };
-
-// Track diff changes for visualization (only added and deleted, no modified)
-// Structure: { lineNumber, type, timestamp, stepNumber, operation, originalText?, newText?, status, chatId? }
-interface DiffChange {
-	lineNumber: number; // 0-based
-	type: 'added' | 'deleted';
-	timestamp: number;
-	stepNumber: number;
-	operation: 'insert' | 'update' | 'delete';
-	originalText?: string; // для deleted/update
-	newText?: string; // для added/update
-	status: 'pending' | 'applied' | 'rejected';
-	chatId?: string;
-}
-
-const diffChanges = ref<DiffChange[]>([]);
-
-// Storage key for persisted diff changes
-const getDiffStorageKey = () => `diff-changes-${documentId.value}`;
-
-// Load persisted diff changes
-const loadPersistedDiffChanges = () => {
-	try {
-		const saved = localStorage.getItem(getDiffStorageKey());
-		if (saved) {
-			const parsed = JSON.parse(saved);
-			if (Array.isArray(parsed)) {
-				diffChanges.value = parsed;
-			}
-		}
-	} catch (e) {
-		console.error('Error loading persisted diff changes:', e);
-	}
-};
-
-// Save diff changes to localStorage
-const saveDiffChanges = () => {
-	try {
-		localStorage.setItem(getDiffStorageKey(), JSON.stringify(diffChanges.value));
-	} catch (e) {
-		console.error('Error saving diff changes:', e);
-	}
-};
-
-// Store old content before update to show deleted lines
-const oldContent = ref<string>('');
-
-const handleDocumentChanged = async (change: { 
-	stepNumber: number; 
-	operation: string; 
-	chatId: string;
-	changes: Array<{ lineNumber: number; type: 'added' | 'deleted'; text?: string }>;
-}) => {
-	// Save old content before reloading (for showing deleted lines in update operations)
-	if (change.operation === 'update' && content.value) {
-		oldContent.value = content.value;
-	}
-	
-	// Reload document content immediately when agent makes changes
-	await loadDocument();
-	
-	// Add diff changes for visualization
-	if (change.changes && change.changes.length > 0) {
-		const timestamp = Date.now();
-		
-		// Get old content lines for update operations
-		const oldLines = oldContent.value ? oldContent.value.split('\n') : [];
-		const currentLines = content.value ? content.value.split('\n') : [];
-		
-		// For update operations, show deleted lines first, then added lines
-		if (change.operation === 'update') {
-			// First, add deleted lines with original text
-			change.changes
-				.filter(c => c.type === 'deleted')
-				.forEach(changeItem => {
-					const originalText = oldLines[changeItem.lineNumber] || '';
-					diffChanges.value.push({
-						lineNumber: changeItem.lineNumber,
-						type: 'deleted',
-						timestamp,
-						stepNumber: change.stepNumber,
-						operation: change.operation as 'insert' | 'update' | 'delete',
-						originalText,
-						chatId: change.chatId,
-						status: 'pending'
-					});
-				});
-			
-			// Then add new lines
-			change.changes
-				.filter(c => c.type === 'added')
-				.forEach(changeItem => {
-					diffChanges.value.push({
-						lineNumber: changeItem.lineNumber,
-						type: 'added',
-						timestamp: Date.now(),
-						stepNumber: change.stepNumber,
-						operation: change.operation as 'insert' | 'update' | 'delete',
-						newText: changeItem.text,
-						chatId: change.chatId,
-						status: 'pending'
-					});
-				});
-		} else {
-			// For insert and delete, add all changes immediately
-			change.changes.forEach(changeItem => {
-				// Для delete операций нужно сохранить originalText
-				const originalText = changeItem.type === 'deleted' 
-					? (oldLines[changeItem.lineNumber] || currentLines[changeItem.lineNumber] || '')
-					: undefined;
-				
-				diffChanges.value.push({
-					lineNumber: changeItem.lineNumber,
-					type: changeItem.type,
-					timestamp,
-					stepNumber: change.stepNumber,
-					operation: change.operation as 'insert' | 'update' | 'delete',
-					newText: changeItem.text,
-					originalText,
-					chatId: change.chatId,
-					status: 'pending'
-				});
-			});
-		}
-		
-		// Save changes to localStorage (persistent)
-		saveDiffChanges();
-	}
-};
-
-// Handle accept/reject diff actions from editor
-const handleDiffAction = async (action: { lineNumber: number; type: 'added' | 'deleted'; action: 'accept' | 'reject' }) => {
-	const changeIndex = diffChanges.value.findIndex(
-		c => c.lineNumber === action.lineNumber && c.type === action.type && c.status === 'pending'
-	);
-	
-	if (changeIndex === -1) return;
-	
-	const change = diffChanges.value[changeIndex];
-	
-	if (action.action === 'accept') {
-		// Accept: mark as applied and remove from diff
-		change.status = 'applied';
-		diffChanges.value.splice(changeIndex, 1);
-		saveDiffChanges();
-	} else {
-		// Reject: revert the change
-		if (change.type === 'added') {
-			// Remove added line
-			const lines = content.value.split('\n');
-			if (change.lineNumber < lines.length) {
-				lines.splice(change.lineNumber, 1);
-				content.value = lines.join('\n');
-				await handleContentChange(content.value);
-			}
-		} else if (change.type === 'deleted' && change.originalText) {
-			// Restore deleted line
-			const lines = content.value.split('\n');
-			lines.splice(change.lineNumber, 0, change.originalText);
-			content.value = lines.join('\n');
-			await handleContentChange(content.value);
-		}
-		
-		// Mark as rejected and remove from diff
-		change.status = 'rejected';
-		diffChanges.value.splice(changeIndex, 1);
-		saveDiffChanges();
-	}
-};
-
-// Handle accept/reject changes from chat (by step number)
-const handleAcceptChanges = (stepNumber: number) => {
-	// Mark all pending changes from this step as applied and remove from diff
-	const indices: number[] = [];
-	diffChanges.value.forEach((c, index) => {
-		if (c.stepNumber === stepNumber && c.status === 'pending') {
-			c.status = 'applied';
-			indices.push(index);
-		}
-	});
-	// Remove in reverse order
-	indices.reverse().forEach(index => {
-		diffChanges.value.splice(index, 1);
-	});
-	saveDiffChanges();
-};
-
-const handleRejectChanges = async (stepNumber: number) => {
-	// Revert all pending changes from this step
-	const changesToRevert = diffChanges.value.filter(
-		c => c.stepNumber === stepNumber && c.status === 'pending'
-	);
-	const lines = content.value.split('\n');
-	
-	// Sort by line number in reverse order to avoid index shifting issues
-	changesToRevert.sort((a, b) => b.lineNumber - a.lineNumber);
-	
-	for (const change of changesToRevert) {
-		if (change.type === 'added') {
-			// Remove added line
-			if (change.lineNumber < lines.length) {
-				lines.splice(change.lineNumber, 1);
-			}
-		} else if (change.type === 'deleted' && change.originalText) {
-			// Restore deleted line
-			lines.splice(change.lineNumber, 0, change.originalText);
-		}
-		// Mark as rejected
-		change.status = 'rejected';
-	}
-	
-	content.value = lines.join('\n');
-	await handleContentChange(content.value);
-	
-	// Remove from diff changes
-	const indices: number[] = [];
-	diffChanges.value.forEach((c, index) => {
-		if (c.stepNumber === stepNumber && c.status === 'rejected') {
-			indices.push(index);
-		}
-	});
-	indices.reverse().forEach(index => {
-		diffChanges.value.splice(index, 1);
-	});
-	saveDiffChanges();
-};
-
-const pendingChangesByChat = computed<Record<string, boolean>>(() => {
-	const map: Record<string, boolean> = {};
-	diffChanges.value.forEach((c) => {
-		if (c.status === 'pending' && c.chatId) {
-			map[c.chatId] = true;
-		}
-	});
-	return map;
-});
-
-const handleDiscardChatChanges = async (chatId: string) => {
-	// Откатываем все pending‑изменения для указанного чата
-	const changesToRevert = diffChanges.value.filter(
-		(c) => c.chatId === chatId && c.status === 'pending'
-	);
-
-	if (changesToRevert.length === 0) {
-		return;
-	}
-
-	const lines = content.value.split('\n');
-
-	// Сортируем в обратном порядке по lineNumber, чтобы не ломать индексы
-	changesToRevert.sort((a, b) => b.lineNumber - a.lineNumber);
-
-	for (const change of changesToRevert) {
-		if (change.type === 'added') {
-			if (change.lineNumber < lines.length) {
-				lines.splice(change.lineNumber, 1);
-			}
-		} else if (change.type === 'deleted' && change.originalText) {
-			lines.splice(change.lineNumber, 0, change.originalText);
-		}
-		change.status = 'rejected';
-	}
-
-	content.value = lines.join('\n');
-	await handleContentChange(content.value);
-
-	// Удаляем все изменения этого чата из списка diffChanges
-	const indices: number[] = [];
-	diffChanges.value.forEach((c, index) => {
-		if (c.chatId === chatId && c.status === 'rejected') {
-			indices.push(index);
-		}
-	});
-	indices.reverse().forEach((index) => {
-		diffChanges.value.splice(index, 1);
-	});
-	saveDiffChanges();
-};
-
-// Update embedding coverage from editor status
-watch(
-	() => markdownEditorRef.value?.embeddingStatus,
-	(status) => {
-		if (status) {
-			embeddingCoverage.value = status.coveragePercentage;
-		} else {
-			embeddingCoverage.value = null;
-		}
-	},
-	{ deep: true }
-);
-
-// Update status when AI panel opens (as embeddings are updated when agent processes)
-watch(
-	() => showAIPanel.value,
-	(isOpen) => {
-		if (isOpen && markdownEditorRef.value) {
-			// Status will be updated when agent processes the document
-			// We can trigger a refresh after a delay to account for embedding update
-			setTimeout(() => {
-				if (markdownEditorRef.value) {
-					markdownEditorRef.value.loadEmbeddingStatus();
-				}
-			}, 2000);
-		}
-	}
-);
 
 // Handle window resize to prevent preview "shaking"
 const handleWindowResize = useDebounceFn(() => {
@@ -937,7 +542,8 @@ const handleWindowResize = useDebounceFn(() => {
 	if (showPreview.value) {
 		nextTick(() => {
 			// Trigger a minimal reflow to stabilize layout
-			const previewPanel = document.querySelector('.content-editor__preview-panel');
+			const doc = typeof window !== 'undefined' ? window.document : null;
+			const previewPanel = doc?.querySelector('.content-editor__preview-panel');
 			if (previewPanel) {
 				previewPanel.scrollTop = previewPanel.scrollTop;
 			}
@@ -947,9 +553,6 @@ const handleWindowResize = useDebounceFn(() => {
 
 onMounted(async () => {
 	await loadDocument();
-	
-	// Load persisted diff changes
-	loadPersistedDiffChanges();
 
 	// Load profiles and title pages for selectors
 	await Promise.all([loadProfiles(), loadTitlePages()]);
@@ -1393,10 +996,6 @@ watch(
 	flex-direction: row-reverse;
 }
 
-.content-editor__layout--with-ai {
-	/* margin-right is set dynamically via inline style */
-}
-
 .content-editor__editor-panel {
 	flex: 1;
 	overflow: hidden;
@@ -1409,56 +1008,6 @@ watch(
 	background: var(--bg-secondary);
 	will-change: transform;
 	transform: translateZ(0);
-}
-
-.content-editor__ai-panel {
-	position: fixed;
-	top: 0;
-	right: 0;
-	width: 420px;
-	height: 100vh;
-	background: var(--bg-primary);
-	border-left: 1px solid var(--border-color);
-	box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-	display: flex;
-	flex-direction: column;
-	z-index: 1000;
-}
-
-.content-editor__ai-panel-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: var(--spacing-md);
-	border-bottom: 1px solid var(--border-color);
-	background: var(--bg-secondary);
-}
-
-.content-editor__ai-panel-header h3 {
-	margin: 0;
-	font-size: 16px;
-	font-weight: 600;
-	color: var(--text-primary);
-}
-
-.content-editor__ai-panel-close {
-	background: transparent;
-	border: none;
-	font-size: 24px;
-	color: var(--text-secondary);
-	cursor: pointer;
-	width: 32px;
-	height: 32px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: var(--radius-sm);
-	transition: all 0.2s ease;
-}
-
-.content-editor__ai-panel-close:hover {
-	background: var(--bg-hover);
-	color: var(--text-primary);
 }
 
 </style>
