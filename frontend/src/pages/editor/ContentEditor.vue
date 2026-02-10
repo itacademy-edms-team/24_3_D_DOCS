@@ -171,7 +171,7 @@
 					v-else-if="activeTab === 'titlePage'"
 					:titlePageId="selectedTitlePageId"
 					:documentId="documentId"
-					:variables="titlePageVariables"
+					:variables="documentVariables"
 					@update:variables="handleVariablesUpdate"
 				/>
 			</div>
@@ -182,7 +182,7 @@
 					:content="content"
 					:profileId="currentDocument?.profileId"
 					:titlePageId="selectedTitlePageId"
-					:titlePageVariables="titlePageVariables"
+					:variables="documentVariables"
 					:documentId="documentId"
 				/>
 			</div>
@@ -218,7 +218,7 @@ import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import { useDebounceFn } from '@vueuse/core';
-import type { Document, DocumentMetadata } from '@/entities/document/types';
+import type { Document } from '@/entities/document/types';
 import type { Profile } from '@/entities/profile/types';
 
 const route = useRoute();
@@ -252,28 +252,8 @@ const currentTitlePageId = computed(() => {
 	return currentDocument.value?.titlePageId || '';
 });
 
-const titlePageVariables = computed<Record<string, string>>(() => {
-	if (!currentDocument.value?.metadata) {
-		return {};
-	}
-	const meta = currentDocument.value.metadata;
-	const vars: Record<string, string> = {};
-	
-	// Маппинг стандартных полей
-	if (meta.title) vars.Title = meta.title;
-	if (meta.author) vars.Author = meta.author;
-	if (meta.year) vars.Year = meta.year;
-	if (meta.group) vars.Group = meta.group;
-	if (meta.city) vars.City = meta.city;
-	if (meta.supervisor) vars.Supervisor = meta.supervisor;
-	if (meta.documentType) vars.DocumentType = meta.documentType;
-	
-	// Дополнительные поля
-	if (meta.additionalFields) {
-		Object.assign(vars, meta.additionalFields);
-	}
-	
-	return vars;
+const documentVariables = computed<Record<string, string>>(() => {
+	return currentDocument.value?.variables ?? {};
 });
 
 const handleBack = () => {
@@ -464,38 +444,14 @@ const handleTitlePageChange = useDebounceFn(async (event: Event) => {
 
 const handleVariablesUpdate = async (newVariables: Record<string, string>) => {
 	if (!currentDocument.value) return;
-	
-	// Преобразуем переменные обратно в metadata
-	const metadata: DocumentMetadata = {
-		...currentDocument.value.metadata,
-		title: newVariables.Title,
-		author: newVariables.Author,
-		year: newVariables.Year,
-		group: newVariables.Group,
-		city: newVariables.City,
-		supervisor: newVariables.Supervisor,
-		documentType: newVariables.DocumentType,
-		additionalFields: {},
-	};
-	
-	// Сохраняем дополнительные поля
-	const standardFields = ['Title', 'Author', 'Year', 'Group', 'City', 'Supervisor', 'DocumentType'];
-	for (const [key, value] of Object.entries(newVariables)) {
-		if (!standardFields.includes(key)) {
-			if (!metadata.additionalFields) {
-				metadata.additionalFields = {};
-			}
-			metadata.additionalFields[key] = value;
-		}
-	}
-	
+
 	try {
-		await DocumentAPI.updateMetadata(documentId.value, metadata);
+		await DocumentAPI.updateVariables(documentId.value, newVariables);
 		if (currentDocument.value) {
-			currentDocument.value.metadata = metadata;
+			currentDocument.value.variables = { ...newVariables };
 		}
 	} catch (error) {
-		console.error('Failed to update metadata:', error);
+		console.error('Failed to update variables:', error);
 	}
 };
 

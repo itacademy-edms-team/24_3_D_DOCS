@@ -2,14 +2,14 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Включаем corepack для использования pnpm
-RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+# npm встроен в node; альтернатива — pnpm через corepack
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate || true
 
 # Копируем файлы зависимостей
-COPY package.json pnpm-lock.yaml ./
+COPY package.json package-lock.json ./
 
-# Устанавливаем зависимости (без --frozen-lockfile для первого билда)
-RUN pnpm install
+# Устанавливаем зависимости (npm встроен в node)
+RUN npm ci
 
 # Копируем исходный код
 COPY . .
@@ -17,9 +17,10 @@ COPY . .
 # Принимаем BASE_URI как build arg (по умолчанию для dev)
 ARG BASE_URI=http://localhost:5159
 ENV BASE_URI=${BASE_URI}
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 # Билдим приложение
-RUN pnpm run build
+RUN npm run build
 
 # Stage 2: Production
 FROM nginx:alpine

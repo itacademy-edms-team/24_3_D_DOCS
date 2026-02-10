@@ -241,7 +241,9 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"An error occurred during startup: {ex.Message}");
+        Console.WriteLine($"FATAL: Migration or warm-up failed: {ex.Message}");
+        Console.WriteLine(ex.StackTrace);
+        throw; // Fail container start so the issue is visible
     }
 }
 

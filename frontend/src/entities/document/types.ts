@@ -18,18 +18,7 @@ export interface DocumentMeta {
 export interface Document extends DocumentMeta {
 	content?: string;
 	styleOverrides?: Record<string, any>;
-	metadata?: DocumentMetadata;
-}
-
-export interface DocumentMetadata {
-	title?: string;
-	author?: string;
-	group?: string;
-	year?: string;
-	city?: string;
-	supervisor?: string;
-	documentType?: string;
-	additionalFields?: Record<string, string>;
+	variables?: Record<string, string>;
 }
 
 export interface CreateDocumentDTO {
@@ -37,7 +26,7 @@ export interface CreateDocumentDTO {
 	description?: string;
 	profileId?: string;
 	titlePageId?: string;
-	metadata?: DocumentMetadata;
+	variables?: Record<string, string>;
 	initialContent?: string;
 }
 
@@ -46,7 +35,7 @@ export interface UpdateDocumentDTO {
 	description?: string;
 	profileId?: string;
 	titlePageId?: string;
-	metadata?: DocumentMetadata;
+	variables?: Record<string, string>;
 }
 
 export interface UpdateDocumentContentDTO {

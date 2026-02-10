@@ -93,10 +93,10 @@ public class DocumentService : IDocumentService
         var content = await ReadFileAsync(bucketName, GetContentPath(id)) ?? string.Empty;
         var overrides = await ReadJsonAsync<Dictionary<string, object>>(bucketName, GetOverridesPath(id)) ?? new Dictionary<string, object>();
 
-        DocumentMetadataDTO? metadata = null;
-        if (!string.IsNullOrEmpty(document.Metadata))
+        Dictionary<string, string>? variables = null;
+        if (!string.IsNullOrEmpty(document.Variables))
         {
-            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(document.Metadata, s_jsonOptions);
+            variables = JsonSerializer.Deserialize<Dictionary<string, string>>(document.Variables, s_jsonOptions);
         }
 
         return new DocumentWithContentDTO
@@ -107,7 +107,7 @@ public class DocumentService : IDocumentService
             Description = document.Description,
             ProfileId = document.ProfileId,
             TitlePageId = document.TitlePageId,
-            Metadata = metadata,
+            Variables = variables,
             Status = document.Status,
             IsArchived = document.IsArchived,
             DeletedAt = document.DeletedAt,
@@ -126,10 +126,10 @@ public class DocumentService : IDocumentService
 
         if (document == null) return null;
 
-        DocumentMetadataDTO? metadata = null;
-        if (!string.IsNullOrEmpty(document.Metadata))
+        Dictionary<string, string>? variables = null;
+        if (!string.IsNullOrEmpty(document.Variables))
         {
-            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(document.Metadata, s_jsonOptions);
+            variables = JsonSerializer.Deserialize<Dictionary<string, string>>(document.Variables, s_jsonOptions);
         }
 
         return new DocumentDTO
@@ -140,7 +140,7 @@ public class DocumentService : IDocumentService
             Description = document.Description,
             ProfileId = document.ProfileId,
             TitlePageId = document.TitlePageId,
-            Metadata = metadata,
+            Variables = variables,
             Status = document.Status,
             IsArchived = document.IsArchived,
             DeletedAt = document.DeletedAt,
@@ -164,7 +164,7 @@ public class DocumentService : IDocumentService
             MdMinioPath = GetContentPath(documentId),
             ProfileId = dto.ProfileId,
             TitlePageId = dto.TitlePageId,
-            Metadata = dto.Metadata != null ? JsonSerializer.Serialize(dto.Metadata, s_jsonOptions) : null,
+            Variables = dto.Variables != null && dto.Variables.Count > 0 ? JsonSerializer.Serialize(dto.Variables, s_jsonOptions) : null,
             Status = "draft",
             CreatedAt = now,
             UpdatedAt = now
@@ -189,7 +189,7 @@ public class DocumentService : IDocumentService
             Description = document.Description,
             ProfileId = document.ProfileId,
             TitlePageId = document.TitlePageId,
-            Metadata = dto.Metadata,
+            Variables = dto.Variables,
             Status = document.Status,
             IsArchived = document.IsArchived,
             DeletedAt = document.DeletedAt,
@@ -213,15 +213,15 @@ public class DocumentService : IDocumentService
         if (dto.Description != null) document.Description = dto.Description;
         if (dto.ProfileId.HasValue) document.ProfileId = dto.ProfileId;
         if (dto.TitlePageId.HasValue) document.TitlePageId = dto.TitlePageId;
-        if (dto.Metadata != null) document.Metadata = JsonSerializer.Serialize(dto.Metadata, s_jsonOptions);
+        if (dto.Variables != null) document.Variables = dto.Variables.Count > 0 ? JsonSerializer.Serialize(dto.Variables, s_jsonOptions) : null;
 
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        DocumentMetadataDTO? metadata = null;
-        if (!string.IsNullOrEmpty(document.Metadata))
+        Dictionary<string, string>? variables = null;
+        if (!string.IsNullOrEmpty(document.Variables))
         {
-            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(document.Metadata, s_jsonOptions);
+            variables = JsonSerializer.Deserialize<Dictionary<string, string>>(document.Variables, s_jsonOptions);
         }
 
         return new DocumentDTO
@@ -232,7 +232,7 @@ public class DocumentService : IDocumentService
             Description = document.Description,
             ProfileId = document.ProfileId,
             TitlePageId = document.TitlePageId,
-            Metadata = metadata,
+            Variables = variables,
             Status = document.Status,
             IsArchived = document.IsArchived,
             DeletedAt = document.DeletedAt,
@@ -278,7 +278,7 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
     }
 
-    public async Task UpdateDocumentMetadataAsync(Guid id, Guid userId, DocumentMetadataDTO metadata)
+    public async Task UpdateDocumentVariablesAsync(Guid id, Guid userId, Dictionary<string, string> variables)
     {
         var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == id && d.CreatorId == userId);
@@ -288,7 +288,7 @@ public class DocumentService : IDocumentService
             throw new FileNotFoundException($"Document {id} not found");
         }
 
-        document.Metadata = JsonSerializer.Serialize(metadata, s_jsonOptions);
+        document.Variables = variables.Count > 0 ? JsonSerializer.Serialize(variables, s_jsonOptions) : null;
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
     }
@@ -414,7 +414,7 @@ public class DocumentService : IDocumentService
                 await writer.WriteAsync(document.Content ?? string.Empty);
             }
 
-            // Add metadata.json
+            // Add metadata.json (includes variables)
             var metadataEntry = archive.CreateEntry("metadata.json");
             using (var writer = new StreamWriter(metadataEntry.Open()))
             {
@@ -424,7 +424,7 @@ public class DocumentService : IDocumentService
                     document.Description,
                     document.ProfileId,
                     document.TitlePageId,
-                    document.Metadata,
+                    document.Variables,
                     document.StyleOverrides
                 };
                 await writer.WriteAsync(JsonSerializer.Serialize(exportData, s_jsonOptions));
@@ -441,7 +441,7 @@ public class DocumentService : IDocumentService
         await fileStream.CopyToAsync(memStream);
         memStream.Position = 0;
 
-        var (content, name, description, profileId, titlePageId, metadata, overrides) = await ReadDdocArchiveAsync(memStream, filename);
+        var (content, name, description, profileId, titlePageId, variables, overrides) = await ReadDdocArchiveAsync(memStream, filename);
 
         // Validate profileId and titlePageId belong to current user (imported file may reference another user's resources)
         if (profileId.HasValue)
@@ -461,7 +461,7 @@ public class DocumentService : IDocumentService
             Description = description,
             ProfileId = profileId,
             TitlePageId = titlePageId,
-            Metadata = metadata,
+            Variables = variables,
             InitialContent = content ?? string.Empty
         };
 
@@ -478,14 +478,14 @@ public class DocumentService : IDocumentService
     /// <summary>
     /// Reads .ddoc archive (ZIP or TAR format). Supports both content.md and document.md for content.
     /// </summary>
-    private async Task<(string? content, string? name, string? description, Guid? profileId, Guid? titlePageId, DocumentMetadataDTO? metadata, Dictionary<string, object>? overrides)> ReadDdocArchiveAsync(Stream stream, string filename)
+    private async Task<(string? content, string? name, string? description, Guid? profileId, Guid? titlePageId, Dictionary<string, string>? variables, Dictionary<string, object>? overrides)> ReadDdocArchiveAsync(Stream stream, string filename)
     {
         string? content = null;
         string? name = Path.GetFileNameWithoutExtension(filename);
         string? description = null;
         Guid? profileId = null;
         Guid? titlePageId = null;
-        DocumentMetadataDTO? metadata = null;
+        Dictionary<string, string>? variables = null;
         Dictionary<string, object>? overrides = null;
 
         var header = new byte[2];
@@ -500,7 +500,7 @@ public class DocumentService : IDocumentService
             var overridesJson = ReadEntry(archive, "overrides.json");
 
             if (!string.IsNullOrEmpty(metadataJson))
-                ParseMetadata(metadataJson, ref name, ref description, ref profileId, ref titlePageId, ref metadata);
+                ParseMetadata(metadataJson, ref name, ref description, ref profileId, ref titlePageId, ref variables);
             if (!string.IsNullOrEmpty(overridesJson))
                 overrides = JsonSerializer.Deserialize<Dictionary<string, object>>(overridesJson, s_jsonOptions);
 
@@ -532,23 +532,45 @@ public class DocumentService : IDocumentService
             var overJson = entries.GetValueOrDefault("overrides.json");
 
             if (!string.IsNullOrEmpty(metaJson))
-                ParseMetadata(metaJson, ref name, ref description, ref profileId, ref titlePageId, ref metadata);
+                ParseMetadata(metaJson, ref name, ref description, ref profileId, ref titlePageId, ref variables);
             if (!string.IsNullOrEmpty(overJson))
                 overrides = JsonSerializer.Deserialize<Dictionary<string, object>>(overJson, s_jsonOptions);
         }
 
-        return (content, name, description, profileId, titlePageId, metadata, overrides ?? new Dictionary<string, object>());
+        return (content, name, description, profileId, titlePageId, variables, overrides ?? new Dictionary<string, object>());
     }
 
-    private static void ParseMetadata(string json, ref string? name, ref string? description, ref Guid? profileId, ref Guid? titlePageId, ref DocumentMetadataDTO? metadata)
+    private static void ParseMetadata(string json, ref string? name, ref string? description, ref Guid? profileId, ref Guid? titlePageId, ref Dictionary<string, string>? variables)
     {
         var importData = JsonSerializer.Deserialize<JsonElement>(json, s_jsonOptions);
         if (importData.TryGetProperty("name", out var nameElement)) name = nameElement.GetString();
         if (importData.TryGetProperty("description", out var descElement)) description = descElement.GetString();
         if (importData.TryGetProperty("profileId", out var profileElement) && profileElement.ValueKind != JsonValueKind.Null) profileId = profileElement.GetGuid();
         if (importData.TryGetProperty("titlePageId", out var titleElement) && titleElement.ValueKind != JsonValueKind.Null) titlePageId = titleElement.GetGuid();
-        if (importData.TryGetProperty("metadata", out var metaElement) && metaElement.ValueKind != JsonValueKind.Null)
-            metadata = JsonSerializer.Deserialize<DocumentMetadataDTO>(metaElement.GetRawText(), s_jsonOptions);
+        // New format: variables as Dictionary
+        if (importData.TryGetProperty("variables", out var varsElement) && varsElement.ValueKind == JsonValueKind.Object)
+        {
+            variables = JsonSerializer.Deserialize<Dictionary<string, string>>(varsElement.GetRawText(), s_jsonOptions);
+        }
+        // Legacy format: metadata (DocumentMetadataDTO) -> convert to variables
+        else if (importData.TryGetProperty("metadata", out var metaElement) && metaElement.ValueKind == JsonValueKind.Object)
+        {
+            var oldMeta = JsonSerializer.Deserialize<DocumentMetadataDTO>(metaElement.GetRawText(), s_jsonOptions);
+            if (oldMeta != null)
+            {
+                variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (!string.IsNullOrEmpty(oldMeta.Title)) variables["Title"] = oldMeta.Title;
+                if (!string.IsNullOrEmpty(oldMeta.Author)) variables["Author"] = oldMeta.Author;
+                if (!string.IsNullOrEmpty(oldMeta.Group)) variables["Group"] = oldMeta.Group;
+                if (!string.IsNullOrEmpty(oldMeta.Year)) variables["Year"] = oldMeta.Year;
+                if (!string.IsNullOrEmpty(oldMeta.City)) variables["City"] = oldMeta.City;
+                if (!string.IsNullOrEmpty(oldMeta.Supervisor)) variables["Supervisor"] = oldMeta.Supervisor;
+                if (!string.IsNullOrEmpty(oldMeta.DocumentType)) variables["DocumentType"] = oldMeta.DocumentType;
+                if (oldMeta.AdditionalFields != null)
+                    foreach (var kv in oldMeta.AdditionalFields)
+                        variables[kv.Key] = kv.Value ?? string.Empty;
+            }
+        }
     }
 
     public async Task<bool> DocumentExistsAsync(Guid documentId, Guid userId)

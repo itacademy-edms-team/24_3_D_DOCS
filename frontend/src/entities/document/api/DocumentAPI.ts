@@ -6,7 +6,6 @@ import type {
 	UpdateDocumentDTO,
 	UpdateDocumentContentDTO,
 	UpdateDocumentOverridesDTO,
-	DocumentMetadata,
 	EmbeddingStatus,
 } from '../types';
 
@@ -45,8 +44,8 @@ class DocumentAPI extends HttpClient {
 		return this.put<void, UpdateDocumentOverridesDTO>(`/api/documents/${id}/overrides`, dto);
 	}
 
-	async updateMetadata(id: string, metadata: DocumentMetadata): Promise<void> {
-		return this.put<void, DocumentMetadata>(`/api/documents/${id}/metadata`, metadata);
+	async updateVariables(id: string, variables: Record<string, string>): Promise<void> {
+		return this.put<void, { variables: Record<string, string> }>(`/api/documents/${id}/variables`, { variables });
 	}
 
 	async delete(id: string): Promise<void> {

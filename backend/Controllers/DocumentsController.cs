@@ -262,17 +262,17 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
-    /// Обновить метаданные документа (переменные титульного листа)
+    /// Обновить переменные документа (переменные титульного листа)
     /// </summary>
-    [HttpPut("{id}/metadata")]
+    [HttpPut("{id}/variables")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateDocumentMetadata(Guid id, [FromBody] DocumentMetadataDTO metadata)
+    public async Task<IActionResult> UpdateDocumentVariables(Guid id, [FromBody] UpdateDocumentVariablesDTO dto)
     {
         try
         {
             var userId = GetUserId();
-            await _documentService.UpdateDocumentMetadataAsync(id, userId, metadata);
+            await _documentService.UpdateDocumentVariablesAsync(id, userId, dto.Variables);
             return NoContent();
         }
         catch (FileNotFoundException)
@@ -281,7 +281,7 @@ public class DocumentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating document metadata {DocumentId}", id);
+            _logger.LogError(ex, "Error updating document variables {DocumentId}", id);
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }

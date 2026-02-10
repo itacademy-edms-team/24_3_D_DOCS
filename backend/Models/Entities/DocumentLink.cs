@@ -46,8 +46,8 @@ public class DocumentLink
     [Column("title_page_id")]
     public Guid? TitlePageId { get; set; } // FK к TitlePage
 
-    [Column("metadata")]
-    public string? Metadata { get; set; } // JSONB - переменные титульного листа (Author, Year, Title, Group, etc.)
+    [Column("variables")]
+    public string? Variables { get; set; } // JSONB - переменные титульного листа (Record<string, string>: Title, Author, Year, etc.)
 
     [Column("is_archived")]
     public bool IsArchived { get; set; } = false;

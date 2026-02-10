@@ -11,7 +11,7 @@ public interface IDocumentService
     Task<DocumentDTO> UpdateDocumentAsync(Guid id, Guid userId, UpdateDocumentDTO dto);
     Task UpdateDocumentContentAsync(Guid id, Guid userId, string content);
     Task UpdateDocumentOverridesAsync(Guid id, Guid userId, Dictionary<string, object> overrides);
-    Task UpdateDocumentMetadataAsync(Guid id, Guid userId, DocumentMetadataDTO metadata);
+    Task UpdateDocumentVariablesAsync(Guid id, Guid userId, Dictionary<string, string> variables);
     Task DeleteDocumentAsync(Guid id, Guid userId);
     Task RestoreDocumentAsync(Guid id, Guid userId);
     Task DeleteDocumentPermanentlyAsync(Guid id, Guid userId);

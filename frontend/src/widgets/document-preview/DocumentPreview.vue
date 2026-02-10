@@ -76,7 +76,7 @@ interface Props {
 	content: string;
 	profileId?: string;
 	titlePageId?: string;
-	titlePageVariables?: Record<string, string>;
+	variables?: Record<string, string>;
 	documentId: string;
 }
 
@@ -183,7 +183,7 @@ async function loadTitlePage() {
 		const loadedTitlePage = await TitlePageAPI.getById(props.titlePageId);
 		titlePage.value = loadedTitlePage;
 		
-		const variables = props.titlePageVariables || {};
+		const variables = props.variables || {};
 		titlePageHtml.value = renderTitlePageToHtml(loadedTitlePage, variables);
 	} catch (error) {
 		console.error('Failed to load title page:', error);
@@ -564,9 +564,9 @@ watch(
 	{ immediate: true }
 );
 
-// Load title page when titlePageId or titlePageVariables change
+// Load title page when titlePageId or variables change
 watch(
-	[() => props.titlePageId, () => props.titlePageVariables],
+	[() => props.titlePageId, () => props.variables],
 	async () => {
 		await loadTitlePage();
 	},

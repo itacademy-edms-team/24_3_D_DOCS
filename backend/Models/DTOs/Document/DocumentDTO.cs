@@ -10,7 +10,7 @@ public class DocumentDTO
     public string? ProfileName { get; set; }
     public Guid? TitlePageId { get; set; }
     public string? TitlePageName { get; set; }
-    public DocumentMetadataDTO? Metadata { get; set; }
+    public Dictionary<string, string>? Variables { get; set; }
     public string Status { get; set; } = "draft";
     public bool IsArchived { get; set; }
     public DateTime? DeletedAt { get; set; }
@@ -31,7 +31,7 @@ public class CreateDocumentDTO
     public string? Description { get; set; }
     public Guid? ProfileId { get; set; }
     public Guid? TitlePageId { get; set; }
-    public DocumentMetadataDTO? Metadata { get; set; }
+    public Dictionary<string, string>? Variables { get; set; }
     public string? InitialContent { get; set; } // Начальный Markdown контент
 }
 
@@ -41,7 +41,7 @@ public class UpdateDocumentDTO
     public string? Description { get; set; }
     public Guid? ProfileId { get; set; }
     public Guid? TitlePageId { get; set; }
-    public DocumentMetadataDTO? Metadata { get; set; }
+    public Dictionary<string, string>? Variables { get; set; }
 }
 
 public class UpdateDocumentContentDTO
@@ -52,4 +52,9 @@ public class UpdateDocumentContentDTO
 public class UpdateDocumentOverridesDTO
 {
     public Dictionary<string, object> Overrides { get; set; } = new();
+}
+
+public class UpdateDocumentVariablesDTO
+{
+    public Dictionary<string, string> Variables { get; set; } = new();
 }

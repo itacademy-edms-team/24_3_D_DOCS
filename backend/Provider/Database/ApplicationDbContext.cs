@@ -123,10 +123,8 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                   .HasDefaultValueSql("NOW()");
 
-            // Configure Metadata as jsonb
-            // Convert string to JsonDocument for proper jsonb storage in PostgreSQL
-            // Npgsql requires JsonDocument for jsonb type, not plain string
-            entity.Property(e => e.Metadata)
+            // Configure Variables as jsonb (Record<string, string> for title page variables)
+            entity.Property(e => e.Variables)
                   .HasColumnType("jsonb")
                   .HasConversion(
                       v => v == null ? null : JsonDocument.Parse(v, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip }),

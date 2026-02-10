@@ -63,35 +63,8 @@ public class PdfGeneratorService : IPdfGeneratorService
                 titlePage = await _titlePageService.GetTitlePageWithDataAsync(document.TitlePageId.Value, userId);
             }
 
-            // Get title page variables from metadata
-            var titlePageVariables = new Dictionary<string, string>();
-            if (document.Metadata != null)
-            {
-                // Convert DocumentMetadataDTO to Dictionary
-                if (!string.IsNullOrEmpty(document.Metadata.Title))
-                    titlePageVariables["Title"] = document.Metadata.Title;
-                if (!string.IsNullOrEmpty(document.Metadata.Author))
-                    titlePageVariables["Author"] = document.Metadata.Author;
-                if (!string.IsNullOrEmpty(document.Metadata.Group))
-                    titlePageVariables["Group"] = document.Metadata.Group;
-                if (!string.IsNullOrEmpty(document.Metadata.Year))
-                    titlePageVariables["Year"] = document.Metadata.Year;
-                if (!string.IsNullOrEmpty(document.Metadata.City))
-                    titlePageVariables["City"] = document.Metadata.City;
-                if (!string.IsNullOrEmpty(document.Metadata.Supervisor))
-                    titlePageVariables["Supervisor"] = document.Metadata.Supervisor;
-                if (!string.IsNullOrEmpty(document.Metadata.DocumentType))
-                    titlePageVariables["DocumentType"] = document.Metadata.DocumentType;
-                
-                // Add additional fields if any
-                if (document.Metadata.AdditionalFields != null)
-                {
-                    foreach (var field in document.Metadata.AdditionalFields)
-                    {
-                        titlePageVariables[field.Key] = field.Value;
-                    }
-                }
-            }
+            // Get title page variables directly from document
+            var titlePageVariables = document.Variables ?? new Dictionary<string, string>();
 
             // Get overrides
             var overrides = document.StyleOverrides ?? new Dictionary<string, object>();
