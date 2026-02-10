@@ -1,27 +1,28 @@
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Services.Chat;
+using RusalProject.Services.Ollama;
 
 namespace RusalProject.Services.Agent;
 
 /// <summary>
-/// Document assistant agent. Currently returns a stub response.
-/// Will be connected via Ollama Cloud API later with Microsoft Agent Framework.
+/// Document assistant agent. Uses Ollama Cloud API for chat.
 /// </summary>
 public class DocumentAgent : IDocumentAgent
 {
     private readonly IChatService _chatService;
     private readonly IAgentLogService _logService;
+    private readonly IOllamaChatService _ollamaChatService;
     private readonly ILogger<DocumentAgent> _logger;
-
-    private const string StubMessage = "AI Помощник пока не настроен. Подключение через Ollama Cloud API будет добавлено позже.";
 
     public DocumentAgent(
         IChatService chatService,
         IAgentLogService logService,
+        IOllamaChatService ollamaChatService,
         ILogger<DocumentAgent> logger)
     {
         _chatService = chatService;
         _logService = logService;
+        _ollamaChatService = ollamaChatService;
         _logger = logger;
     }
 
@@ -33,20 +34,42 @@ public class DocumentAgent : IDocumentAgent
         Func<string, Task>? onStatusCheck = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("DocumentAgent: Stub run. DocumentId={DocumentId}, UserId={UserId}", request.DocumentId, userId);
+        if (!request.ChatId.HasValue)
+        {
+            throw new InvalidOperationException("ChatId обязателен.");
+        }
+
+        _logger.LogInformation("DocumentAgent: Running. DocumentId={DocumentId}, ChatId={ChatId}, UserId={UserId}", request.DocumentId, request.ChatId, userId);
 
         await _logService.LogUserMessageAsync(request.DocumentId, userId, request.ChatId, request.UserMessage, 0, cancellationToken);
 
-        if (onStatusCheck != null)
+        try
         {
-            await onStatusCheck("DONE: " + StubMessage);
-        }
+            var result = await _ollamaChatService.ChatAsync(
+                userId,
+                request.ChatId.Value,
+                request.UserMessage,
+                request.ClientMessageId,
+                request.DocumentId,
+                onChunk: onStatusCheck,
+                onStatusCheck: null,
+                cancellationToken: cancellationToken);
 
-        return new AgentResponseDTO
+            return new AgentResponseDTO
+            {
+                FinalMessage = result.FinalMessage,
+                Steps = new List<AgentStepDTO>(),
+                IsComplete = result.IsComplete
+            };
+        }
+        catch (InvalidOperationException)
         {
-            FinalMessage = StubMessage,
-            Steps = new List<AgentStepDTO>(),
-            IsComplete = true
-        };
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DocumentAgent error");
+            throw;
+        }
     }
 }

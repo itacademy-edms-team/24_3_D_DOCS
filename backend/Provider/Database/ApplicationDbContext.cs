@@ -1,11 +1,12 @@
 using System.Linq;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RusalProject.Models.Entities;
 
 namespace RusalProject.Provider.Database;
 
-public class ApplicationDbContext : DbContext
+public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
@@ -20,6 +21,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<Attachment> Attachments { get; set; }
     public DbSet<AgentLog> AgentLogs { get; set; }
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
+    public DbSet<UserOllamaApiKey> UserOllamaApiKeys { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -232,12 +235,38 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.ChatSessionId)
                   .HasDatabaseName("IX_ChatMessages_ChatSessionId");
 
+            entity.HasIndex(e => new { e.ChatSessionId, e.ClientMessageId })
+                  .HasDatabaseName("IX_ChatMessages_ChatSessionId_ClientMessageId")
+                  .HasFilter("\"client_message_id\" IS NOT NULL")
+                  .IsUnique();
+
             entity.Property(e => e.CreatedAt)
                   .HasDefaultValueSql("NOW()");
 
             entity.HasOne(m => m.ChatSession)
                   .WithMany(s => s.Messages)
                   .HasForeignKey(m => m.ChatSessionId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure UserOllamaApiKey entity
+        modelBuilder.Entity<UserOllamaApiKey>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.UserId)
+                  .IsUnique()
+                  .HasDatabaseName("IX_UserOllamaApiKeys_UserId");
+
+            entity.Property(e => e.CreatedAt)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.Property(e => e.UpdatedAt)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -320,6 +349,10 @@ public class ApplicationDbContext : DbContext
             else if (entry.Entity is ChatSession chatSession)
             {
                 chatSession.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is UserOllamaApiKey userOllamaApiKey)
+            {
+                userOllamaApiKey.UpdatedAt = DateTime.UtcNow;
             }
         }
     }

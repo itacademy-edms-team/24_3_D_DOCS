@@ -7,5 +7,6 @@ public class ChatMessageDTO
     public string Content { get; set; } = string.Empty;
     public int? StepNumber { get; set; }
     public string? ToolCalls { get; set; }
+    public string? ClientMessageId { get; set; }
     public DateTime CreatedAt { get; set; }
 }

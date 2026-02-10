@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -19,6 +21,7 @@ using RusalProject.Services.Profile;
 using RusalProject.Services.Storage;
 using RusalProject.Services.TitlePage;
 using RusalProject.Services.Chat;
+using RusalProject.Services.Ollama;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -92,6 +95,10 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
         warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
 });
 
+// Data Protection (key ring persisted to PostgreSQL)
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<ApplicationDbContext>();
+
 // Redis Configuration
 var redisConnection = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
 builder.Services.AddSingleton<IRedisService>(sp => new RedisService(redisConnection));
@@ -129,6 +136,11 @@ builder.Services.AddScoped<IAgentService, AgentService>();
 
 // Chat Services
 builder.Services.AddScoped<IChatService, ChatService>();
+
+// Ollama Services
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IUserOllamaApiKeyService, UserOllamaApiKeyService>();
+builder.Services.AddScoped<IOllamaChatService, OllamaChatService>();
 
 // JWT Authentication Configuration
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] 

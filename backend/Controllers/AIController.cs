@@ -5,9 +5,11 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Agent;
+using RusalProject.Models.DTOs.AI;
 using RusalProject.Models.DTOs.Chat;
 using RusalProject.Services.Agent;
 using RusalProject.Services.Chat;
+using RusalProject.Services.Ollama;
 
 namespace RusalProject.Controllers;
 
@@ -19,17 +21,20 @@ public class AIController : ControllerBase
     private readonly IAgentService _agentService;
     private readonly IChatService _chatService;
     private readonly IAgentLogService _logService;
+    private readonly IUserOllamaApiKeyService _ollamaKeyService;
     private readonly ILogger<AIController> _logger;
 
     public AIController(
         IAgentService agentService,
         IChatService chatService,
         IAgentLogService logService,
+        IUserOllamaApiKeyService ollamaKeyService,
         ILogger<AIController> logger)
     {
         _agentService = agentService;
         _chatService = chatService;
         _logService = logService;
+        _ollamaKeyService = ollamaKeyService;
         _logger = logger;
     }
 
@@ -114,24 +119,43 @@ public class AIController : ControllerBase
                 return;
             }
 
+            if (!request.ChatId.HasValue)
+            {
+                await SendSSEEvent("error", new { message = "ChatId обязателен. Создайте чат через POST /api/chats." });
+                return;
+            }
+
             var userId = GetUserId();
 
-            // Сохраняем сообщение пользователя в чат, если указан ChatId
-            if (request.ChatId.HasValue)
+            if (!string.IsNullOrEmpty(request.ClientMessageId))
             {
-                try
+                var idempotentResponse = await _chatService.GetIdempotentAssistantResponseAsync(request.ChatId.Value, request.ClientMessageId, userId, cancellationToken);
+                if (idempotentResponse != null)
                 {
-                    var userMessage = new ChatMessageDTO
+                    await SendSSEEvent("complete", new AgentResponseDTO
                     {
-                        Role = "user",
-                        Content = request.UserMessage
-                    };
-                    await _chatService.AddMessageAsync(request.ChatId.Value, userMessage, userId);
+                        FinalMessage = idempotentResponse,
+                        Steps = new List<AgentStepDTO>(),
+                        IsComplete = true
+                    });
+                    return;
                 }
-                catch (Exception ex)
+            }
+
+            // Сохраняем сообщение пользователя в чат
+            try
+            {
+                var userMessage = new ChatMessageDTO
                 {
-                    _logger.LogWarning(ex, "Failed to save user message to chat {ChatId}", request.ChatId);
-                }
+                    Role = "user",
+                    Content = request.UserMessage,
+                    ClientMessageId = request.ClientMessageId
+                };
+                await _chatService.AddMessageAsync(request.ChatId.Value, userMessage, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to save user message to chat {ChatId}", request.ChatId);
             }
 
             // #region agent log
@@ -155,7 +179,18 @@ public class AIController : ControllerBase
 
             var collectedSteps = new List<AgentStepDTO>();
 
-            // Callback для отправки шагов через SSE и сохранения в чат
+            Func<string, Task> onChunk = async (chunk) =>
+            {
+                try
+                {
+                    await SendSSEEvent("chunk", new { content = chunk });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending chunk via SSE");
+                }
+            };
+
             var finalResponse = await _agentService.ProcessAsync(request, userId, async (step) =>
             {
                 try
@@ -195,7 +230,7 @@ public class AIController : ControllerBase
                 {
                     _logger.LogError(ex, "Error sending step event via SSE");
                 }
-            }, cancellationToken);
+            }, null, onChunk, cancellationToken);
 
             // #region agent log
             try {
@@ -216,23 +251,7 @@ public class AIController : ControllerBase
             } catch {}
             // #endregion
 
-            // Сохраняем финальный ответ в чат, если указан ChatId
-            if (request.ChatId.HasValue && !string.IsNullOrEmpty(finalResponse.FinalMessage))
-            {
-                try
-                {
-                    var finalMessage = new ChatMessageDTO
-                    {
-                        Role = "assistant",
-                        Content = finalResponse.FinalMessage
-                    };
-                    await _chatService.AddMessageAsync(request.ChatId.Value, finalMessage, userId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to save final message to chat {ChatId}", request.ChatId);
-                }
-            }
+            // OllamaChatService already saves the assistant message to chat
 
             // Отправляем финальное событие
             await SendSSEEvent("complete", finalResponse);
@@ -327,5 +346,54 @@ public class AIController : ControllerBase
             _logger.LogError(ex, "Error getting agent logs");
             return StatusCode(500, new { message = "Ошибка при получении логов агента", details = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Сохранить Ollama API ключ (с валидацией)
+    /// </summary>
+    [HttpPost("ollama-key")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetOllamaKey([FromBody] SetOllamaApiKeyDTO dto, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        try
+        {
+            var userId = GetUserId();
+            await _ollamaKeyService.SetApiKeyAsync(userId, dto.ApiKey.Trim(), cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Проверить наличие Ollama API ключа
+    /// </summary>
+    [HttpGet("ollama-key/status")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetOllamaKeyStatus(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var hasKey = await _ollamaKeyService.HasApiKeyAsync(userId, cancellationToken);
+        return Ok(new { hasKey });
+    }
+
+    /// <summary>
+    /// Удалить Ollama API ключ
+    /// </summary>
+    [HttpDelete("ollama-key")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> DeleteOllamaKey(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        await _ollamaKeyService.RemoveApiKeyAsync(userId, cancellationToken);
+        return NoContent();
     }
 }

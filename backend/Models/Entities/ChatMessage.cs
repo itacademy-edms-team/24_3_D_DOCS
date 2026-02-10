@@ -29,6 +29,10 @@ public class ChatMessage
     [Column("tool_calls")]
     public string? ToolCalls { get; set; } // JSON string
 
+    [Column("client_message_id")]
+    [MaxLength(128)]
+    public string? ClientMessageId { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

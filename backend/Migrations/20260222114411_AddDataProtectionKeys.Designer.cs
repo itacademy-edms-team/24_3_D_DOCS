@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RusalProject.Provider.Database;
@@ -11,9 +12,11 @@ using RusalProject.Provider.Database;
 namespace RusalProject.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260222114411_AddDataProtectionKeys")]
+    partial class AddDataProtectionKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -190,11 +193,6 @@ namespace RusalProject.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("chat_session_id");
 
-                    b.Property<string>("ClientMessageId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("client_message_id");
-
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text")
@@ -224,11 +222,6 @@ namespace RusalProject.Migrations
 
                     b.HasIndex("ChatSessionId")
                         .HasDatabaseName("IX_ChatMessages_ChatSessionId");
-
-                    b.HasIndex("ChatSessionId", "ClientMessageId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_ChatMessages_ChatSessionId_ClientMessageId")
-                        .HasFilter("\"client_message_id\" IS NOT NULL");
 
                     b.ToTable("chat_messages");
                 });
@@ -559,43 +552,6 @@ namespace RusalProject.Migrations
                     b.ToTable("users");
                 });
 
-            modelBuilder.Entity("RusalProject.Models.Entities.UserOllamaApiKey", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<string>("EncryptedKey")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("encrypted_key");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_UserOllamaApiKeys_UserId");
-
-                    b.ToTable("user_ollama_api_keys");
-                });
-
             modelBuilder.Entity("RusalProject.Models.Entities.AgentLog", b =>
                 {
                     b.HasOne("RusalProject.Models.Entities.ChatSession", "ChatSession")
@@ -715,17 +671,6 @@ namespace RusalProject.Migrations
                         .IsRequired();
 
                     b.Navigation("Creator");
-                });
-
-            modelBuilder.Entity("RusalProject.Models.Entities.UserOllamaApiKey", b =>
-                {
-                    b.HasOne("RusalProject.Models.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("RusalProject.Models.Entities.ChatSession", b =>
