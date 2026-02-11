@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 interface Props {
-	variant?: 'primary' | 'secondary';
+	variant?: 'primary' | 'secondary' | 'danger';
 	isLoading?: boolean;
 	fullWidth?: boolean;
 	disabled?: boolean;
@@ -86,6 +86,18 @@ withDefaults(defineProps<Props>(), {
 .secondary:hover:not(:disabled) {
 	background: rgba(var(--accent-rgb), 0.12);
 	border-color: rgba(var(--accent-rgb), 0.18);
+	transform: translateY(-2px);
+}
+
+.danger {
+	background: rgba(239, 68, 68, 0.15);
+	color: var(--danger);
+	border: 2px solid rgba(239, 68, 68, 0.4);
+}
+
+.danger:hover:not(:disabled) {
+	background: rgba(239, 68, 68, 0.25);
+	border-color: var(--danger);
 	transform: translateY(-2px);
 }
 

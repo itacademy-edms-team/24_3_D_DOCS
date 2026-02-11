@@ -19,4 +19,9 @@ app.use(router);
 import { useAuthStore } from './entities/auth/store/authStore';
 const authStore = useAuthStore();
 
+// Синхронизируем store при 401 (HttpClient шлёт событие, т.к. не может импортировать store)
+window.addEventListener('auth:session-expired', () => {
+	authStore.clearAuthData();
+});
+
 app.mount('#app');

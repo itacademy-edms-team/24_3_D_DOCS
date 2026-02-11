@@ -6,8 +6,9 @@
 				:type="inputType"
 				:class="['input', { error: error }]"
 				:value="modelValue"
+				:autocomplete="autocomplete ?? undefined"
 				@input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
-				v-bind="$attrs"
+				v-bind="filteredAttrs"
 			/>
 			<button
 				v-if="showPasswordToggle && type === 'password'"
@@ -15,8 +16,13 @@
 				class="passwordToggle"
 				@click="togglePasswordVisibility"
 				tabindex="-1"
+				:aria-label="isPasswordVisible ? 'Скрыть' : 'Показать'"
 			>
-				{{ isPasswordVisible ? '👁️' : '👁️‍🗨️' }}
+				<Icon
+					:name="isPasswordVisible ? 'visibility_off' : 'visibility'"
+					size="20"
+					ariaLabel=""
+				/>
 			</button>
 		</div>
 		<span v-if="error" class="errorText">{{ error }}</span>
@@ -24,7 +30,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, useAttrs } from 'vue';
+import Icon from '@/components/Icon.vue';
 
 interface Props {
 	label?: string;
@@ -33,17 +40,26 @@ interface Props {
 	showPasswordToggle?: boolean;
 	type?: string;
 	modelValue: string;
+	/** Предотвращает сохранение в менеджере паролей (для API-ключей) */
+	autocomplete?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	fullWidth: false,
 	showPasswordToggle: false,
 	type: 'text',
+	autocomplete: undefined,
 });
 
 defineEmits<{
 	'update:modelValue': [value: string];
 }>();
+
+const attrs = useAttrs();
+const filteredAttrs = computed(() => {
+	const { autocomplete: _ac, ...rest } = attrs as Record<string, unknown>;
+	return rest;
+});
 
 const isPasswordVisible = ref(false);
 

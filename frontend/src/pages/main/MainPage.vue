@@ -717,8 +717,7 @@ async function handleDelete(item: Profile | DocumentMeta) {
 }
 
 function handleSettings() {
-	console.log('Settings');
-	// TODO: Navigate to settings page
+	router.push('/settings');
 }
 
 async function handleLogout() {

@@ -15,6 +15,10 @@ interface HttpClientOptions {
 	headers?: Record<string, string>;
 }
 
+const AUTH_STORAGE_KEY = 'auth-storage';
+const LAST_REFRESH_FAILURE_KEY = 'auth-last-refresh-failure';
+const REFRESH_COOLDOWN_MS = 5000; // Не повторять refresh, если недавно уже провалился
+
 class HttpClient {
 	private readonly instance: AxiosInstance;
 	private readonly baseURL: string;
@@ -39,7 +43,7 @@ class HttpClient {
 		// Request interceptor: Add Authorization header
 		this.instance.interceptors.request.use(
 			(config) => {
-				const authData = localStorage.getItem('auth-storage');
+				const authData = localStorage.getItem(AUTH_STORAGE_KEY);
 				if (authData) {
 					try {
 						const parsed = JSON.parse(authData);
@@ -72,6 +76,18 @@ class HttpClient {
 					!originalRequest.url?.includes('/auth/login') &&
 					!originalRequest.url?.includes('/auth/register')
 				) {
+					// Если недавно refresh уже провалился (например, в браузере Cursor с отдельным storage) —
+					// сразу очищаем и редиректим, без повторных попыток
+					const lastFailure = sessionStorage.getItem(LAST_REFRESH_FAILURE_KEY);
+					if (lastFailure) {
+						const elapsed = Date.now() - parseInt(lastFailure, 10);
+						if (elapsed < REFRESH_COOLDOWN_MS) {
+							this.clearAuthAndRedirect();
+							return Promise.reject(error);
+						}
+						sessionStorage.removeItem(LAST_REFRESH_FAILURE_KEY);
+					}
+
 					if (this.isRefreshing) {
 						// Если уже идет обновление токена, добавляем запрос в очередь
 						return new Promise((resolve, reject) => {
@@ -90,74 +106,69 @@ class HttpClient {
 
 					try {
 						// Пытаемся обновить токен
-						const authData = localStorage.getItem('auth-storage');
+						const authData = localStorage.getItem(AUTH_STORAGE_KEY);
+						let parsed: any = null;
+						let refreshToken: string | undefined;
 						if (authData) {
 							try {
-								const parsed = JSON.parse(authData);
-								const refreshToken =
+								parsed = JSON.parse(authData);
+								refreshToken =
 									parsed?.state?.refreshToken || parsed?.refreshToken;
-
-								if (refreshToken) {
-									// Создаем временный axios instance для refresh, чтобы избежать рекурсии
-									const refreshInstance = axios.create({
-										baseURL: this.baseURL,
-									});
-
-									const refreshResponse = await refreshInstance.post(
-										'/api/auth/refresh',
-										{ refreshToken },
-									);
-
-									const newAccessToken = refreshResponse.data.accessToken;
-									const newRefreshToken = refreshResponse.data.refreshToken;
-									const user = refreshResponse.data.user;
-
-									// Обновляем токены в localStorage
-									// Pinia persist автоматически синхронизирует состояние при следующем обращении к store
-									const updatedAuthData = {
-										...parsed,
-										state: {
-											...parsed.state,
-											accessToken: newAccessToken,
-											refreshToken: newRefreshToken,
-											user: user || parsed?.state?.user,
-										},
-									};
-									localStorage.setItem(
-										'auth-storage',
-										JSON.stringify(updatedAuthData),
-									);
-
-									// Обновляем заголовок для оригинального запроса
-									originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-
-									// Обрабатываем очередь ожидающих запросов
-									this.processQueue(null);
-
-									// Повторяем оригинальный запрос
-									return this.instance(originalRequest);
-								}
-							} catch (parseError) {
+							} catch {
 								// Игнорируем ошибки парсинга
 							}
 						}
-					} catch (refreshError) {
-						// Если обновление токена не удалось, очищаем данные и обрабатываем очередь
-						this.processQueue(refreshError);
-						localStorage.removeItem('auth-storage');
-						// Редиректим на страницу входа только если это не запрос на refresh/login/register
-						// и мы не на странице входа
-						if (
-							window.location.pathname !== '/auth' &&
-							!originalRequest.url?.includes('/auth/refresh') &&
-							!originalRequest.url?.includes('/auth/login') &&
-							!originalRequest.url?.includes('/auth/register')
-						) {
-							// Используем setTimeout чтобы избежать проблем с навигацией во время обработки ошибки
-							setTimeout(() => {
-								window.location.href = '/auth';
-							}, 100);
+
+						// Нет refresh token — сразу очищаем и редиректим
+						if (!refreshToken) {
+							this.clearAuthAndRedirect();
+							return Promise.reject(error);
 						}
+
+						// Создаем временный axios instance для refresh, чтобы избежать рекурсии
+						const refreshInstance = axios.create({
+							baseURL: this.baseURL,
+						});
+
+						const refreshResponse = await refreshInstance.post(
+							'/api/auth/refresh',
+							{ refreshToken },
+						);
+
+						const newAccessToken = refreshResponse.data.accessToken;
+						const newRefreshToken = refreshResponse.data.refreshToken;
+						const user = refreshResponse.data.user;
+
+						// Обновляем токены в localStorage
+						if (parsed) {
+							const updatedAuthData = {
+								...parsed,
+								state: {
+									...parsed.state,
+									accessToken: newAccessToken,
+									refreshToken: newRefreshToken,
+									user: user || parsed?.state?.user,
+								},
+							};
+							localStorage.setItem(
+								AUTH_STORAGE_KEY,
+								JSON.stringify(updatedAuthData),
+							);
+						}
+
+						// Обновляем заголовок для оригинального запроса
+						originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+						// Обрабатываем очередь ожидающих запросов
+						this.processQueue(null);
+
+						// Повторяем оригинальный запрос
+						return this.instance(originalRequest);
+					} catch (refreshError) {
+						// Запоминаем время провала, чтобы не спамить refresh при повторных 401
+						sessionStorage.setItem(LAST_REFRESH_FAILURE_KEY, String(Date.now()));
+						this.processQueue(refreshError);
+						this.clearAuthAndRedirect();
 						return Promise.reject(refreshError);
 					} finally {
 						this.isRefreshing = false;
@@ -167,6 +178,24 @@ class HttpClient {
 				return this.errorHandler(error);
 			},
 		);
+	}
+
+	private clearAuthAndRedirect() {
+		localStorage.removeItem(AUTH_STORAGE_KEY);
+		// Синхронизируем Pinia store через событие (избегаем циклических импортов)
+		try {
+			window.dispatchEvent(new CustomEvent('auth:session-expired'));
+		} catch {
+			// Игнорируем
+		}
+		if (
+			typeof window !== 'undefined' &&
+			window.location.pathname !== '/auth' &&
+			!window.location.pathname.startsWith('/auth')
+		) {
+			// replace вместо href — не оставляет failed state в истории
+			window.location.replace('/auth');
+		}
 	}
 
 	private processQueue(error: any) {

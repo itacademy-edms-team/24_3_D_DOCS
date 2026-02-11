@@ -29,6 +29,16 @@ public class UserOllamaApiKeyService : IUserOllamaApiKeyService
         _ollamaBaseUrl = configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
     }
 
+    public async Task VerifyApiKeyAsync(string plainApiKey, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(plainApiKey))
+        {
+            throw new ArgumentException("API key cannot be empty", nameof(plainApiKey));
+        }
+
+        await ValidateApiKeyAsync(plainApiKey, cancellationToken);
+    }
+
     public async Task SetApiKeyAsync(Guid userId, string plainApiKey, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(plainApiKey))

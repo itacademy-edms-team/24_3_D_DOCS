@@ -349,6 +349,34 @@ public class AIController : ControllerBase
     }
 
     /// <summary>
+    /// Проверить Ollama API ключ без сохранения
+    /// </summary>
+    [HttpPost("ollama-key/verify")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> VerifyOllamaKey([FromBody] SetOllamaApiKeyDTO dto, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        try
+        {
+            await _ollamaKeyService.VerifyApiKeyAsync(dto.ApiKey.Trim(), cancellationToken);
+            return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Сохранить Ollama API ключ (с валидацией)
     /// </summary>
     [HttpPost("ollama-key")]
@@ -371,6 +399,23 @@ public class AIController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Получить расшифрованный Ollama API ключ (для копирования)
+    /// </summary>
+    [HttpGet("ollama-key")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetOllamaKey(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var apiKey = await _ollamaKeyService.GetDecryptedApiKeyAsync(userId, cancellationToken);
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            return NotFound(new { message = "API ключ не найден" });
+        }
+        return Ok(new { apiKey });
     }
 
     /// <summary>

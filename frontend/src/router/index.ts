@@ -45,6 +45,18 @@ const router = createRouter({
 			component: () => import('@/pages/attachments/AttachmentsPage.vue'),
 			meta: { requiresAuth: true },
 		},
+		{
+			path: '/settings',
+			name: 'settings',
+			component: () => import('@/pages/settings/SettingsPage.vue'),
+			meta: { requiresAuth: true },
+		},
+		{
+			path: '/settings/llm',
+			name: 'settings-llm',
+			component: () => import('@/pages/settings/SettingsLLMPage.vue'),
+			meta: { requiresAuth: true },
+		},
 	],
 });
 

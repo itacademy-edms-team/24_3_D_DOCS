@@ -38,9 +38,37 @@ export interface ToolCallDTO {
 	result?: string;
 }
 
+export interface OllamaKeyStatusDTO {
+	hasKey: boolean;
+}
+
+export interface OllamaKeyDTO {
+	apiKey: string;
+}
+
 class AIAPI extends HttpClient {
 	constructor() {
 		super();
+	}
+
+	async getOllamaKeyStatus(): Promise<OllamaKeyStatusDTO> {
+		return this.get<OllamaKeyStatusDTO>('/api/ai/ollama-key/status');
+	}
+
+	async getOllamaKey(): Promise<OllamaKeyDTO> {
+		return this.get<OllamaKeyDTO>('/api/ai/ollama-key');
+	}
+
+	async verifyOllamaKey(apiKey: string): Promise<void> {
+		await this.post('/api/ai/ollama-key/verify', { apiKey });
+	}
+
+	async setOllamaKey(apiKey: string): Promise<void> {
+		await this.post('/api/ai/ollama-key', { apiKey });
+	}
+
+	async deleteOllamaKey(): Promise<void> {
+		await this.delete('/api/ai/ollama-key');
 	}
 
 	/**

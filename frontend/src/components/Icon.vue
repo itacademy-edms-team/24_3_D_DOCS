@@ -48,6 +48,8 @@ import arrow_downward from '../assets/icons/toolbar/arrow_downward.svg?raw'
 import sun from '../assets/icons/toolbar/sun.svg?raw'
 import moon from '../assets/icons/toolbar/moon.svg?raw'
 import logout from '../assets/icons/toolbar/logout.svg?raw'
+import visibility from '../assets/icons/toolbar/visibility.svg?raw'
+import visibility_off from '../assets/icons/toolbar/visibility_off.svg?raw'
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -95,7 +97,9 @@ const icons = {
   arrow_downward,
   sun,
   moon,
-  logout
+  logout,
+  visibility,
+  visibility_off
 }
 
 const svgContent = computed(() => icons[props.name] || '')
