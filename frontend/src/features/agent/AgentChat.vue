@@ -103,6 +103,23 @@
 					</div>
 				</div>
 
+			<!-- Сообщение пользователя, отправленное только что (пока не подгрузили историю) -->
+			<div v-if="pendingUserMessage" class="chat-message chat-message--user">
+				<div class="chat-message-container">
+					<div class="chat-avatar chat-avatar--user">
+						<div class="chat-avatar-icon">
+							<Icon name="user" size="20" ariaLabel="Вы" />
+						</div>
+					</div>
+					<div class="chat-bubble user">
+						<div class="chat-message-header">
+							<span class="chat-message-role">Вы</span>
+						</div>
+						<div class="chat-message-content" v-html="renderMarkdown(pendingUserMessage)"></div>
+					</div>
+				</div>
+			</div>
+
 			<!-- Typing indicator -->
 			<div v-if="isProcessing" class="chat-message chat-message--assistant">
 				<div class="chat-message-container">
@@ -125,7 +142,7 @@
 			</div>
 
 			<!-- Final agent response (when streaming completes before chat reload) -->
-			<div v-if="currentResponse?.finalMessage && isProcessing === false" class="chat-message chat-message--assistant">
+			<div v-if="showFinalResponseBlock" class="chat-message chat-message--assistant">
 				<div class="chat-message-container">
 					<div class="chat-avatar chat-avatar--assistant">
 						<div class="chat-avatar-icon">
@@ -285,6 +302,7 @@ const {
 	activeChat,
 	error: chatsError,
 	loadChats,
+	loadChatById,
 	createChat,
 	switchChat,
 	updateChatTitle,
@@ -295,6 +313,7 @@ const {
 } = useChats();
 
 const userMessage = ref('');
+const pendingUserMessage = ref<string | null>(null);
 const showArchive = ref(false);
 const editingChatId = ref<string | null>(null);
 const editingTitle = ref('');
@@ -316,6 +335,14 @@ const error = computed(() => agentError.value || chatsError.value);
 
 const visibleHistoryMessages = computed(() => {
 	return activeChat.value?.messages.filter((message) => !message.stepNumber) ?? [];
+});
+
+// Показывать блок «финальный ответ» только если его ещё нет в истории (чтобы не дублировать после loadChatById)
+const showFinalResponseBlock = computed(() => {
+	if (!currentResponse.value?.finalMessage || isProcessing.value) return false;
+	const history = visibleHistoryMessages.value;
+	const last = history.length > 0 ? history[history.length - 1] : null;
+	return !(last?.role === 'assistant' && last?.content === currentResponse.value?.finalMessage);
 });
 
 const hasSelection = computed(() => {
@@ -431,24 +458,31 @@ const handleSend = async () => {
 	if (isProcessing.value) return; // Если идет обработка, не отправляем (кнопка должна вызывать handleStop)
 	if (!userMessage.value.trim() || !activeChatId.value) return;
 
+	const text = userMessage.value.trim();
+	pendingUserMessage.value = text;
+	userMessage.value = '';
+
 	try {
 		const request: AgentRequestDTO = {
 			documentId: props.documentId,
-			userMessage: userMessage.value.trim(),
+			userMessage: text,
 			startLine: props.startLine,
 			endLine: props.endLine,
 			chatId: activeChatId.value,
 		};
 
 		await sendMessage(request);
-		userMessage.value = '';
-		
-		// Reload chat to get updated messages
+
+		// Обновить историю чата с сервера (без этого видны только последнее сообщение до перезагрузки)
 		if (activeChatId.value) {
-			await loadChats(props.documentId);
+			await loadChatById(activeChatId.value);
 		}
+		await loadChats(props.documentId);
 	} catch (err) {
 		console.error('Error sending message to agent:', err);
+		userMessage.value = text;
+	} finally {
+		pendingUserMessage.value = null;
 	}
 };
 
