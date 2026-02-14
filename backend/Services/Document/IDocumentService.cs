@@ -1,4 +1,5 @@
 using RusalProject.Models.DTOs.Document;
+using RusalProject.Models.Types;
 
 namespace RusalProject.Services.Document;
 
@@ -21,4 +22,9 @@ public interface IDocumentService
     Task UpdatePdfPathAsync(Guid documentId, Guid userId, string pdfPath);
     Task<Stream> ExportDocumentAsync(Guid documentId, Guid userId);
     Task<DocumentDTO> ImportDocumentAsync(Guid userId, Stream ddocStream, string? documentName = null);
+
+    Task<List<TocItem>?> GetTableOfContentsAsync(Guid documentId, Guid userId);
+    Task<List<TocItem>> GenerateTableOfContentsAsync(Guid documentId, Guid userId);
+    Task UpdateTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items);
+    Task<List<TocItem>> ResetTableOfContentsAsync(Guid documentId, Guid userId);
 }

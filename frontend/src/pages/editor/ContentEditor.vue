@@ -84,6 +84,25 @@
 				<div class="action-group">
 					<button
 						class="content-editor__header-btn"
+						@click="handleGenerateToc"
+						:disabled="isGeneratingToc || !documentId"
+						title="Сгенерировать содержание"
+					>
+						<span v-if="!isGeneratingToc">TOC</span>
+						<span v-else class="spinner-small"></span>
+					</button>
+					<button
+						class="content-editor__header-btn"
+						@click="handleResetToc"
+						:disabled="isGeneratingToc || !documentId || tableOfContents.length === 0"
+						title="Сбросить содержание"
+					>
+						<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+							<path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+						</svg>
+					</button>
+					<button
+						class="content-editor__header-btn"
 						@click="handleDownloadPdf"
 						:disabled="isDownloadingPdf || !documentId"
 						title="Скачать PDF"
@@ -182,6 +201,7 @@
 					:titlePageId="selectedTitlePageId"
 					:titlePageVariables="titlePageVariables"
 					:documentId="documentId"
+					:tableOfContents="tableOfContents"
 				/>
 			</div>
 		</div>
@@ -211,7 +231,7 @@ import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import { useDebounceFn } from '@vueuse/core';
-import type { Document, DocumentMetadata } from '@/entities/document/types';
+import type { Document, DocumentMetadata, TocItem } from '@/entities/document/types';
 import type { Profile } from '@/entities/profile/types';
 
 const route = useRoute();
@@ -237,6 +257,9 @@ const titlePages = ref<Array<{ id: string; name: string }>>([]);
 const isLoadingTitlePages = ref(false);
 const selectedTitlePageId = ref<string>('');
 const isUpdatingTitlePage = ref(false);
+
+const tableOfContents = ref<TocItem[]>([]);
+const isGeneratingToc = ref(false);
 
 const currentProfileId = computed(() => {
 	return document.value?.profileId || '';
@@ -526,8 +549,36 @@ const loadDocument = async () => {
 		content.value = doc.content || '';
 		selectedProfileId.value = doc.profileId || '';
 		selectedTitlePageId.value = doc.titlePageId || '';
+		const toc = await DocumentAPI.getTableOfContents(documentId.value);
+		tableOfContents.value = toc;
 	} catch (error) {
 		console.error('Failed to load document:', error);
+	}
+};
+
+const handleGenerateToc = async () => {
+	if (!documentId.value || isGeneratingToc.value) return;
+	isGeneratingToc.value = true;
+	try {
+		tableOfContents.value = await DocumentAPI.generateTableOfContents(documentId.value);
+	} catch (error) {
+		console.error('Failed to generate TOC:', error);
+		alert('Не удалось сгенерировать содержание');
+	} finally {
+		isGeneratingToc.value = false;
+	}
+};
+
+const handleResetToc = async () => {
+	if (!documentId.value || isGeneratingToc.value) return;
+	isGeneratingToc.value = true;
+	try {
+		tableOfContents.value = await DocumentAPI.resetTableOfContents(documentId.value);
+	} catch (error) {
+		console.error('Failed to reset TOC:', error);
+		alert('Не удалось сбросить содержание');
+	} finally {
+		isGeneratingToc.value = false;
 	}
 };
 

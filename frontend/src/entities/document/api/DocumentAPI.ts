@@ -7,6 +7,7 @@ import type {
 	UpdateDocumentContentDTO,
 	UpdateDocumentOverridesDTO,
 	DocumentMetadata,
+	TocItem,
 } from '../types';
 
 class DocumentAPI extends HttpClient {
@@ -62,6 +63,23 @@ class DocumentAPI extends HttpClient {
 
 	async unarchive(id: string): Promise<void> {
 		return this.post<void>(`/api/documents/${id}/unarchive`);
+	}
+
+	async getTableOfContents(id: string): Promise<TocItem[]> {
+		const result = await this.get<TocItem[] | null>(`/api/documents/${id}/table-of-contents`);
+		return result ?? [];
+	}
+
+	async generateTableOfContents(id: string): Promise<TocItem[]> {
+		return this.post<TocItem[]>(`/api/documents/${id}/table-of-contents/generate`, {});
+	}
+
+	async updateTableOfContents(id: string, items: TocItem[]): Promise<void> {
+		return this.put<void, TocItem[]>(`/api/documents/${id}/table-of-contents`, items);
+	}
+
+	async resetTableOfContents(id: string): Promise<TocItem[]> {
+		return this.post<TocItem[]>(`/api/documents/${id}/table-of-contents/reset`, {});
 	}
 
 	async generatePdf(id: string, titlePageId?: string): Promise<Blob> {

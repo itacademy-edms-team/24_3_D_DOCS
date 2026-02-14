@@ -56,3 +56,11 @@ export interface UpdateDocumentContentDTO {
 export interface UpdateDocumentOverridesDTO {
 	overrides: Record<string, any>;
 }
+
+export interface TocItem {
+	level: number;
+	text: string;
+	pageNumber?: number;
+	headingId?: string;
+	isManual?: boolean;
+}

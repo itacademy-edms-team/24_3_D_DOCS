@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Document;
+using RusalProject.Models.Types;
 using RusalProject.Services.Document;
 using RusalProject.Services.Pdf;
 using RusalProject.Services.Storage;
@@ -211,6 +212,104 @@ public class DocumentsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating document metadata {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Получить содержание документа
+    /// </summary>
+    [HttpGet("{id}/table-of-contents")]
+    [ProducesResponseType(typeof(List<TocItem>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetTableOfContents(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var toc = await _documentService.GetTableOfContentsAsync(id, userId);
+            if (toc == null)
+                return Ok(new List<TocItem>());
+            return Ok(toc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting table of contents for document {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Сгенерировать содержание из заголовков
+    /// </summary>
+    [HttpPost("{id}/table-of-contents/generate")]
+    [ProducesResponseType(typeof(List<TocItem>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GenerateTableOfContents(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var toc = await _documentService.GenerateTableOfContentsAsync(id, userId);
+            return Ok(toc);
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Документ не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating table of contents for document {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Обновить содержание вручную
+    /// </summary>
+    [HttpPut("{id}/table-of-contents")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateTableOfContents(Guid id, [FromBody] List<TocItem> items)
+    {
+        try
+        {
+            var userId = GetUserId();
+            await _documentService.UpdateTableOfContentsAsync(id, userId, items);
+            return NoContent();
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Документ не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating table of contents for document {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Сбросить содержание к автогенерации из заголовков
+    /// </summary>
+    [HttpPost("{id}/table-of-contents/reset")]
+    [ProducesResponseType(typeof(List<TocItem>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ResetTableOfContents(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var toc = await _documentService.ResetTableOfContentsAsync(id, userId);
+            return Ok(toc);
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Документ не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting table of contents for document {DocumentId}", id);
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }

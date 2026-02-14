@@ -16,6 +16,16 @@ export interface ProfileData {
 	pageSettings: PageSettings;
 	entityStyles: Record<string, EntityStyle>;
 	headingNumbering?: HeadingNumberingSettings;
+	tableOfContents?: TableOfContentsSettings;
+}
+
+export interface TableOfContentsSettings {
+	fontStyle: 'normal' | 'italic';
+	fontWeight: 'normal' | 'bold';
+	fontSize: number;
+	indentPerLevel: number;
+	nestingEnabled: boolean;
+	numberingEnabled: boolean;
 }
 
 export interface HeadingNumberingSettings {

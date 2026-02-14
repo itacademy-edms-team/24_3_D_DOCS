@@ -294,6 +294,117 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
     }
 
+    public async Task<List<TocItem>?> GetTableOfContentsAsync(Guid documentId, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null) return null;
+
+        var bucket = GetUserBucket(userId);
+        var tocPath = document.MdMinioPath.Replace("content.md", "toc.json");
+
+        try
+        {
+            using var stream = await _minioService.DownloadFileAsync(bucket, tocPath);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var json = await reader.ReadToEndAsync();
+            return JsonSerializer.Deserialize<List<TocItem>>(json);
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    public async Task<List<TocItem>> GenerateTableOfContentsAsync(Guid documentId, Guid userId)
+    {
+        var withContent = await GetDocumentWithContentAsync(documentId, userId);
+        if (withContent == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var content = withContent.Content ?? string.Empty;
+        var items = ParseHeadingsFromMarkdown(content);
+
+        await SaveTableOfContentsAsync(documentId, userId, items);
+        return items;
+    }
+
+    public async Task UpdateTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        await SaveTableOfContentsAsync(documentId, userId, items);
+    }
+
+    public async Task<List<TocItem>> ResetTableOfContentsAsync(Guid documentId, Guid userId)
+    {
+        return await GenerateTableOfContentsAsync(documentId, userId);
+    }
+
+    private static List<TocItem> ParseHeadingsFromMarkdown(string markdown)
+    {
+        var items = new List<TocItem>();
+        var headingRegex = new Regex(@"^(#{1,6})\s+(.+)$", RegexOptions.Multiline);
+        var matches = headingRegex.Matches(markdown);
+
+        var usedIds = new HashSet<string>();
+        var levelCounters = new int[6];
+
+        foreach (Match match in matches)
+        {
+            var level = match.Groups[1].Length;
+            var text = match.Groups[2].Value.Trim();
+            if (string.IsNullOrEmpty(text)) continue;
+
+            // Strip redundant manual numbering (e.g. "4.1. ", "1. ") - TOC provides its own
+            text = Regex.Replace(text, @"^\d+(\.\d+)*\.\s*", string.Empty).Trim();
+            if (string.IsNullOrEmpty(text)) continue;
+
+            var slug = text.Length > 50 ? text[..50] : text;
+            var baseId = $"h{level}-{slug.Replace(" ", "-")}";
+            var headingId = baseId;
+            var counter = 0;
+            while (usedIds.Contains(headingId))
+            {
+                counter++;
+                headingId = $"{baseId}-{counter}";
+            }
+            usedIds.Add(headingId);
+
+            items.Add(new TocItem
+            {
+                Level = level,
+                Text = text,
+                HeadingId = headingId,
+                IsManual = false
+            });
+        }
+
+        return items;
+    }
+
+    private async Task SaveTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var bucket = GetUserBucket(userId);
+        var tocPath = document.MdMinioPath.Replace("content.md", "toc.json");
+
+        var json = JsonSerializer.Serialize(items);
+        var bytes = Encoding.UTF8.GetBytes(json);
+        using var stream = new MemoryStream(bytes);
+        await _minioService.UploadFileAsync(bucket, tocPath, stream, "application/json");
+    }
+
     public async Task DeleteDocumentAsync(Guid documentId, Guid userId)
     {
         var document = await _context.DocumentLinks

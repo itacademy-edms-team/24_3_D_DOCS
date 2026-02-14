@@ -161,9 +161,12 @@
         });
     }
 
-    async function splitIntoPages(html, pageContentHeight, contentWidth) {
+    async function splitIntoPages(html, pageContentHeight, contentWidth, options) {
+        options = options || {};
+        const returnElementPageMap = options.returnElementPageMap || false;
+
         if (!html.trim()) {
-            return [''];
+            return returnElementPageMap ? { pages: [''], elementPageMap: {} } : [''];
         }
 
         const tempContainer = document.createElement('div');
@@ -186,7 +189,6 @@
         totalContainer.style.color = '#1a1a1a';
         totalContainer.innerHTML = html;
         document.body.appendChild(totalContainer);
-        // Wait for images inside total container to be decoded so scrollHeight is accurate
         await ensureImagesLoadedAsync(totalContainer);
 
         const totalHeight = totalContainer.scrollHeight;
@@ -194,6 +196,16 @@
 
         if (totalHeight <= pageContentHeight) {
             document.body.removeChild(tempContainer);
+            const elementPageMap = {};
+            if (returnElementPageMap) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const elements = Array.from(doc.body.children);
+                elements.forEach((el, idx) => {
+                    elementPageMap[idx] = 0;
+                });
+                return { pages: [html], elementPageMap };
+            }
             return [html];
         }
 
@@ -204,6 +216,8 @@
         const pages = [];
         const elements = Array.from(body.children);
         let currentPageElements = [];
+        const elementPageMap = {};
+        let nextPageIndex = 0;
 
         const blockElements = new Set([
             'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
@@ -211,11 +225,23 @@
             'DIV', 'BLOCKQUOTE', 'PRE', 'HR'
         ]);
 
-        for (const element of elements) {
+        function flushPage() {
+            if (currentPageElements.length === 0) return;
+            currentPageElements.forEach(({ idx }) => {
+                elementPageMap[idx] = nextPageIndex;
+            });
+            const pageDiv = document.createElement('div');
+            currentPageElements.forEach(({ el }) => pageDiv.appendChild(el.cloneNode(true)));
+            pages.push(pageDiv.innerHTML);
+            nextPageIndex++;
+            currentPageElements = [];
+        }
+
+        for (let idx = 0; idx < elements.length; idx++) {
+            const element = elements[idx];
             const elementClone = element.cloneNode(true);
             tempContainer.innerHTML = '';
             tempContainer.appendChild(elementClone);
-            // Ensure images inside this cloned element are loaded before measuring
             await ensureImagesLoadedAsync(elementClone);
             const elementHeight = tempContainer.scrollHeight;
 
@@ -223,17 +249,13 @@
 
             if (elementHeight > pageContentHeight && isBlockElement) {
                 if (currentPageElements.length > 0) {
-                    const pageDiv = document.createElement('div');
-                    currentPageElements.forEach((el) =>
-                        pageDiv.appendChild(el.cloneNode(true))
-                    );
-                    pages.push(pageDiv.innerHTML);
-                    currentPageElements = [];
+                    flushPage();
                 }
-
+                elementPageMap[idx] = nextPageIndex;
                 const pageDiv = document.createElement('div');
                 pageDiv.appendChild(element.cloneNode(true));
                 pages.push(pageDiv.innerHTML);
+                nextPageIndex++;
                 continue;
             }
 
@@ -248,40 +270,37 @@
                 testContainer.style.color = '#1a1a1a';
 
                 const testPageDiv = document.createElement('div');
-                currentPageElements.forEach((el) =>
+                currentPageElements.forEach(({ el }) =>
                     testPageDiv.appendChild(el.cloneNode(true))
                 );
                 testPageDiv.appendChild(element.cloneNode(true));
                 testContainer.appendChild(testPageDiv);
                 document.body.appendChild(testContainer);
-                // Ensure images in the test container are loaded before measurement
                 await ensureImagesLoadedAsync(testContainer);
                 const combinedHeight = testContainer.scrollHeight;
                 document.body.removeChild(testContainer);
 
                 if (combinedHeight > pageContentHeight) {
-                    const pageDiv = document.createElement('div');
-                    currentPageElements.forEach((el) =>
-                        pageDiv.appendChild(el.cloneNode(true))
-                    );
-                    pages.push(pageDiv.innerHTML);
-                    currentPageElements = [element];
+                    flushPage();
+                    currentPageElements.push({ el: element, idx });
                 } else {
-                    currentPageElements.push(element);
+                    currentPageElements.push({ el: element, idx });
                 }
             } else {
-                currentPageElements.push(element);
+                currentPageElements.push({ el: element, idx });
             }
         }
 
         if (currentPageElements.length > 0) {
-            const pageDiv = document.createElement('div');
-            currentPageElements.forEach((el) => pageDiv.appendChild(el.cloneNode(true)));
-            pages.push(pageDiv.innerHTML);
+            flushPage();
         }
 
         document.body.removeChild(tempContainer);
-        return pages.length > 0 ? pages : [html];
+        const resultPages = pages.length > 0 ? pages : [html];
+        if (returnElementPageMap) {
+            return { pages: resultPages, elementPageMap };
+        }
+        return resultPages;
     }
 
     // ============================================================================
@@ -1333,6 +1352,61 @@
         return `<div style="${styleString}">${escapeHtml(content)}</div>`;
     }
 
+    function renderTableOfContentsToHtml(tocItems, settings, headingPageMapByIndex, pageOffset) {
+        if (!tocItems || tocItems.length === 0) return '';
+        const s = settings || {};
+        const fontStyle = s.fontStyle || 'normal';
+        const fontWeight = s.fontWeight || 'normal';
+        const fontSize = s.fontSize || 14;
+        const indentPerLevel = (s.indentPerLevel || 5) * MM_TO_PX;
+        const nestingEnabled = s.nestingEnabled !== false;
+        const numberingEnabled = s.numberingEnabled !== false;
+
+        const counters = [0, 0, 0, 0, 0, 0];
+        const lines = [];
+
+        lines.push('<div class="toc-wrapper" style="font-family: \'Times New Roman\', Times, serif; width: 100%; max-width: 100%; overflow: hidden; box-sizing: border-box;">');
+        lines.push(`<div style="text-align: center; font-size: ${fontSize + 2}pt; font-weight: bold; margin-bottom: 16pt;">СОДЕРЖАНИЕ</div>`);
+
+        tocItems.forEach((item, idx) => {
+            const level = Math.max(1, Math.min(6, item.level || 1));
+            let text = item.text || '';
+            const pageNum = headingPageMapByIndex[idx] !== undefined
+                ? pageOffset + headingPageMapByIndex[idx]
+                : (item.pageNumber || 0);
+            const displayPage = pageNum > 0 ? String(pageNum) : '';
+
+            let numberPrefix = '';
+            if (numberingEnabled) {
+                for (let i = level; i < 6; i++) counters[i] = 0;
+                counters[level - 1]++;
+                const parts = [];
+                for (let i = 0; i < level; i++) parts.push(Math.max(1, counters[i]));
+                numberPrefix = parts.join('.') + ' ';
+            }
+
+            const displayText = numberPrefix + text;
+            const textWithFormulas = typeof renderLatex === 'function' ? renderLatex(displayText) : escapeHtml(displayText);
+
+            const indent = nestingEnabled ? (level - 1) * indentPerLevel : 0;
+            const marginLeft = indent > 0 ? `${indent}px` : '0';
+            const lineStyle = `font-size: ${fontSize}pt; font-style: ${fontStyle}; font-weight: ${fontWeight}; margin-left: ${marginLeft};`;
+            const dotChar = '\u00B7';
+            const dotsContent = dotChar.repeat(300);
+            const letterSpacingEm = 0.15;
+            const gapToPageEm = letterSpacingEm * 3;
+            const dotsStyle = `font-size: ${fontSize}pt; font-weight: ${fontWeight}; color: #333; letter-spacing: ${letterSpacingEm}em; overflow: hidden; white-space: nowrap;`;
+            lines.push(`<div class="toc-line" style="${lineStyle} display: flex; align-items: flex-end; margin-bottom: 4pt; min-width: 0;">`);
+            lines.push(`<span class="toc-text" style="flex: 0 1 auto; min-width: 0; max-width: 60%; overflow-wrap: break-word; word-break: break-word;">${textWithFormulas}</span>`);
+            lines.push(`<span class="toc-dots" style="flex: 1 0 2em; min-width: 2em; padding: 0 ${gapToPageEm}em 0 6px; ${dotsStyle}">${escapeHtml(dotsContent)}</span>`);
+            lines.push(`<span class="toc-page" style="flex-shrink: 0; margin-left: ${gapToPageEm}em;">${escapeHtml(displayPage)}</span>`);
+            lines.push('</div>');
+        });
+
+        lines.push('</div>');
+        return lines.join('\n');
+    }
+
     function renderTitlePageToHtml(titlePage, variables) {
         if (!titlePage?.data?.elements) {
             return '';
@@ -1361,7 +1435,9 @@
             titlePage,
             titlePageVariables,
             overrides,
-            baseUrl
+            baseUrl,
+            tableOfContents,
+            tableOfContentsSettings
         } = data;
 
         const root = document.getElementById('document-preview-root');
@@ -1412,7 +1488,6 @@
         // Render document
         const renderedHtml = renderDocument(markdown || '', profile, overrides || {}, false);
         
-        // Calculate content dimensions
         const headerContentHeight = (pageNumbers?.enabled && pageNumbers.position === 'top')
             ? (pageNumbers.fontSize || 12) * 1.2
             : 0;
@@ -1421,11 +1496,6 @@
             ? (pageNumbers.fontSize || 12) * 1.2
             : 0;
 
-        // Content height should account for margins, header space И реальную высоту футера.
-        // Раньше footerContentHeight не вычитался, из‑за чего splitIntoPages «думал»,
-        // что на странице доступно больше вертикального пространства, чем есть в реальном PDF.
-        // В результате последний блок контента + футер могли не влезать физически,
-        // и движок печати переносил футер на верх следующей страницы.
         const contentHeight = dimensions.pageHeight
             - dimensions.marginTop
             - dimensions.marginBottom
@@ -1433,12 +1503,41 @@
             - footerContentHeight;
         const contentWidth = dimensions.pageWidth - dimensions.marginLeft - dimensions.marginRight;
 
-        // Split into pages (wait for images to load during pagination)
-        const pages = await splitIntoPages(renderedHtml, contentHeight, contentWidth);
+        let pages;
+        let headingPageMapByIndex = [];
+        const hasToc = tableOfContents && Array.isArray(tableOfContents) && tableOfContents.length > 0;
+
+        if (hasToc) {
+            const splitResult = await splitIntoPages(renderedHtml, contentHeight, contentWidth, { returnElementPageMap: true });
+            pages = splitResult.pages;
+            const elementPageMap = splitResult.elementPageMap || {};
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(renderedHtml, 'text/html');
+            const elements = Array.from(doc.body.children);
+            elements.forEach((el, idx) => {
+                if (/^H[1-6]$/.test(el.tagName)) {
+                    headingPageMapByIndex.push(elementPageMap[idx] !== undefined ? elementPageMap[idx] : 0);
+                }
+            });
+        } else {
+            pages = await splitIntoPages(renderedHtml, contentHeight, contentWidth);
+        }
+
+        let tocPages = [];
+        let tocPageCount = 0;
+        if (hasToc && tableOfContents.length > 0) {
+            const tocSettings = tableOfContentsSettings || {};
+            const tocHtml = renderTableOfContentsToHtml(tableOfContents, tocSettings, headingPageMapByIndex, 0);
+            tocPages = await splitIntoPages(tocHtml, contentHeight, contentWidth);
+            tocPageCount = tocPages.length;
+            const pageOffset = 1 + (titlePageHtml ? 1 : 0) + tocPageCount;
+            const tocHtmlWithPages = renderTableOfContentsToHtml(tableOfContents, tocSettings, headingPageMapByIndex, pageOffset);
+            tocPages = await splitIntoPages(tocHtmlWithPages, contentHeight, contentWidth);
+        }
 
         const showHeader = pageNumbers?.enabled && pageNumbers.position === 'top';
         const showFooter = pageNumbers?.enabled && pageNumbers.position === 'bottom';
-        const totalPages = pages.length + (titlePageHtml ? 1 : 0);
+        const totalPages = (titlePageHtml ? 1 : 0) + tocPageCount + pages.length;
 
         // Render title page
         if (titlePageHtml) {
@@ -1465,12 +1564,60 @@
             titlePageDiv.appendChild(titlePageContent);
 
             container.appendChild(titlePageDiv);
+        }
 
-            // Отладка размеров титульника
-            console.log(`Title page rendered: width=${dimensions.pageWidth}px, height=${dimensions.pageHeight}px`);
+        // Render TOC pages
+        if (tocPages.length > 0) {
+            tocPages.forEach((tocPageHtml, tocIndex) => {
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'document-preview__page document-preview__page--toc';
+                pageDiv.style.width = `${dimensions.pageWidth}px`;
+                pageDiv.style.height = `${dimensions.pageHeight}px`;
+                pageDiv.style.margin = '0 auto';
+                pageDiv.style.background = 'white';
+                pageDiv.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                pageDiv.style.pageBreakAfter = 'always';
+                pageDiv.style.pageBreakInside = 'avoid';
+                pageDiv.style.position = 'relative';
+                pageDiv.style.overflow = 'hidden';
+
+                const content = document.createElement('div');
+                content.className = 'document-preview__content';
+                content.style.padding = `${dimensions.marginTop}px ${dimensions.marginRight}px ${dimensions.marginBottom}px ${dimensions.marginLeft}px`;
+                content.style.width = '100%';
+                content.style.height = '100%';
+                content.style.boxSizing = 'border-box';
+                content.style.pageBreakInside = 'avoid';
+                content.innerHTML = tocPageHtml;
+
+                if (showFooter) {
+                    const pageNumber = (titlePageHtml ? 1 : 0) + tocIndex + 1;
+                    const format = (pageNumbers.format || '{n}')
+                        .replace('{n}', String(pageNumber))
+                        .replace('{total}', String(totalPages));
+                    const footer = document.createElement('div');
+                    footer.className = 'document-preview__footer';
+                    footer.style.position = 'absolute';
+                    footer.style.bottom = '0';
+                    footer.style.left = '0';
+                    footer.style.right = '0';
+                    footer.style.height = `${dimensions.marginBottom}px`;
+                    footer.style.display = 'flex';
+                    footer.style.flexDirection = 'column';
+                    footer.style.justifyContent = 'flex-end';
+                    footer.style.alignItems = 'center';
+                    footer.innerHTML = `<div style="font-size: ${pageNumbers.fontSize || 12}pt;">${format}</div>`;
+                    pageDiv.appendChild(content);
+                    pageDiv.appendChild(footer);
+                } else {
+                    pageDiv.appendChild(content);
+                }
+                container.appendChild(pageDiv);
+            });
         }
 
         // Render document pages
+        const contentPageOffset = (titlePageHtml ? 1 : 0) + tocPageCount;
         pages.forEach((pageHtml, index) => {
             const pageDiv = document.createElement('div');
             pageDiv.className = 'document-preview__page';
@@ -1514,7 +1661,7 @@
                 header.style.pageBreakAfter = 'avoid'; // Prevent page break after header
                 header.style.background = 'transparent'; // Ensure no background
 
-                const pageNumber = index + 1 + (titlePageHtml ? 1 : 0);
+                const pageNumber = index + 1 + contentPageOffset;
                 const format = (pageNumbers.format || '{n}')
                     .replace('{n}', String(pageNumber))
                     .replace('{total}', String(totalPages));
@@ -1596,7 +1743,7 @@
                 footer.style.background = 'transparent'; // Ensure no background
                 footer.style.pointerEvents = 'none'; // Allow clicks to pass through
 
-                const pageNumber = index + 1 + (titlePageHtml ? 1 : 0);
+                const pageNumber = index + 1 + contentPageOffset;
                 const format = (pageNumbers.format || '{n}')
                     .replace('{n}', String(pageNumber))
                     .replace('{total}', String(totalPages));

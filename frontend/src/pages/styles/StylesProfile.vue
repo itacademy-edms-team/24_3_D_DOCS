@@ -34,6 +34,12 @@
 			class="styles-profile__page-settings"
 		/>
 
+		<!-- Table of Contents Settings -->
+		<TableOfContentsSettingsCard
+			v-model="profileData.tableOfContents"
+			class="styles-profile__toc-settings"
+		/>
+
 		<!-- Style Tabs -->
 		<NestedStyleTabs
 			v-model="activeEntityType"
@@ -54,6 +60,7 @@ import { useDebounceFn } from '@vueuse/core';
 import Dropdown from '@/shared/ui/Dropdown/Dropdown.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import PageSettingsCard from '@/widgets/style-tabs/PageSettingsCard.vue';
+import TableOfContentsSettingsCard from '@/widgets/style-tabs/TableOfContentsSettingsCard.vue';
 import NestedStyleTabs from '@/widgets/style-tabs/NestedStyleTabs.vue';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import { getDefaultProfileData } from '@/utils/profileDefaults';
@@ -242,6 +249,7 @@ function mergeWithDefaults(data: ProfileData): ProfileData {
 		pageSettings: mergedPageSettings,
 		entityStyles: mergedEntityStyles,
 		headingNumbering: data.headingNumbering || defaults.headingNumbering,
+		tableOfContents: data.tableOfContents || defaults.tableOfContents,
 	};
 }
 
@@ -333,7 +341,8 @@ onMounted(async () => {
 	color: var(--text-secondary);
 }
 
-.styles-profile__page-settings {
+.styles-profile__page-settings,
+.styles-profile__toc-settings {
 	margin-bottom: var(--spacing-xl);
 }
 </style>

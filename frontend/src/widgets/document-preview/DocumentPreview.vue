@@ -18,7 +18,7 @@
 				</div>
 			</div>
 
-			<!-- Document Pages -->
+			<!-- TOC and Document Pages -->
 			<div
 				v-for="(page, index) in pages"
 				:key="index"
@@ -26,6 +26,7 @@
 			>
 				<div
 					class="document-preview__page"
+					:class="{ 'document-preview__page--toc': index < tocPageCount }"
 					:style="getPageStyle(index, titlePageHtml ? 1 : 0)"
 				>
 				<!-- Header with page number - absolutely positioned at top -->
@@ -70,7 +71,9 @@ import {
 } from '@/utils/pageConstants';
 import type { ProfileData } from '@/entities/profile/types';
 import type { TitlePageWithData } from '@/entities/title-page/api/TitlePageAPI';
+import type { TocItem } from '@/entities/document/types';
 import { getAccessToken } from '@/shared/auth/tokenStorage';
+import { renderTableOfContentsToHtml } from '@/utils/tableOfContentsRenderer';
 import 'katex/dist/katex.css';
 
 interface Props {
@@ -79,6 +82,7 @@ interface Props {
 	titlePageId?: string;
 	titlePageVariables?: Record<string, string>;
 	documentId: string;
+	tableOfContents?: TocItem[] | null;
 }
 
 const props = defineProps<Props>();
@@ -90,6 +94,7 @@ const profileData = ref<ProfileData | null>(null);
 const titlePage = ref<TitlePageWithData | null>(null);
 const titlePageHtml = ref<string>('');
 const pages = ref<string[]>([]);
+const tocPageCount = ref(0);
 const isLoading = ref(false);
 const isUpdatingPages = ref(false);
 const isLoadingTitlePage = ref(false);
@@ -417,15 +422,70 @@ async function updatePages(requestId: number) {
 				return;
 			}
 			try {
-				const splitPages = await splitIntoPages(
-					renderedHtml,
-					contentHeight.value,
-					contentWidth.value
-				);
+				const hasToc =
+					props.tableOfContents &&
+					Array.isArray(props.tableOfContents) &&
+					props.tableOfContents.length > 0;
+				let contentPages: string[];
+				let tocPages: string[] = [];
+
+				if (hasToc && props.tableOfContents) {
+					const splitResult = (await splitIntoPages(
+						renderedHtml,
+						contentHeight.value,
+						contentWidth.value,
+						{ returnElementPageMap: true }
+					)) as { pages: string[]; elementPageMap: Record<number, number> };
+					contentPages = splitResult.pages;
+					const elementPageMap = splitResult.elementPageMap || {};
+					const parser = new DOMParser();
+					const doc = parser.parseFromString(renderedHtml, 'text/html');
+					const elements = Array.from(doc.body.children);
+					const headingPageMapByIndex: number[] = [];
+					elements.forEach((el, idx) => {
+						if (/^H[1-6]$/.test(el.tagName)) {
+							headingPageMapByIndex.push(
+								elementPageMap[idx] !== undefined ? elementPageMap[idx] : 0
+							);
+						}
+					});
+					const tocSettings = profileData.value?.tableOfContents || undefined;
+					const tocHtml = renderTableOfContentsToHtml(
+						props.tableOfContents,
+						tocSettings,
+						headingPageMapByIndex,
+						0
+					);
+					tocPages = await splitIntoPages(
+						tocHtml,
+						contentHeight.value,
+						contentWidth.value
+					) as string[];
+					const pageOffset = 1 + (titlePageHtml.value ? 1 : 0) + tocPages.length;
+					const tocHtmlWithPages = renderTableOfContentsToHtml(
+						props.tableOfContents,
+						tocSettings,
+						headingPageMapByIndex,
+						pageOffset
+					);
+					tocPages = (await splitIntoPages(
+						tocHtmlWithPages,
+						contentHeight.value,
+						contentWidth.value
+					)) as string[];
+				} else {
+					contentPages = (await splitIntoPages(
+						renderedHtml,
+						contentHeight.value,
+						contentWidth.value
+					)) as string[];
+				}
+
 				if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
 					return;
 				}
-				pages.value = splitPages;
+				tocPageCount.value = tocPages.length;
+				pages.value = [...tocPages, ...contentPages];
 				
 				// After pages are set, handle image loading in the DOM
 				nextTick(() => {
@@ -436,6 +496,7 @@ async function updatePages(requestId: number) {
 				if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
 					return;
 				}
+				tocPageCount.value = 0;
 				pages.value = [renderedHtml];
 				nextTick(() => {
 					handleImageLoading();
@@ -623,13 +684,18 @@ watch(
 	{ immediate: true, deep: true }
 );
 
-// Update pages when content or profile changes
+// Update pages when content, profile, TOC, or title page changes
 watch(
-	[() => props.content, () => profileData.value],
+	[
+		() => props.content,
+		() => profileData.value,
+		() => props.tableOfContents,
+		() => titlePageHtml.value,
+	],
 	() => {
 		debouncedUpdatePages();
 	},
-	{ immediate: false } // Don't run immediately, wait for profile to load first
+	{ immediate: false }
 );
 
 onMounted(async () => {

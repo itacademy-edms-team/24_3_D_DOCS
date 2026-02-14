@@ -10,6 +10,18 @@ public class ProfileData
     public Dictionary<string, EntityStyle> EntityStyles { get; set; } = new();
     
     public HeadingNumberingSettings? HeadingNumbering { get; set; }
+
+    public TableOfContentsSettings? TableOfContents { get; set; }
+}
+
+public class TableOfContentsSettings
+{
+    public string FontStyle { get; set; } = "normal"; // normal, italic
+    public string FontWeight { get; set; } = "normal"; // normal, bold
+    public int FontSize { get; set; } = 14; // pt
+    public int IndentPerLevel { get; set; } = 5; // mm
+    public bool NestingEnabled { get; set; } = true;
+    public bool NumberingEnabled { get; set; } = true;
 }
 
 public class HeadingNumberingSettings

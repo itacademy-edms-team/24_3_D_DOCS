@@ -96,6 +96,10 @@ public class PdfGeneratorService : IPdfGeneratorService
             // Get overrides
             var overrides = document.StyleOverrides ?? new Dictionary<string, object>();
 
+            // Get table of contents
+            var tableOfContents = await _documentService.GetTableOfContentsAsync(documentId, userId);
+            var tableOfContentsSettings = profile?.Data?.TableOfContents;
+
             // Get base URL for images
             var baseUrl = _configuration["MinIO:PublicUrl"] ?? "http://localhost:5000";
             // If we're in a web context, prefer the actual request URL
@@ -120,7 +124,9 @@ public class PdfGeneratorService : IPdfGeneratorService
                 } : null,
                 titlePageVariables = titlePageVariables,
                 overrides = overrides,
-                baseUrl = baseUrl
+                baseUrl = baseUrl,
+                tableOfContents = tableOfContents,
+                tableOfContentsSettings = tableOfContentsSettings
             };
 
             // Generate PDF using Puppeteer

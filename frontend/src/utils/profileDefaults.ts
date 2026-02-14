@@ -253,5 +253,13 @@ export function getDefaultProfileData(): ProfileData {
 				6: { format: '{n} {content}', enabled: false },
 			},
 		},
+		tableOfContents: {
+			fontStyle: 'normal',
+			fontWeight: 'normal',
+			fontSize: 14,
+			indentPerLevel: 5,
+			nestingEnabled: true,
+			numberingEnabled: true,
+		},
 	};
 }

@@ -55,6 +55,15 @@ function measureElementHeight(element: HTMLElement): number {
 	return rect.height + marginTop + marginBottom;
 }
 
+export interface SplitIntoPagesOptions {
+	returnElementPageMap?: boolean;
+}
+
+export interface SplitIntoPagesResult {
+	pages: string[];
+	elementPageMap: Record<number, number>;
+}
+
 /**
  * Async function to split HTML content into pages based on content height
  * Elements are never split - they are moved to next page if they don't fit
@@ -62,10 +71,14 @@ function measureElementHeight(element: HTMLElement): number {
 export async function splitIntoPages(
 	html: string,
 	pageContentHeight: number,
-	contentWidth: number
-): Promise<string[]> {
+	contentWidth: number,
+	options?: SplitIntoPagesOptions
+): Promise<string[] | SplitIntoPagesResult> {
+	const returnElementPageMap = options?.returnElementPageMap ?? false;
 	if (!html.trim()) {
-		return [''];
+		return returnElementPageMap
+			? { pages: [''], elementPageMap: {} }
+			: [''];
 	}
 
 	const measurementContainer = document.createElement('div');
@@ -78,21 +91,31 @@ export async function splitIntoPages(
 		await ensureImagesLoadedAsync(measurementContainer);
 
 		const totalHeight = measurementContainer.scrollHeight;
-		if (totalHeight <= pageContentHeight) {
-			return [html];
-		}
 
 		// Parse HTML to get source elements used for final page assembly.
 		const parser = new DOMParser();
 		const doc = parser.parseFromString(html, 'text/html');
 		const sourceElements = Array.from(doc.body.children);
 
+		if (totalHeight <= pageContentHeight) {
+			const elementPageMap: Record<number, number> = {};
+			if (returnElementPageMap) {
+				sourceElements.forEach((_, idx) => {
+					elementPageMap[idx] = 0;
+				});
+				return { pages: [html], elementPageMap };
+			}
+			return [html];
+		}
+
 		// These elements are in strict top-to-bottom order as rendered.
 		const measuredElements = Array.from(measurementContainer.children) as HTMLElement[];
 
 		const pages: string[] = [];
-		let currentPageElements: Element[] = [];
+		let currentPageElements: { el: Element; idx: number }[] = [];
 		let currentPageHeight = 0;
+		const elementPageMap: Record<number, number> = {};
+		let nextPageIndex = 0;
 
 		// Elements that should not be split (block-level elements)
 		const blockElements = new Set([
@@ -121,14 +144,16 @@ export async function splitIntoPages(
 		document.body.appendChild(fallbackMeasureContainer);
 
 		const flushCurrentPage = () => {
-			if (currentPageElements.length === 0) {
-				return;
-			}
+			if (currentPageElements.length === 0) return;
+			currentPageElements.forEach(({ idx }) => {
+				elementPageMap[idx] = nextPageIndex;
+			});
 			const pageDiv = document.createElement('div');
-			currentPageElements.forEach((el) => {
+			currentPageElements.forEach(({ el }) => {
 				pageDiv.appendChild(el.cloneNode(true));
 			});
 			pages.push(pageDiv.innerHTML);
+			nextPageIndex++;
 			currentPageElements = [];
 			currentPageHeight = 0;
 		};
@@ -152,9 +177,11 @@ export async function splitIntoPages(
 			// Large block elements get their own page, but sequence is preserved.
 			if (elementHeight > pageContentHeight && isBlockElement) {
 				flushCurrentPage();
+				elementPageMap[index] = nextPageIndex;
 				const pageDiv = document.createElement('div');
 				pageDiv.appendChild(sourceElement.cloneNode(true));
 				pages.push(pageDiv.innerHTML);
+				nextPageIndex++;
 				continue;
 			}
 
@@ -162,13 +189,17 @@ export async function splitIntoPages(
 				flushCurrentPage();
 			}
 
-			currentPageElements.push(sourceElement);
+			currentPageElements.push({ el: sourceElement, idx: index });
 			currentPageHeight += elementHeight;
 		}
 
 		flushCurrentPage();
 		document.body.removeChild(fallbackMeasureContainer);
-		return pages.length > 0 ? pages : [html];
+		const resultPages = pages.length > 0 ? pages : [html];
+		if (returnElementPageMap) {
+			return { pages: resultPages, elementPageMap };
+		}
+		return resultPages;
 	} finally {
 		document.body.removeChild(measurementContainer);
 	}
