@@ -252,9 +252,11 @@ public class DocumentService : IDocumentService
         var contentBytes = Encoding.UTF8.GetBytes(content);
         using var contentStream = new MemoryStream(contentBytes);
         await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStream, "text/markdown");
-        
+
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
         _logger.LogInformation("UpdateDocumentContentAsync: Content saved successfully to MinIO");
-        
     }
 
     public async Task UpdateDocumentOverridesAsync(Guid documentId, Guid userId, Dictionary<string, object> overrides)
@@ -292,6 +294,130 @@ public class DocumentService : IDocumentService
 
         document.Metadata = JsonSerializer.Serialize(metadata);
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<DocumentVersionDTO> SaveVersionAsync(Guid documentId, Guid userId, string name)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var bucket = GetUserBucket(userId);
+
+        // Read current content from MinIO
+        string content;
+        try
+        {
+            using var contentStream = await _minioService.DownloadFileAsync(bucket, document.MdMinioPath);
+            using var reader = new StreamReader(contentStream, Encoding.UTF8);
+            content = await reader.ReadToEndAsync();
+        }
+        catch (FileNotFoundException)
+        {
+            content = string.Empty;
+        }
+
+        var versionId = Guid.NewGuid();
+        var documentPrefix = document.MdMinioPath.Substring(0, document.MdMinioPath.LastIndexOf('/'));
+        var versionPath = $"{documentPrefix}/versions/{versionId}.md";
+
+        var version = new DocumentVersion
+        {
+            Id = versionId,
+            DocumentId = documentId,
+            Name = name.Trim(),
+            ContentMinioPath = versionPath
+        };
+
+        _context.DocumentVersions.Add(version);
+        await _context.SaveChangesAsync();
+
+        var contentBytes = Encoding.UTF8.GetBytes(content);
+        using var versionStream = new MemoryStream(contentBytes);
+        await _minioService.UploadFileAsync(bucket, versionPath, versionStream, "text/markdown");
+
+        _logger.LogInformation("Saved version {VersionId} for document {DocumentId}", versionId, documentId);
+
+        return new DocumentVersionDTO
+        {
+            Id = version.Id,
+            DocumentId = version.DocumentId,
+            Name = version.Name,
+            CreatedAt = version.CreatedAt
+        };
+    }
+
+    public async Task<List<DocumentVersionDTO>> GetVersionsAsync(Guid documentId, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            return new List<DocumentVersionDTO>();
+
+        var versions = await _context.DocumentVersions
+            .Where(v => v.DocumentId == documentId)
+            .OrderByDescending(v => v.CreatedAt)
+            .ToListAsync();
+
+        return versions.Select(v => new DocumentVersionDTO
+        {
+            Id = v.Id,
+            DocumentId = v.DocumentId,
+            Name = v.Name,
+            CreatedAt = v.CreatedAt
+        }).ToList();
+    }
+
+    public async Task<string> GetVersionContentAsync(Guid documentId, Guid versionId, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var version = await _context.DocumentVersions
+            .FirstOrDefaultAsync(v => v.Id == versionId && v.DocumentId == documentId);
+
+        if (version == null)
+            throw new FileNotFoundException($"Version {versionId} not found");
+
+        var bucket = GetUserBucket(userId);
+
+        try
+        {
+            using var contentStream = await _minioService.DownloadFileAsync(bucket, version.ContentMinioPath);
+            using var reader = new StreamReader(contentStream, Encoding.UTF8);
+            return await reader.ReadToEndAsync();
+        }
+        catch (FileNotFoundException)
+        {
+            return string.Empty;
+        }
+    }
+
+    public async Task RestoreVersionAsync(Guid documentId, Guid versionId, Guid userId)
+    {
+        var content = await GetVersionContentAsync(documentId, versionId, userId);
+
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var bucket = GetUserBucket(userId);
+        var contentBytes = Encoding.UTF8.GetBytes(content);
+        using var contentStream = new MemoryStream(contentBytes);
+        await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStream, "text/markdown");
+
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Restored version {VersionId} for document {DocumentId}", versionId, documentId);
     }
 
     public async Task<List<TocItem>?> GetTableOfContentsAsync(Guid documentId, Guid userId)

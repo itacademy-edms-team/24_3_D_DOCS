@@ -27,4 +27,9 @@ public interface IDocumentService
     Task<List<TocItem>> GenerateTableOfContentsAsync(Guid documentId, Guid userId);
     Task UpdateTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items);
     Task<List<TocItem>> ResetTableOfContentsAsync(Guid documentId, Guid userId);
+
+    Task<DocumentVersionDTO> SaveVersionAsync(Guid documentId, Guid userId, string name);
+    Task<List<DocumentVersionDTO>> GetVersionsAsync(Guid documentId, Guid userId);
+    Task<string> GetVersionContentAsync(Guid documentId, Guid versionId, Guid userId);
+    Task RestoreVersionAsync(Guid documentId, Guid versionId, Guid userId);
 }

@@ -315,6 +315,107 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// Сохранить текущую версию документа
+    /// </summary>
+    [HttpPost("{id}/versions")]
+    [ProducesResponseType(typeof(DocumentVersionDTO), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SaveDocumentVersion(Guid id, [FromBody] SaveDocumentVersionDTO dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+        {
+            return BadRequest(new { message = "Имя версии обязательно" });
+        }
+
+        try
+        {
+            var userId = GetUserId();
+            var version = await _documentService.SaveVersionAsync(id, userId, dto.Name);
+            return StatusCode(StatusCodes.Status201Created, version);
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Документ не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving version for document {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Получить список версий документа
+    /// </summary>
+    [HttpGet("{id}/versions")]
+    [ProducesResponseType(typeof(List<DocumentVersionDTO>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDocumentVersions(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var versions = await _documentService.GetVersionsAsync(id, userId);
+            return Ok(versions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting versions for document {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Получить контент версии документа
+    /// </summary>
+    [HttpGet("{id}/versions/{versionId}")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDocumentVersionContent(Guid id, Guid versionId)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var content = await _documentService.GetVersionContentAsync(id, versionId, userId);
+            return Ok(new { content });
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Версия или документ не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting version content for document {DocumentId}, version {VersionId}", id, versionId);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Восстановить документ из версии
+    /// </summary>
+    [HttpPost("{id}/versions/{versionId}/restore")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RestoreDocumentVersion(Guid id, Guid versionId)
+    {
+        try
+        {
+            var userId = GetUserId();
+            await _documentService.RestoreVersionAsync(id, versionId, userId);
+            return NoContent();
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Версия или документ не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error restoring version {VersionId} for document {DocumentId}", versionId, id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
     /// Удалить документ (в корзину)
     /// </summary>
     [HttpDelete("{id}")]

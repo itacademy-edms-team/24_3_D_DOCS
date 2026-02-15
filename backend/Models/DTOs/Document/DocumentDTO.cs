@@ -53,3 +53,16 @@ public class UpdateDocumentOverridesDTO
 {
     public Dictionary<string, object> Overrides { get; set; } = new();
 }
+
+public class DocumentVersionDTO
+{
+    public Guid Id { get; set; }
+    public Guid DocumentId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public class SaveDocumentVersionDTO
+{
+    public string Name { get; set; } = string.Empty;
+}

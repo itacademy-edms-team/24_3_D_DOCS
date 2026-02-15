@@ -16,6 +16,7 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<User> Users { get; set; }
     public DbSet<SchemaLink> SchemaLinks { get; set; }
     public DbSet<DocumentLink> DocumentLinks { get; set; }
+    public DbSet<DocumentVersion> DocumentVersions { get; set; }
     public DbSet<TitlePage> TitlePages { get; set; }
     public DbSet<ChatSession> ChatSessions { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
@@ -136,6 +137,26 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
                   .WithMany()
                   .HasForeignKey(d => d.TitlePageId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configure DocumentVersion entity
+        modelBuilder.Entity<DocumentVersion>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.DocumentId)
+                  .HasDatabaseName("IX_DocumentVersions_DocumentId");
+
+            entity.HasIndex(e => e.CreatedAt)
+                  .HasDatabaseName("IX_DocumentVersions_CreatedAt");
+
+            entity.Property(e => e.CreatedAt)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.HasOne(v => v.Document)
+                  .WithMany()
+                  .HasForeignKey(v => v.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure TitlePage entity
