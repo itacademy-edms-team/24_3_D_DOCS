@@ -8,6 +8,8 @@ import type {
 	UpdateDocumentOverridesDTO,
 	DocumentMetadata,
 	TocItem,
+	DocumentVersion,
+	SaveDocumentVersionDTO,
 } from '../types';
 
 class DocumentAPI extends HttpClient {
@@ -80,6 +82,32 @@ class DocumentAPI extends HttpClient {
 
 	async resetTableOfContents(id: string): Promise<TocItem[]> {
 		return this.post<TocItem[]>(`/api/documents/${id}/table-of-contents/reset`, {});
+	}
+
+	async saveVersion(id: string, name: string): Promise<DocumentVersion> {
+		return this.post<DocumentVersion, SaveDocumentVersionDTO>(
+			`/api/documents/${id}/versions`,
+			{ name },
+		);
+	}
+
+	async getVersions(id: string): Promise<DocumentVersion[]> {
+		return this.get<DocumentVersion[]>(`/api/documents/${id}/versions`);
+	}
+
+	async getVersionContent(id: string, versionId: string): Promise<string> {
+		const result = await this.get<{ content: string }>(
+			`/api/documents/${id}/versions/${versionId}`,
+		);
+		return result.content ?? '';
+	}
+
+	async restoreVersion(id: string, versionId: string): Promise<void> {
+		return this.post<void>(`/api/documents/${id}/versions/${versionId}/restore`);
+	}
+
+	async deleteVersion(id: string, versionId: string): Promise<void> {
+		return super.delete<void>(`/api/documents/${id}/versions/${versionId}`);
 	}
 
 	async generatePdf(id: string, titlePageId?: string): Promise<Blob> {

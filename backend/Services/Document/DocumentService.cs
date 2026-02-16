@@ -7,6 +7,7 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using RusalProject.Models.DTOs.Document;
 using RusalProject.Models.Entities;
+using RusalProject.Models.Exceptions;
 using RusalProject.Models.Types;
 using RusalProject.Provider.Database;
 using RusalProject.Services.Storage;
@@ -319,6 +320,29 @@ public class DocumentService : IDocumentService
             content = string.Empty;
         }
 
+        // Check for duplicate content in existing versions
+        var existingVersions = await _context.DocumentVersions
+            .Where(v => v.DocumentId == documentId)
+            .ToListAsync();
+        foreach (var ver in existingVersions)
+        {
+            string existingContent;
+            try
+            {
+                using var existingStream = await _minioService.DownloadFileAsync(bucket, ver.ContentMinioPath);
+                using var existingReader = new StreamReader(existingStream, Encoding.UTF8);
+                existingContent = await existingReader.ReadToEndAsync();
+            }
+            catch (FileNotFoundException)
+            {
+                existingContent = string.Empty;
+            }
+            if (existingContent == content)
+            {
+                throw new DuplicateContentException("Версия с таким содержимым уже существует");
+            }
+        }
+
         var versionId = Guid.NewGuid();
         var documentPrefix = document.MdMinioPath.Substring(0, document.MdMinioPath.LastIndexOf('/'));
         var versionPath = $"{documentPrefix}/versions/{versionId}.md";
@@ -418,6 +442,37 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Restored version {VersionId} for document {DocumentId}", versionId, documentId);
+    }
+
+    public async Task DeleteVersionAsync(Guid documentId, Guid versionId, Guid userId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var version = await _context.DocumentVersions
+            .FirstOrDefaultAsync(v => v.Id == versionId && v.DocumentId == documentId);
+
+        if (version == null)
+            throw new FileNotFoundException($"Version {versionId} not found");
+
+        var bucket = GetUserBucket(userId);
+
+        try
+        {
+            await _minioService.DeleteFileAsync(bucket, version.ContentMinioPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete version file from MinIO {Path}", version.ContentMinioPath);
+        }
+
+        _context.DocumentVersions.Remove(version);
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Deleted version {VersionId} for document {DocumentId}", versionId, documentId);
     }
 
     public async Task<List<TocItem>?> GetTableOfContentsAsync(Guid documentId, Guid userId)

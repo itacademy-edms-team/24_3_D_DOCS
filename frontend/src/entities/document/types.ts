@@ -64,3 +64,14 @@ export interface TocItem {
 	headingId?: string;
 	isManual?: boolean;
 }
+
+export interface DocumentVersion {
+	id: string;
+	documentId: string;
+	name: string;
+	createdAt: string;
+}
+
+export interface SaveDocumentVersionDTO {
+	name: string;
+}

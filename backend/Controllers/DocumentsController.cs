@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Document;
+using RusalProject.Models.Exceptions;
 using RusalProject.Models.Types;
 using RusalProject.Services.Document;
 using RusalProject.Services.Pdf;
@@ -320,6 +321,7 @@ public class DocumentsController : ControllerBase
     [HttpPost("{id}/versions")]
     [ProducesResponseType(typeof(DocumentVersionDTO), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> SaveDocumentVersion(Guid id, [FromBody] SaveDocumentVersionDTO dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Name))
@@ -336,6 +338,10 @@ public class DocumentsController : ControllerBase
         catch (FileNotFoundException)
         {
             return NotFound(new { message = "Документ не найден" });
+        }
+        catch (DuplicateContentException ex)
+        {
+            return Conflict(new { code = "DuplicateVersion", message = ex.Message });
         }
         catch (Exception ex)
         {
@@ -411,6 +417,31 @@ public class DocumentsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error restoring version {VersionId} for document {DocumentId}", versionId, id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Удалить версию документа
+    /// </summary>
+    [HttpDelete("{id}/versions/{versionId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteDocumentVersion(Guid id, Guid versionId)
+    {
+        try
+        {
+            var userId = GetUserId();
+            await _documentService.DeleteVersionAsync(id, versionId, userId);
+            return NoContent();
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Версия или документ не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting version {VersionId} for document {DocumentId}", versionId, id);
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }

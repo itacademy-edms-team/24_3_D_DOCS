@@ -123,6 +123,115 @@
 						</svg>
 						<span v-else class="spinner-small"></span>
 					</button>
+					<div class="versions-dropdown" ref="versionsDropdownRef">
+						<button
+							class="content-editor__header-btn"
+							:class="{ 'content-editor__header-btn--active': showVersionsPanel }"
+							@click="showVersionsPanel = !showVersionsPanel"
+							:disabled="!documentId"
+							title="История версий"
+						>
+							<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+								<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+							</svg>
+						</button>
+						<Transition name="versions-panel">
+							<div v-if="showVersionsPanel" class="versions-dropdown__panel">
+								<button
+									class="versions-dropdown__save-btn"
+									@click="openSaveVersionModal"
+									:disabled="isSavingVersion"
+								>
+									{{ isSavingVersion ? '...' : '+ Сохранить версию' }}
+								</button>
+								<div v-if="versionSearchScope === 'name'" class="versions-dropdown__search-row">
+									<input
+										v-model="versionSearchQuery"
+										type="text"
+										class="versions-dropdown__search"
+										placeholder="Поиск по названию"
+									/>
+								</div>
+								<div v-else class="versions-dropdown__search-row versions-dropdown__search-row--dates">
+									<div class="versions-dropdown__date-range">
+										<label class="versions-dropdown__date-label">С</label>
+										<input v-model="versionSearchDateFrom" type="date" class="versions-dropdown__date-input" />
+									</div>
+									<div class="versions-dropdown__date-range">
+										<label class="versions-dropdown__date-label">По</label>
+										<input v-model="versionSearchDateTo" type="date" class="versions-dropdown__date-input" />
+									</div>
+								</div>
+								<div class="versions-dropdown__search-options">
+									<div class="versions-dropdown__search-scope">
+										<button
+											type="button"
+											class="versions-dropdown__scope-btn"
+											:class="{ 'versions-dropdown__scope-btn--active': versionSearchScope === 'name' }"
+											@click="versionSearchScope = 'name'"
+										>
+											Название
+										</button>
+										<button
+											type="button"
+											class="versions-dropdown__scope-btn"
+											:class="{ 'versions-dropdown__scope-btn--active': versionSearchScope === 'date' }"
+											@click="versionSearchScope = 'date'"
+										>
+											Дата
+										</button>
+									</div>
+									<label v-if="versionSearchScope === 'name'" class="versions-dropdown__search-case">
+										<input v-model="versionSearchCaseSensitive" type="checkbox" class="versions-dropdown__search-checkbox" />
+										<span>Регистр</span>
+									</label>
+								</div>
+								<div class="versions-dropdown__list">
+									<div
+										v-for="v in filteredVersions"
+										:key="v.id"
+										class="versions-dropdown__item"
+									>
+										<button
+											class="versions-dropdown__item-main"
+											@click="handleLoadVersion(v)"
+											:disabled="isLoadingVersion"
+										>
+											<span class="versions-dropdown__item-name">{{ v.name }}</span>
+											<span class="versions-dropdown__item-date">{{ formatVersionDate(v.createdAt) }}</span>
+											<span
+												v-if="v.id === currentVersionId"
+												class="versions-dropdown__badge versions-dropdown__badge--current"
+											>
+												Текущая версия
+											</span>
+										</button>
+										<div class="versions-dropdown__item-actions">
+											<button
+												class="versions-dropdown__btn-tile versions-dropdown__btn-tile--restore"
+												@click.stop="openRestoreConfirmModal(v)"
+												:disabled="isRestoringVersion"
+												title="Восстановить"
+											>
+												Восстановить
+											</button>
+											<button
+												class="versions-dropdown__btn-tile versions-dropdown__btn-tile--delete"
+												@click.stop="openDeleteConfirmModal(v)"
+												:disabled="isDeletingVersion"
+												title="Удалить"
+											>
+												Удалить
+											</button>
+										</div>
+									</div>
+									<div v-if="filteredVersions.length === 0" class="versions-dropdown__empty">
+										{{ versions.length === 0 ? 'Нет сохранённых версий' : 'Ничего не найдено' }}
+									</div>
+								</div>
+							</div>
+						</Transition>
+					</div>
 				</div>
 				
 				<div class="action-group">
@@ -206,6 +315,115 @@
 			</div>
 		</div>
 
+		<!-- Save Version Modal -->
+		<Modal
+			v-model="showSaveVersionModal"
+			title="Сохранить версию"
+			size="sm"
+		>
+			<div class="save-version-modal">
+				<label class="save-version-modal__label">Имя версии</label>
+				<input
+					ref="versionNameInputRef"
+					v-model="versionNameToSave"
+					type="text"
+					class="save-version-modal__input"
+					placeholder="Например: Первая версия"
+					@keydown.enter="handleSaveVersionSubmit"
+				/>
+			</div>
+			<template #footer>
+				<div class="content-editor__modal-footer">
+					<button class="content-editor__modal-btn content-editor__modal-btn--secondary" @click="showSaveVersionModal = false">
+						Отмена
+					</button>
+					<button
+						class="content-editor__modal-btn content-editor__modal-btn--primary"
+						@click="handleSaveVersionSubmit"
+						:disabled="!versionNameToSave.trim() || isSavingVersion"
+					>
+						{{ isSavingVersion ? 'Сохранение...' : 'Сохранить' }}
+					</button>
+				</div>
+			</template>
+		</Modal>
+
+		<!-- Restore Version Confirm Modal -->
+		<Modal
+			v-model="showRestoreConfirmModal"
+			title="Восстановить версию"
+			size="sm"
+		>
+			<p v-if="versionToRestore" class="restore-confirm-modal__text">
+				Восстановить версию «{{ versionToRestore.name }}»? Текущее содержимое будет заменено.
+			</p>
+			<template #footer>
+				<div class="content-editor__modal-footer">
+					<button class="content-editor__modal-btn content-editor__modal-btn--secondary" @click="showRestoreConfirmModal = false">
+						Отмена
+					</button>
+					<button
+						class="content-editor__modal-btn content-editor__modal-btn--primary content-editor__modal-btn--restore"
+						@click="handleRestoreConfirm"
+						:disabled="isRestoringVersion"
+					>
+						{{ isRestoringVersion ? 'Восстановление...' : 'Подтвердить' }}
+					</button>
+				</div>
+			</template>
+		</Modal>
+
+		<!-- Delete Version Confirm Modal -->
+		<Modal
+			v-model="showDeleteConfirmModal"
+			title="Удалить версию"
+			size="sm"
+		>
+			<p v-if="versionToDelete" class="restore-confirm-modal__text">
+				Удалить версию «{{ versionToDelete.name }}»? Это действие нельзя отменить.
+			</p>
+			<template #footer>
+				<div class="content-editor__modal-footer">
+					<button class="content-editor__modal-btn content-editor__modal-btn--secondary" @click="showDeleteConfirmModal = false">
+						Отмена
+					</button>
+					<button
+						class="content-editor__modal-btn content-editor__modal-btn--danger"
+						@click="handleDeleteConfirm"
+						:disabled="isDeletingVersion"
+					>
+						{{ isDeletingVersion ? 'Удаление...' : 'Подтвердить' }}
+					</button>
+				</div>
+			</template>
+		</Modal>
+
+		<!-- Duplicate Version Modal -->
+		<Modal
+			v-model="showDuplicateVersionModal"
+			title="Дубликат версии"
+			size="sm"
+		>
+			<p class="restore-confirm-modal__text">{{ duplicateVersionMessage }}</p>
+			<template #footer>
+				<div class="content-editor__modal-footer">
+					<button
+						class="content-editor__modal-btn content-editor__modal-btn--primary"
+						@click="showDuplicateVersionModal = false"
+					>
+						Понятно
+					</button>
+				</div>
+			</template>
+		</Modal>
+
+		<!-- Toast notification -->
+		<Transition name="toast">
+			<div v-if="toastNotification.visible" class="content-editor__toast">
+				{{ toastNotification.text }}
+			</div>
+		</Transition>
+
 		<!-- AI Panel (Chat Dock) -->
 		<ChatDock
 			v-model:open="showAIPanel"
@@ -221,17 +439,19 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { onClickOutside } from '@vueuse/core';
 import { useRoute, useRouter } from 'vue-router';
 import Button from '@/shared/ui/Button/Button.vue';
 import MarkdownEditor from '@/widgets/markdown-editor/MarkdownEditor.vue';
 import DocumentPreview from '@/widgets/document-preview/DocumentPreview.vue';
 import TitlePageVariablesPanel from '@/widgets/title-page-variables/TitlePageVariablesPanel.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
+import Modal from '@/shared/ui/Modal/Modal.vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import { useDebounceFn } from '@vueuse/core';
-import type { Document, DocumentMetadata, TocItem } from '@/entities/document/types';
+import type { Document, DocumentMetadata, TocItem, DocumentVersion } from '@/entities/document/types';
 import type { Profile } from '@/entities/profile/types';
 
 const route = useRoute();
@@ -260,6 +480,40 @@ const isUpdatingTitlePage = ref(false);
 
 const tableOfContents = ref<TocItem[]>([]);
 const isGeneratingToc = ref(false);
+
+const versions = ref<DocumentVersion[]>([]);
+const showVersionsPanel = ref(false);
+const versionsDropdownRef = ref<HTMLElement | null>(null);
+const showSaveVersionModal = ref(false);
+const versionNameToSave = ref('');
+const versionNameInputRef = ref<HTMLInputElement | null>(null);
+const isSavingVersion = ref(false);
+const isLoadingVersion = ref(false);
+const isRestoringVersion = ref(false);
+const isDeletingVersion = ref(false);
+const versionSearchQuery = ref('');
+const versionSearchCaseSensitive = ref(false);
+const versionSearchScope = ref<'name' | 'date'>('name');
+const today = () => new Date().toISOString().slice(0, 10);
+const versionSearchDateFrom = ref(today());
+const versionSearchDateTo = ref(today());
+const showRestoreConfirmModal = ref(false);
+const versionToRestore = ref<DocumentVersion | null>(null);
+const showDeleteConfirmModal = ref(false);
+const showDuplicateVersionModal = ref(false);
+const duplicateVersionMessage = ref('');
+const versionToDelete = ref<DocumentVersion | null>(null);
+const currentVersionId = ref<string | null>(null);
+const toastNotification = ref<{ text: string; visible: boolean }>({ text: '', visible: false });
+let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+const showToast = (text: string) => {
+	if (toastTimeout) clearTimeout(toastTimeout);
+	toastNotification.value = { text, visible: true };
+	toastTimeout = setTimeout(() => {
+		toastNotification.value = { ...toastNotification.value, visible: false };
+		toastTimeout = null;
+	}, 3000);
+};
 
 const currentProfileId = computed(() => {
 	return document.value?.profileId || '';
@@ -541,6 +795,15 @@ const loadTitlePages = async () => {
 	}
 };
 
+const loadVersions = async () => {
+	if (!documentId.value) return;
+	try {
+		versions.value = await DocumentAPI.getVersions(documentId.value);
+	} catch (error) {
+		console.error('Failed to load versions:', error);
+	}
+};
+
 const loadDocument = async () => {
 	try {
 		const doc = await DocumentAPI.getById(documentId.value);
@@ -551,8 +814,145 @@ const loadDocument = async () => {
 		selectedTitlePageId.value = doc.titlePageId || '';
 		const toc = await DocumentAPI.getTableOfContents(documentId.value);
 		tableOfContents.value = toc;
+		await loadVersions();
 	} catch (error) {
 		console.error('Failed to load document:', error);
+	}
+};
+
+const filteredVersions = computed(() => {
+	const scope = versionSearchScope.value;
+	if (scope === 'name') {
+		const q = versionSearchQuery.value.trim();
+		if (!q) return versions.value;
+		const caseSensitive = versionSearchCaseSensitive.value;
+		const norm = (s: string) => (caseSensitive ? s : s.toLowerCase());
+		const queryNorm = norm(q);
+		return versions.value.filter((v) => norm(v.name).includes(queryNorm));
+	}
+	const from = versionSearchDateFrom.value;
+	const to = versionSearchDateTo.value;
+	if (!from || !to) return versions.value;
+	const fromStart = new Date(from);
+	fromStart.setHours(0, 0, 0, 0);
+	const toEnd = new Date(to);
+	toEnd.setHours(23, 59, 59, 999);
+	return versions.value.filter((v) => {
+		const d = new Date(v.createdAt);
+		return d >= fromStart && d <= toEnd;
+	});
+});
+
+const formatVersionDate = (dateStr: string) => {
+	const d = new Date(dateStr);
+	return d.toLocaleDateString('ru-RU', {
+		day: '2-digit',
+		month: '2-digit',
+		year: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit',
+	});
+};
+
+const openSaveVersionModal = () => {
+	showVersionsPanel.value = false;
+	versionNameToSave.value = '';
+	showSaveVersionModal.value = true;
+	nextTick(() => versionNameInputRef.value?.focus());
+};
+
+const handleSaveVersionSubmit = async () => {
+	const name = versionNameToSave.value.trim();
+	if (!name || !documentId.value || isSavingVersion.value) return;
+
+	isSavingVersion.value = true;
+	try {
+		await DocumentAPI.saveVersion(documentId.value, name);
+		await loadVersions();
+		showSaveVersionModal.value = false;
+		versionNameToSave.value = '';
+		showToast(`Версия «${name}» сохранена`);
+	} catch (error: any) {
+		const status = error?.code ?? error?.response?.status;
+		if (status === 409) {
+			duplicateVersionMessage.value =
+				error?.message ?? error?.response?.data?.message ?? 'Версия с таким содержимым уже существует';
+			showDuplicateVersionModal.value = true;
+		} else {
+			console.error('Failed to save version:', error);
+			alert('Не удалось сохранить версию');
+		}
+	} finally {
+		isSavingVersion.value = false;
+	}
+};
+
+const openRestoreConfirmModal = (v: DocumentVersion) => {
+	showVersionsPanel.value = false;
+	versionToRestore.value = v;
+	showRestoreConfirmModal.value = true;
+};
+
+const handleRestoreConfirm = async () => {
+	if (!versionToRestore.value || !documentId.value || isRestoringVersion.value)
+		return;
+	const v = versionToRestore.value;
+	isRestoringVersion.value = true;
+	try {
+		await DocumentAPI.restoreVersion(documentId.value, v.id);
+		await loadDocument();
+		currentVersionId.value = v.id;
+		showToast(`Текущая версия: ${v.name}`);
+		showRestoreConfirmModal.value = false;
+		versionToRestore.value = null;
+		showVersionsPanel.value = false;
+	} catch (error) {
+		console.error('Failed to restore version:', error);
+		alert('Не удалось восстановить версию');
+	} finally {
+		isRestoringVersion.value = false;
+	}
+};
+
+const openDeleteConfirmModal = (v: DocumentVersion) => {
+	showVersionsPanel.value = false;
+	versionToDelete.value = v;
+	showDeleteConfirmModal.value = true;
+};
+
+const handleDeleteConfirm = async () => {
+	if (!versionToDelete.value || !documentId.value || isDeletingVersion.value) return;
+	const v = versionToDelete.value;
+	isDeletingVersion.value = true;
+	try {
+		await DocumentAPI.deleteVersion(documentId.value, v.id);
+		await loadVersions();
+		if (currentVersionId.value === v.id) {
+			currentVersionId.value = null;
+		}
+		showDeleteConfirmModal.value = false;
+		versionToDelete.value = null;
+		showToast(`Версия «${v.name}» удалена`);
+	} catch (error) {
+		console.error('Failed to delete version:', error);
+		alert('Не удалось удалить версию');
+	} finally {
+		isDeletingVersion.value = false;
+	}
+};
+
+const handleLoadVersion = async (v: DocumentVersion) => {
+	if (!documentId.value || isLoadingVersion.value) return;
+	isLoadingVersion.value = true;
+	try {
+		const versionContent = await DocumentAPI.getVersionContent(documentId.value, v.id);
+		content.value = versionContent;
+		showVersionsPanel.value = false;
+	} catch (error) {
+		console.error('Failed to load version:', error);
+		alert('Не удалось загрузить версию');
+	} finally {
+		isLoadingVersion.value = false;
 	}
 };
 
@@ -601,6 +1001,10 @@ const handleWindowResize = useDebounceFn(() => {
 		});
 	}
 }, 100);
+
+onClickOutside(versionsDropdownRef, () => {
+	showVersionsPanel.value = false;
+});
 
 onMounted(async () => {
 	await loadDocument();
@@ -1059,6 +1463,411 @@ watch(
 	background: var(--bg-secondary);
 	will-change: transform;
 	transform: translateZ(0);
+}
+
+/* Versions dropdown */
+.versions-dropdown {
+	position: relative;
+	display: inline-flex;
+}
+
+.versions-dropdown__panel {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	background: var(--bg-primary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-lg);
+	z-index: 200;
+	min-width: 260px;
+	max-width: 320px;
+	max-height: 360px;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.versions-dropdown__save-btn {
+	width: 100%;
+	padding: 10px 14px;
+	background: var(--accent-light);
+	color: var(--accent);
+	border: none;
+	border-bottom: 1px solid var(--border-color);
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	text-align: left;
+	transition: background 0.2s ease;
+}
+
+.versions-dropdown__save-btn:hover:not(:disabled) {
+	background: var(--accent);
+	color: white;
+}
+
+.versions-dropdown__save-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.versions-dropdown__search-row {
+	padding: 0 12px 8px;
+}
+
+.versions-dropdown__search-row--dates {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+}
+
+.versions-dropdown__date-range {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1;
+	min-width: 0;
+}
+
+.versions-dropdown__date-label {
+	font-size: 11px;
+	color: var(--text-tertiary);
+	white-space: nowrap;
+}
+
+.versions-dropdown__date-input {
+	flex: 1;
+	min-width: 0;
+	padding: 6px 10px;
+	font-size: 12px;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+	color: var(--text-primary);
+}
+
+.versions-dropdown__date-input:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.versions-dropdown__search {
+	width: 100%;
+	padding: 8px 12px;
+	font-size: 12px;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-bottom: 1px solid var(--border-color);
+	color: var(--text-primary);
+}
+
+.versions-dropdown__search::placeholder {
+	color: var(--text-tertiary);
+}
+
+.versions-dropdown__search:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.versions-dropdown__search-options {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 6px 12px;
+}
+
+.versions-dropdown__search-scope {
+	display: flex;
+	gap: 4px;
+}
+
+.versions-dropdown__scope-btn {
+	flex: 1;
+	padding: 4px 8px;
+	font-size: 10px;
+	font-weight: 500;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+	color: var(--text-tertiary);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.versions-dropdown__scope-btn:hover {
+	color: var(--text-primary);
+	border-color: var(--border-hover);
+}
+
+.versions-dropdown__scope-btn--active {
+	background: var(--accent-light);
+	color: var(--accent);
+	border-color: var(--accent);
+}
+
+.versions-dropdown__search-case {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	color: var(--text-tertiary);
+	cursor: pointer;
+	user-select: none;
+}
+
+.versions-dropdown__search-checkbox {
+	cursor: pointer;
+}
+
+.versions-dropdown__list {
+	flex: 1;
+	overflow-y: auto;
+	max-height: 240px;
+}
+
+.versions-dropdown__item {
+	display: flex;
+	flex-direction: column;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.versions-dropdown__item:last-child {
+	border-bottom: none;
+}
+
+.versions-dropdown__item-main {
+	width: 100%;
+	padding: 10px 14px;
+	background: transparent;
+	border: none;
+	text-align: left;
+	cursor: pointer;
+	transition: background 0.2s ease;
+}
+
+.versions-dropdown__item-main:hover:not(:disabled) {
+	background: var(--bg-secondary);
+}
+
+.versions-dropdown__item-name {
+	display: block;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text-primary);
+}
+
+.versions-dropdown__item-date {
+	display: block;
+	font-size: 11px;
+	color: var(--text-tertiary);
+	margin-top: 2px;
+}
+
+.versions-dropdown__badge {
+	display: inline-block;
+	margin-top: 6px;
+	padding: 2px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	border-radius: var(--radius-sm);
+}
+
+.versions-dropdown__badge--current {
+	background: rgba(34, 197, 94, 0.15);
+	color: #16a34a;
+}
+
+.versions-dropdown__item-actions {
+	display: flex;
+	gap: 8px;
+	padding: 6px 14px 10px;
+}
+
+.versions-dropdown__btn-tile {
+	flex: 1;
+	padding: 6px 10px;
+	font-size: 11px;
+	font-weight: 600;
+	border-radius: var(--radius-md);
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.versions-dropdown__btn-tile--restore {
+	background: rgba(37, 99, 235, 0.12);
+	color: var(--accent);
+	border-color: rgba(37, 99, 235, 0.3);
+}
+
+.versions-dropdown__btn-tile--restore:hover:not(:disabled) {
+	background: rgba(37, 99, 235, 0.2);
+	border-color: var(--accent);
+}
+
+.versions-dropdown__btn-tile--delete {
+	background: rgba(239, 68, 68, 0.1);
+	color: var(--danger);
+	border-color: rgba(239, 68, 68, 0.3);
+}
+
+.versions-dropdown__btn-tile--delete:hover:not(:disabled) {
+	background: rgba(239, 68, 68, 0.2);
+	border-color: var(--danger);
+}
+
+.versions-dropdown__btn-tile:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.versions-dropdown__empty {
+	padding: 20px 14px;
+	font-size: 13px;
+	color: var(--text-tertiary);
+	text-align: center;
+}
+
+.versions-panel-enter-active,
+.versions-panel-leave-active {
+	transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.versions-panel-enter-from,
+.versions-panel-leave-to {
+	opacity: 0;
+	transform: translateY(-8px);
+}
+
+/* Save version modal */
+.save-version-modal {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-sm);
+}
+
+.save-version-modal__label {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text-primary);
+}
+
+.save-version-modal__input {
+	padding: 10px 12px;
+	font-size: 14px;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
+	color: var(--text-primary);
+}
+
+.save-version-modal__input:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.content-editor__modal-footer {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+}
+
+.content-editor__modal-footer .content-editor__modal-btn {
+	min-width: 120px;
+}
+
+.content-editor__modal-btn {
+	padding: 8px 16px;
+	font-size: 14px;
+	font-weight: 500;
+	border-radius: var(--radius-md);
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.content-editor__modal-btn--secondary {
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	color: var(--text-primary);
+}
+
+.content-editor__modal-btn--secondary:hover {
+	background: var(--bg-tertiary);
+	border-color: var(--border-hover);
+}
+
+.content-editor__modal-btn--primary {
+	background: var(--accent);
+	border: 1px solid var(--accent);
+	color: white;
+}
+
+.content-editor__modal-btn--primary:hover:not(:disabled) {
+	background: var(--accent-hover);
+	border-color: var(--accent-hover);
+}
+
+.content-editor__modal-btn--primary:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.content-editor__modal-btn--restore {
+	background: var(--accent);
+	border-color: var(--accent);
+}
+
+.content-editor__modal-btn--restore:hover:not(:disabled) {
+	background: var(--accent-hover);
+	border-color: var(--accent-hover);
+}
+
+.content-editor__modal-btn--danger {
+	background: var(--danger);
+	border: 1px solid var(--danger);
+	color: white;
+}
+
+.content-editor__modal-btn--danger:hover:not(:disabled) {
+	background: var(--danger-hover);
+	border-color: var(--danger-hover);
+}
+
+.restore-confirm-modal__text {
+	margin: 0;
+	font-size: 14px;
+	color: var(--text-primary);
+	line-height: 1.5;
+}
+
+.content-editor__toast {
+	position: fixed;
+	top: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 12px 20px;
+	background: #16a34a;
+	color: white;
+	font-size: 14px;
+	font-weight: 500;
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-lg);
+	z-index: 9999;
+}
+
+.toast-enter-active,
+.toast-leave-active {
+	transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+	opacity: 0;
+	transform: translate(-50%, -12px);
 }
 
 </style>

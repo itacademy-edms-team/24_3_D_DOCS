@@ -32,4 +32,5 @@ public interface IDocumentService
     Task<List<DocumentVersionDTO>> GetVersionsAsync(Guid documentId, Guid userId);
     Task<string> GetVersionContentAsync(Guid documentId, Guid versionId, Guid userId);
     Task RestoreVersionAsync(Guid documentId, Guid versionId, Guid userId);
+    Task DeleteVersionAsync(Guid documentId, Guid versionId, Guid userId);
 }
