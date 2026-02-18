@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using RusalProject.Models.Types;
 
 namespace RusalProject.Models.Entities;
 
@@ -10,9 +11,11 @@ public class ChatSession
     [Column("id")]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    [Required]
+    [Column("scope")]
+    public ChatScope Scope { get; set; } = ChatScope.Document;
+
     [Column("document_id")]
-    public Guid DocumentId { get; set; }
+    public Guid? DocumentId { get; set; }
 
     [Required]
     [Column("user_id")]

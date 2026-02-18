@@ -1,8 +1,31 @@
 import HttpClient from './HttpClient';
 
+export type ChatScope = 'global' | 'document';
+
+interface ChatSessionRaw {
+	id: string;
+	scope: number | string;
+	documentId?: string | null;
+	title: string;
+	isArchived: boolean;
+	createdAt: string;
+	updatedAt: string;
+	messageCount: number;
+}
+
+function normalizeChatSession(r: ChatSessionRaw): ChatSession {
+	const scope: ChatScope = r.scope === 0 || r.scope === 'Global' || r.scope === 'global' ? 'global' : 'document';
+	return {
+		...r,
+		scope,
+		documentId: r.documentId ?? null
+	};
+}
+
 export interface ChatSession {
 	id: string;
-	documentId: string;
+	scope: ChatScope;
+	documentId: string | null;
 	title: string;
 	isArchived: boolean;
 	createdAt: string;
@@ -23,8 +46,9 @@ export interface ChatSessionWithMessages extends ChatSession {
 	messages: ChatMessage[];
 }
 
-interface CreateChatSession {
-	documentId: string;
+export interface CreateChatSession {
+	scope: ChatScope;
+	documentId?: string | null;
 	title?: string;
 }
 
@@ -38,37 +62,59 @@ class ChatAPI extends HttpClient {
 	}
 
 	/**
-	 * Получить все чаты документа
+	 * Получить чаты по scope
+	 */
+	async getChats(
+		scope: ChatScope,
+		documentId?: string | null,
+		includeArchived: boolean = false
+	): Promise<ChatSession[]> {
+		const params: Record<string, string | number | boolean> = {
+			scope: scope === 'global' ? 0 : 1,
+			includeArchived
+		};
+		if (scope === 'document' && documentId) {
+			params.documentId = documentId;
+		}
+		const response = await this.instance.get<ChatSessionRaw[]>('/api/chats', { params });
+		return response.data.map(normalizeChatSession);
+	}
+
+	/**
+	 * Получить все чаты документа (обратная совместимость)
 	 */
 	async getChatsByDocument(
 		documentId: string,
 		includeArchived: boolean = false
 	): Promise<ChatSession[]> {
-		const response = await this.instance.get<ChatSession[]>(
-			`/api/chats/document/${documentId}`,
-			{
-				params: { includeArchived }
-			}
-		);
-		return response.data;
+		return this.getChats('document', documentId, includeArchived);
 	}
 
 	/**
 	 * Получить чат с сообщениями по ID
 	 */
 	async getChatById(chatId: string): Promise<ChatSessionWithMessages> {
-		const response = await this.instance.get<ChatSessionWithMessages>(
+		const response = await this.instance.get<ChatSessionRaw & { messages: ChatMessage[] }>(
 			`/api/chats/${chatId}`
 		);
-		return response.data;
+		const raw = response.data;
+		return {
+			...normalizeChatSession(raw),
+			messages: raw.messages
+		};
 	}
 
 	/**
 	 * Создать новый чат
 	 */
 	async createChat(dto: CreateChatSession): Promise<ChatSession> {
-		const response = await this.instance.post<ChatSession>('/api/chats', dto);
-		return response.data;
+		const body = {
+			scope: dto.scope === 'global' ? 0 : 1,
+			documentId: dto.documentId ?? null,
+			title: dto.title
+		};
+		const response = await this.instance.post<ChatSessionRaw>('/api/chats', body);
+		return normalizeChatSession(response.data);
 	}
 
 	/**

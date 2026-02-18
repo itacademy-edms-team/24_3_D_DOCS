@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Chat;
+using RusalProject.Models.Types;
 using RusalProject.Services.Chat;
 using System.Security.Claims;
 
@@ -29,7 +30,32 @@ public class ChatController : ControllerBase
     }
 
     /// <summary>
-    /// Получить все чаты документа (включая архив)
+    /// Получить чаты по scope: ?scope=global или ?scope=document&documentId=...
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(List<ChatSessionDTO>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetChats([FromQuery] ChatScope? scope, [FromQuery] Guid? documentId, [FromQuery] bool includeArchived = false)
+    {
+        try
+        {
+            if (!scope.HasValue)
+                return BadRequest(new { message = "Параметр scope обязателен (global или document)" });
+            if (scope == ChatScope.Document && !documentId.HasValue)
+                return BadRequest(new { message = "При scope=document параметр documentId обязателен" });
+
+            var userId = GetUserId();
+            var chats = await _chatService.GetChatsByScopeAsync(userId, scope.Value, documentId, includeArchived);
+            return Ok(chats);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting chats: {Error}", ex.Message);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Получить все чаты документа (включая архив) — обратная совместимость
     /// </summary>
     [HttpGet("document/{documentId}")]
     [ProducesResponseType(typeof(List<ChatSessionDTO>), StatusCodes.Status200OK)]

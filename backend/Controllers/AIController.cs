@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.AI;
 using RusalProject.Models.DTOs.Chat;
+using RusalProject.Models.Types;
 using RusalProject.Services.Agent;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
@@ -125,6 +126,13 @@ public class AIController : ControllerBase
                 return;
             }
 
+            var scope = request.Scope ?? ChatScope.Document;
+            if (scope == ChatScope.Document && (!request.DocumentId.HasValue || request.DocumentId == Guid.Empty))
+            {
+                await SendSSEEvent("error", new { message = "При scope=document параметр documentId обязателен." });
+                return;
+            }
+
             var userId = GetUserId();
 
             if (!string.IsNullOrEmpty(request.ClientMessageId))
@@ -168,8 +176,9 @@ public class AIController : ControllerBase
                     message = "Before ProcessAsync call",
                     data = new {
                         userId = userId.ToString(),
-                        documentId = request.DocumentId.ToString(),
-                        chatId = request.ChatId?.ToString()
+                        documentId = request.DocumentId?.ToString(),
+                        chatId = request.ChatId?.ToString(),
+                        scope = scope.ToString()
                     },
                     timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
                 });

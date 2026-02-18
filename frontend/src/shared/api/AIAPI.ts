@@ -10,8 +10,11 @@ export enum AgentMode {
 	DocumentEditing = 'DocumentEditing'
 }
 
+export type AgentScope = 'global' | 'document';
+
 export interface AgentRequestDTO {
-	documentId: string;
+	scope?: AgentScope;
+	documentId?: string;
 	userMessage: string;
 	startLine?: number;
 	endLine?: number;

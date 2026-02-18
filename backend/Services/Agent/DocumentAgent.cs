@@ -39,9 +39,10 @@ public class DocumentAgent : IDocumentAgent
             throw new InvalidOperationException("ChatId обязателен.");
         }
 
-        _logger.LogInformation("DocumentAgent: Running. DocumentId={DocumentId}, ChatId={ChatId}, UserId={UserId}", request.DocumentId, request.ChatId, userId);
+        var documentId = request.DocumentId ?? throw new InvalidOperationException("DocumentId обязателен для Document Agent.");
+        _logger.LogInformation("DocumentAgent: Running. DocumentId={DocumentId}, ChatId={ChatId}, UserId={UserId}", documentId, request.ChatId, userId);
 
-        await _logService.LogUserMessageAsync(request.DocumentId, userId, request.ChatId, request.UserMessage, 0, cancellationToken);
+        await _logService.LogUserMessageAsync(documentId, userId, request.ChatId, request.UserMessage, 0, cancellationToken);
 
         try
         {
@@ -50,7 +51,7 @@ public class DocumentAgent : IDocumentAgent
                 request.ChatId.Value,
                 request.UserMessage,
                 request.ClientMessageId,
-                request.DocumentId,
+                documentId,
                 onChunk: onStatusCheck,
                 onStatusCheck: null,
                 cancellationToken: cancellationToken);

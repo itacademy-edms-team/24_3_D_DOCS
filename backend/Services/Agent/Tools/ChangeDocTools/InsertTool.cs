@@ -1,7 +1,8 @@
+using System.Linq;
 using System.Text.Json;
 using RusalProject.Services.Document;
 
-namespace RusalProject.Services.Agent.Tools;
+namespace RusalProject.Services.Agent.Tools.ChangeDocTools;
 
 /// <summary>
 /// insert(id, content): Inserts multi-line text strictly AFTER the line with the given ID (1-based).
@@ -66,7 +67,6 @@ public class InsertTool : ITool
                 return "Ошибка: id должен быть >= 1 для insert";
             }
 
-            // Загружаем документ
             var document = await _documentService.GetDocumentWithContentAsync(documentId, userId);
             if (document == null)
             {
@@ -77,9 +77,7 @@ public class InsertTool : ITool
             var lines = currentContent.Split('\n').ToList();
             var originalLineCount = lines.Count;
 
-            // 1-based -> 0-based индекс для строки, после которой вставляем
             var insertAfterIndex = id - 1;
-
             var linesToInsert = (content ?? string.Empty).Split('\n').ToList();
 
             if (linesToInsert.Count == 0)
@@ -87,7 +85,6 @@ public class InsertTool : ITool
                 return "Предупреждение: content пустой, ничего не вставлено";
             }
 
-            // Простая защита от дубликатов: если первый непустой заголовок уже есть в документе — не дублируем раздел
             var firstNonEmpty = linesToInsert.FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim();
             if (!string.IsNullOrWhiteSpace(firstNonEmpty) && firstNonEmpty.StartsWith("#"))
             {
@@ -101,7 +98,6 @@ public class InsertTool : ITool
                 }
             }
 
-            // Если id выходит за границы - вставляем в конец
             if (insertAfterIndex < 0 || insertAfterIndex >= lines.Count)
             {
                 lines.AddRange(linesToInsert);
@@ -111,12 +107,10 @@ public class InsertTool : ITool
             }
             else
             {
-                // Вставляем строки строго после insertAfterIndex
                 for (int i = 0; i < linesToInsert.Count; i++)
                 {
                     lines.Insert(insertAfterIndex + 1 + i, linesToInsert[i]);
                 }
-
                 _logger.LogInformation(
                     "InsertTool: вставлено {Inserted} строк(и) после строки {Id} (изначально строк: {LineCount})",
                     linesToInsert.Count, id, originalLineCount);
@@ -137,10 +131,7 @@ public class InsertTool : ITool
     private static string GetStringValue(Dictionary<string, object> arguments, string key)
     {
         if (!arguments.TryGetValue(key, out var value))
-        {
             throw new ArgumentException($"Missing required argument: {key}");
-        }
-
         return value switch
         {
             string str => str,
@@ -152,10 +143,7 @@ public class InsertTool : ITool
     private static int GetIntValueFlexible(Dictionary<string, object> arguments, string key)
     {
         if (!arguments.TryGetValue(key, out var value))
-        {
             throw new ArgumentException($"Missing required argument: {key}");
-        }
-
         try
         {
             return value switch
@@ -164,9 +152,7 @@ public class InsertTool : ITool
                 long l => (int)l,
                 JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.Number => jsonElement.GetInt32(),
                 JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.String =>
-                    int.TryParse(jsonElement.GetString(), out var parsedFromString)
-                        ? parsedFromString
-                        : throw new InvalidOperationException($"Cannot convert {key} string value to int"),
+                    int.TryParse(jsonElement.GetString(), out var parsedFromString) ? parsedFromString : throw new InvalidOperationException($"Cannot convert {key} string value to int"),
                 string s when int.TryParse(s, out var parsed) => parsed,
                 _ => Convert.ToInt32(value)
             };
@@ -177,4 +163,3 @@ public class InsertTool : ITool
         }
     }
 }
-

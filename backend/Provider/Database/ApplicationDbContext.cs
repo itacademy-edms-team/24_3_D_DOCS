@@ -216,6 +216,9 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
         {
             entity.HasKey(e => e.Id);
             
+            entity.HasIndex(e => e.Scope)
+                  .HasDatabaseName("IX_ChatSessions_Scope");
+            
             entity.HasIndex(e => e.DocumentId)
                   .HasDatabaseName("IX_ChatSessions_DocumentId");
             
@@ -227,6 +230,9 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             
             entity.HasIndex(e => e.DeletedAt)
                   .HasDatabaseName("IX_ChatSessions_DeletedAt");
+
+            entity.Property(e => e.Scope)
+                  .HasDefaultValue(Models.Types.ChatScope.Document);
 
             entity.Property(e => e.IsArchived)
                   .HasDefaultValue(false);

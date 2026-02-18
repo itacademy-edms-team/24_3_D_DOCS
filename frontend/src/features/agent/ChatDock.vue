@@ -5,6 +5,7 @@
 			@mousedown="startResize"
 		></div>
 		<AgentChat
+			:scope="scope"
 			:documentId="documentId"
 			:startLine="startLine"
 			:endLine="endLine"
@@ -22,12 +23,15 @@ import AgentChat from './AgentChat.vue';
 
 interface Props {
 	open: boolean;
-	documentId: string;
+	scope?: 'global' | 'document';
+	documentId?: string | null;
 	startLine?: number;
 	endLine?: number;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+	scope: 'document'
+});
 
 const emit = defineEmits<{
 	'update:open': [value: boolean];

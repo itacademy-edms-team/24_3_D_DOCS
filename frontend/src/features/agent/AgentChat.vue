@@ -85,7 +85,7 @@
 									{{ message.role === 'user' ? 'Вы' : 'Агент' }}
 								</span>
 								<div
-									v-if="hoveredMessageId === message.id"
+									v-if="hoveredMessageId === message.id && !message.stepNumber"
 									class="chat-message-actions"
 								>
 									<button
@@ -98,7 +98,22 @@
 									</button>
 								</div>
 							</div>
-							<div class="chat-message-content" v-html="renderMarkdown(message.content)"></div>
+							<!-- Step (tool call) - инкапсулированный блок -->
+							<div v-if="message.stepNumber && message.toolCalls" class="agent-chat__tool-steps">
+								<div
+									v-for="(tc, idx) in parseToolCalls(message.toolCalls)"
+									:key="`${message.id}-${idx}`"
+									class="maf-tool"
+								>
+									<div class="maf-tool__summary">
+										<span>{{ getToolLabel(tc.toolName) }}</span>
+										<span class="maf-tool__status maf-tool__status--accepted">✓</span>
+									</div>
+									<div class="maf-tool__result">{{ formatToolResult(tc.result) }}</div>
+								</div>
+							</div>
+							<!-- Обычное сообщение -->
+							<div v-else class="chat-message-content" v-html="renderMarkdown(message.content)"></div>
 						</div>
 					</div>
 				</div>
@@ -120,7 +135,7 @@
 				</div>
 			</div>
 
-			<!-- Typing indicator -->
+			<!-- Live tool steps (during processing) + typing -->
 			<div v-if="isProcessing" class="chat-message chat-message--assistant">
 				<div class="chat-message-container">
 					<div class="chat-avatar chat-avatar--assistant">
@@ -132,7 +147,20 @@
 						<div class="chat-message-header">
 							<span class="chat-message-role">Агент</span>
 						</div>
-						<div class="dots" aria-hidden="true">
+						<div v-if="liveToolCalls.length > 0" class="agent-chat__tool-steps">
+							<div
+								v-for="(tc, idx) in liveToolCalls"
+								:key="`live-tc-${idx}`"
+								class="maf-tool"
+							>
+								<div class="maf-tool__summary">
+									<span>{{ getToolLabel(tc.toolName) }}</span>
+									<span class="maf-tool__status maf-tool__status--accepted">✓</span>
+								</div>
+								<div class="maf-tool__result">{{ formatToolResult(tc.result) }}</div>
+							</div>
+						</div>
+						<div v-if="!currentResponse?.finalMessage" class="dots" aria-hidden="true">
 							<span></span>
 							<span></span>
 							<span></span>
@@ -171,7 +199,7 @@
 		</div>
 
 		<div v-else class="chat-empty">
-			<p>Выберите чат или создайте новый</p>
+			<p>{{ props.scope === 'global' ? 'Создайте чат для начала работы с главным агентом' : 'Выберите чат или создайте новый' }}</p>
 		</div>
 
 		<div v-if="error" class="chat-error">{{ error }}</div>
@@ -231,7 +259,7 @@
 				<input
 					v-model="userMessage"
 					:disabled="isProcessing || !activeChatId"
-					:placeholder="hasSelection ? 'Введите запрос для выделенного фрагмента...' : 'Введите запрос агенту...'"
+					:placeholder="hasSelection ? 'Введите запрос для выделенного фрагмента...' : (props.scope === 'global' ? 'Управление документами: создание, удаление, список...' : 'Введите запрос агенту...')"
 					class="chat-input-field"
 					type="text"
 					@keydown.enter="handleSend"
@@ -281,12 +309,15 @@ function renderMarkdown(text: string): string {
 }
 
 interface Props {
-	documentId: string;
+	scope?: 'global' | 'document';
+	documentId?: string | null;
 	startLine?: number;
 	endLine?: number;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+	scope: 'document'
+});
 
 const emit = defineEmits<{
 	close: [];
@@ -294,7 +325,7 @@ const emit = defineEmits<{
 	documentUpdated: [];
 }>();
 
-const { isProcessing, currentResponse, events: agentEvents, error: agentError, sendMessage, stop: stopAgent, reset: resetAgent } = useAgent();
+const { isProcessing, currentResponse, steps: agentSteps, events: agentEvents, error: agentError, sendMessage, stop: stopAgent, reset: resetAgent } = useAgent();
 const {
 	chats,
 	archivedChats,
@@ -302,6 +333,7 @@ const {
 	activeChat,
 	error: chatsError,
 	loadChats,
+	loadChatsByDocument,
 	loadChatById,
 	createChat,
 	switchChat,
@@ -333,8 +365,52 @@ onMounted(() => {
 
 const error = computed(() => agentError.value || chatsError.value);
 
+// Все tool calls из live steps (во время обработки)
+const liveToolCalls = computed(() => {
+	const out: Array<{ toolName: string; result?: string }> = [];
+	for (const step of agentSteps.value) {
+		for (const tc of step.toolCalls ?? []) {
+			out.push({ toolName: tc.toolName, result: tc.result });
+		}
+	}
+	return out;
+});
+
+function parseToolCalls(toolCallsJson: string | undefined): Array<{ toolName: string; result?: string }> {
+	if (!toolCallsJson) return [];
+	try {
+		const arr = JSON.parse(toolCallsJson);
+		return Array.isArray(arr) ? arr.map((tc: any) => ({ toolName: tc.toolName ?? tc.tool_name ?? '', result: tc.result })) : [];
+	} catch {
+		return [];
+	}
+}
+
+function getToolLabel(toolName: string): string {
+	const labels: Record<string, string> = {
+		list_documents: 'Получение списка документов',
+		create_document: 'Создание документа',
+		delete_document: 'Удаление документа',
+	};
+	return labels[toolName] ?? `Вызов ${toolName}`;
+}
+
+function formatToolResult(result: string | undefined): string {
+	if (!result) return '—';
+	try {
+		const parsed = JSON.parse(result);
+		if (Array.isArray(parsed)) return `Найдено документов: ${parsed.length}`;
+		if (typeof parsed === 'object' && parsed !== null) {
+			if (parsed.message) return String(parsed.message);
+			if (parsed.deleted) return 'Документ удалён';
+			if (parsed.created) return String(parsed.message ?? 'Документ создан');
+		}
+	} catch { /* fallback */ }
+	return result.length > 200 ? result.slice(0, 200) + '…' : result;
+}
+
 const visibleHistoryMessages = computed(() => {
-	return activeChat.value?.messages.filter((message) => !message.stepNumber) ?? [];
+	return activeChat.value?.messages ?? [];
 });
 
 // Показывать блок «финальный ответ» только если его ещё нет в истории (чтобы не дублировать после loadChatById)
@@ -356,17 +432,26 @@ onMounted(() => {
 
 // Load chats on mount
 onMounted(async () => {
-	await loadChats(props.documentId);
-});
-
-// Watch for documentId changes
-watch(() => props.documentId, async (newDocId) => {
-	if (newDocId) {
-		resetChats();
-		resetAgent();
-		await loadChats(newDocId);
+	if (props.scope === 'global') {
+		await loadChats('global');
+	} else if (props.documentId) {
+		await loadChats('document', props.documentId);
 	}
 });
+
+// Watch for scope/documentId changes
+watch(
+	() => [props.scope, props.documentId] as const,
+	async ([newScope, newDocId]) => {
+		resetChats();
+		resetAgent();
+		if (newScope === 'global') {
+			await loadChats('global');
+		} else if (newDocId) {
+			await loadChats('document', newDocId);
+		}
+	}
+);
 
 // Watch for agent completion and emit documentUpdated event
 watch(
@@ -381,8 +466,8 @@ watch(
 // Watch for chat changes and reload messages
 watch(activeChatId, async (newChatId) => {
 	if (newChatId && activeChat.value) {
-		// Reload chat to get latest messages
-		await loadChats(props.documentId);
+		if (props.scope === 'global') await loadChats('global');
+		else if (props.documentId) await loadChats('document', props.documentId);
 	}
 });
 
@@ -392,7 +477,7 @@ const clearSelection = () => {
 
 const handleCreateChat = async () => {
 	try {
-		await createChat(props.documentId);
+		await createChat(props.scope, props.documentId ?? null);
 	} catch (err) {
 		console.error('Error creating chat:', err);
 	}
@@ -462,22 +547,32 @@ const handleSend = async () => {
 	pendingUserMessage.value = text;
 	userMessage.value = '';
 
-	try {
-		const request: AgentRequestDTO = {
-			documentId: props.documentId,
-			userMessage: text,
-			startLine: props.startLine,
-			endLine: props.endLine,
-			chatId: activeChatId.value,
-		};
+	const request: AgentRequestDTO = {
+		scope: props.scope,
+		documentId: props.documentId ?? undefined,
+		userMessage: text,
+		startLine: props.startLine,
+		endLine: props.endLine,
+		chatId: activeChatId.value,
+	};
+	// Backend expects scope as number: 0=global, 1=document
+	const payload = { ...request } as Record<string, unknown>;
+	if (payload.scope) {
+		payload.scope = payload.scope === 'global' ? 0 : 1;
+	}
 
-		await sendMessage(request);
+	try {
+		await sendMessage(payload as AgentRequestDTO);
 
 		// Обновить историю чата с сервера (без этого видны только последнее сообщение до перезагрузки)
 		if (activeChatId.value) {
 			await loadChatById(activeChatId.value);
 		}
-		await loadChats(props.documentId);
+		if (props.scope === 'global') {
+			await loadChats('global');
+		} else if (props.documentId) {
+			await loadChats('document', props.documentId);
+		}
 	} catch (err) {
 		console.error('Error sending message to agent:', err);
 		userMessage.value = text;
@@ -583,6 +678,13 @@ watch(() => activeChat.value?.messages, () => {
 	height: 100%;
 	display: flex;
 	flex-direction: column;
+}
+
+/* Tool steps (инкапсулированные вызовы инструментов) */
+.agent-chat__tool-steps {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
 }
 
 /* MAF events */

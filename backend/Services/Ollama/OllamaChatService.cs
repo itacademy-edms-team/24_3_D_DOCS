@@ -171,6 +171,152 @@ public class OllamaChatService : IOllamaChatService
         };
     }
 
+    public async Task<OllamaChatResult> ChatWithPromptAsync(
+        Guid userId,
+        Guid chatId,
+        string userMessage,
+        string systemPrompt,
+        Func<string, Task>? onChunk = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _keyService.HasApiKeyAsync(userId, cancellationToken))
+            throw new InvalidOperationException("Настройте Ollama API ключ перед использованием ассистента.");
+
+        var apiKey = await _keyService.GetDecryptedApiKeyAsync(userId, cancellationToken);
+        if (string.IsNullOrEmpty(apiKey))
+            throw new InvalidOperationException("Не удалось получить API ключ.");
+
+        var chat = await _chatService.GetChatByIdAsync(chatId, userId);
+        if (chat == null)
+            throw new InvalidOperationException("Чат не найден.");
+
+        var ollamaMessages = BuildMessagesWithPrompt(chat.Messages, systemPrompt);
+        var model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
+        var baseUrl = _configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
+        var url = $"{baseUrl.TrimEnd('/')}/api/chat";
+
+        var requestBody = new { model, messages = ollamaMessages, stream = true };
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
+
+        var client = _httpClientFactory.CreateClient();
+        var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("API ключ недействителен.");
+        if (response.StatusCode == (HttpStatusCode)429)
+            throw new InvalidOperationException("Провайдер временно ограничил запросы.");
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException("Ошибка при обращении к Ollama.");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream);
+        var fullContent = new StringBuilder();
+        string? lastContent = null;
+
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try
+            {
+                var evt = JsonSerializer.Deserialize<OllamaStreamEvent>(line);
+                if (evt?.Message?.Content != null)
+                {
+                    fullContent.Append(evt.Message.Content);
+                    lastContent = evt.Message.Content;
+                    if (onChunk != null)
+                        await onChunk(evt.Message.Content);
+                }
+                if (evt?.Done == true) break;
+            }
+            catch (JsonException) { }
+        }
+
+        var finalMessage = fullContent.ToString() ?? lastContent ?? string.Empty;
+        await _chatService.AddMessageAsync(chatId, new ChatMessageDTO { Role = "assistant", Content = finalMessage }, userId);
+
+        return new OllamaChatResult { FinalMessage = finalMessage, IsComplete = true, IsIdempotentRetry = false };
+    }
+
+    public async Task<OllamaChatResult> SendMessagesAsync(
+        Guid userId,
+        List<OllamaMessageInput> messages,
+        string systemPrompt,
+        Func<string, Task>? onChunk = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _keyService.HasApiKeyAsync(userId, cancellationToken))
+            throw new InvalidOperationException("Настройте Ollama API ключ.");
+
+        var apiKey = await _keyService.GetDecryptedApiKeyAsync(userId, cancellationToken);
+        if (string.IsNullOrEmpty(apiKey))
+            throw new InvalidOperationException("Не удалось получить API ключ.");
+
+        var ollamaMessages = new List<OllamaMessage>
+        {
+            new() { Role = "system", Content = systemPrompt }
+        };
+        foreach (var m in messages)
+            ollamaMessages.Add(new OllamaMessage { Role = m.Role, Content = m.Content });
+
+        var model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
+        var baseUrl = _configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
+        var url = $"{baseUrl.TrimEnd('/')}/api/chat";
+
+        var requestBody = new { model, messages = ollamaMessages, stream = true };
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
+
+        var client = _httpClientFactory.CreateClient();
+        var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("API ключ недействителен.");
+        if (response.StatusCode == (HttpStatusCode)429)
+            throw new InvalidOperationException("Провайдер временно ограничил запросы.");
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException("Ошибка при обращении к Ollama.");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream);
+        var fullContent = new StringBuilder();
+        string? lastContent = null;
+
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try
+            {
+                var evt = JsonSerializer.Deserialize<OllamaStreamEvent>(line);
+                if (evt?.Message?.Content != null)
+                {
+                    fullContent.Append(evt.Message.Content);
+                    lastContent = evt.Message.Content;
+                    if (onChunk != null)
+                        await onChunk(evt.Message.Content);
+                }
+                if (evt?.Done == true) break;
+            }
+            catch (JsonException) { }
+        }
+
+        var finalMessage = fullContent.ToString() ?? lastContent ?? string.Empty;
+        return new OllamaChatResult { FinalMessage = finalMessage, IsComplete = true, IsIdempotentRetry = false };
+    }
+
+    private static List<OllamaMessage> BuildMessagesWithPrompt(List<ChatMessageDTO> history, string systemPrompt)
+    {
+        var result = new List<OllamaMessage> { new OllamaMessage { Role = "system", Content = systemPrompt } };
+        foreach (var m in history.OrderBy(x => x.CreatedAt))
+            if (m.Role is "user" or "assistant" or "system")
+                result.Add(new OllamaMessage { Role = m.Role, Content = m.Content });
+        return result;
+    }
+
     private static List<OllamaMessage> BuildMessages(List<ChatMessageDTO> history)
     {
         var result = new List<OllamaMessage>();

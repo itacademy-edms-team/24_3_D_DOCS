@@ -2,6 +2,7 @@ using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using RusalProject.Models.DTOs.Chat;
 using RusalProject.Models.Entities;
+using RusalProject.Models.Types;
 using RusalProject.Provider.Database;
 
 namespace RusalProject.Services.Chat;
@@ -25,7 +26,7 @@ public class ChatService : IChatService
                 documentId, userId, includeArchived);
 
             var query = _context.ChatSessions
-                .Where(c => c.DocumentId == documentId && c.UserId == userId && c.DeletedAt == null);
+                .Where(c => c.Scope == ChatScope.Document && c.DocumentId == documentId && c.UserId == userId && c.DeletedAt == null);
 
             if (!includeArchived)
             {
@@ -65,6 +66,7 @@ public class ChatService : IChatService
             var result = chats.Select(c => new ChatSessionDTO
             {
                 Id = c.Id,
+                Scope = c.Scope,
                 DocumentId = c.DocumentId,
                 Title = c.Title,
                 IsArchived = c.IsArchived,
@@ -97,6 +99,7 @@ public class ChatService : IChatService
         return new ChatSessionWithMessagesDTO
         {
             Id = chat.Id,
+            Scope = chat.Scope,
             DocumentId = chat.DocumentId,
             Title = chat.Title,
             IsArchived = chat.IsArchived,
@@ -119,26 +122,44 @@ public class ChatService : IChatService
 
     public async Task<ChatSessionDTO> CreateChatAsync(CreateChatSessionDTO dto, Guid userId)
     {
-        // Проверяем существование документа
-        var documentExists = await _context.DocumentLinks
-            .AnyAsync(d => d.Id == dto.DocumentId && d.CreatorId == userId && d.DeletedAt == null);
+        var scope = dto.Scope;
 
-        if (!documentExists)
+        if (scope == ChatScope.Document)
         {
-            throw new UnauthorizedAccessException("Document not found or access denied");
+            if (!dto.DocumentId.HasValue)
+                throw new ArgumentException("DocumentId обязателен при scope=Document");
+
+            var documentExists = await _context.DocumentLinks
+                .AnyAsync(d => d.Id == dto.DocumentId && d.CreatorId == userId && d.DeletedAt == null);
+            if (!documentExists)
+                throw new UnauthorizedAccessException("Document not found or access denied");
+        }
+        else if (scope == ChatScope.Global)
+        {
+            if (dto.DocumentId.HasValue)
+                throw new ArgumentException("DocumentId должен быть null при scope=Global");
         }
 
-        // Генерируем название по умолчанию, если не указано
         var title = dto.Title;
         if (string.IsNullOrWhiteSpace(title))
         {
-            var chatCount = await _context.ChatSessions
-                .CountAsync(c => c.DocumentId == dto.DocumentId && c.UserId == userId && c.DeletedAt == null);
-            title = chatCount == 0 ? "Новый чат" : $"Chat {chatCount + 1}";
+            if (scope == ChatScope.Document)
+            {
+                var chatCount = await _context.ChatSessions
+                    .CountAsync(c => c.Scope == ChatScope.Document && c.DocumentId == dto.DocumentId && c.UserId == userId && c.DeletedAt == null);
+                title = chatCount == 0 ? "Новый чат" : $"Chat {chatCount + 1}";
+            }
+            else
+            {
+                var chatCount = await _context.ChatSessions
+                    .CountAsync(c => c.Scope == ChatScope.Global && c.UserId == userId && c.DeletedAt == null);
+                title = chatCount == 0 ? "Главный чат" : $"Чат {chatCount + 1}";
+            }
         }
 
         var chat = new ChatSession
         {
+            Scope = scope,
             DocumentId = dto.DocumentId,
             UserId = userId,
             Title = title,
@@ -148,12 +169,13 @@ public class ChatService : IChatService
         _context.ChatSessions.Add(chat);
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Chat created: ChatId={ChatId}, DocumentId={DocumentId}, UserId={UserId}", 
-            chat.Id, dto.DocumentId, userId);
+        _logger.LogInformation("Chat created: ChatId={ChatId}, Scope={Scope}, DocumentId={DocumentId}, UserId={UserId}", 
+            chat.Id, scope, dto.DocumentId, userId);
 
         return new ChatSessionDTO
         {
             Id = chat.Id,
+            Scope = chat.Scope,
             DocumentId = chat.DocumentId,
             Title = chat.Title,
             IsArchived = chat.IsArchived,
@@ -185,6 +207,7 @@ public class ChatService : IChatService
         return new ChatSessionDTO
         {
             Id = chat.Id,
+            Scope = chat.Scope,
             DocumentId = chat.DocumentId,
             Title = chat.Title,
             IsArchived = chat.IsArchived,
@@ -192,6 +215,50 @@ public class ChatService : IChatService
             UpdatedAt = chat.UpdatedAt,
             MessageCount = await _context.ChatMessages.CountAsync(m => m.ChatSessionId == chatId)
         };
+    }
+
+    public async Task<List<ChatSessionDTO>> GetChatsByScopeAsync(Guid userId, ChatScope scope, Guid? documentId, bool includeArchived = false)
+    {
+        var query = _context.ChatSessions
+            .Where(c => c.Scope == scope && c.UserId == userId && c.DeletedAt == null);
+
+        if (scope == ChatScope.Document && documentId.HasValue)
+            query = query.Where(c => c.DocumentId == documentId);
+
+        if (scope == ChatScope.Document && !documentId.HasValue)
+            return new List<ChatSessionDTO>();
+
+        if (!includeArchived)
+            query = query.Where(c => !c.IsArchived);
+
+        var chats = await query.OrderByDescending(c => c.UpdatedAt).ToListAsync();
+        var chatIds = chats.Select(c => c.Id).ToList();
+
+        Dictionary<Guid, int> messageCounts;
+        try
+        {
+            messageCounts = await _context.ChatMessages
+                .Where(m => chatIds.Contains(m.ChatSessionId))
+                .GroupBy(m => m.ChatSessionId)
+                .Select(g => new { ChatSessionId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ChatSessionId, x => x.Count);
+        }
+        catch
+        {
+            messageCounts = new Dictionary<Guid, int>();
+        }
+
+        return chats.Select(c => new ChatSessionDTO
+        {
+            Id = c.Id,
+            Scope = c.Scope,
+            DocumentId = c.DocumentId,
+            Title = c.Title,
+            IsArchived = c.IsArchived,
+            CreatedAt = c.CreatedAt,
+            UpdatedAt = c.UpdatedAt,
+            MessageCount = messageCounts.GetValueOrDefault(c.Id, 0)
+        }).ToList();
     }
 
     public async Task ArchiveChatAsync(Guid chatId, Guid userId)

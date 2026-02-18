@@ -84,6 +84,14 @@
 					>
 						{{ activeTab === 'profiles' ? '+ Создать профиль' : '+ Создать титульник' }}
 					</Button>
+					<button
+						class="main-page__ai-btn"
+						:class="{ 'main-page__ai-btn--active': showAIPanel }"
+						@click="showAIPanel = !showAIPanel"
+						title="AI Помощник"
+					>
+						AI
+					</button>
 					<ThemeToggle />
 					<button class="upgrade-btn" v-if="false">
 						<Icon name="info" size="14" class="info-icon" />
@@ -306,6 +314,13 @@
 			v-model="showCreateModal"
 			@created="handleDocumentCreated"
 		/>
+
+		<!-- AI Panel (Chat Dock) -->
+		<ChatDock
+			v-model:open="showAIPanel"
+			scope="global"
+			@width-changed="handleChatDockWidthChanged"
+		/>
 	</div>
 </template>
 
@@ -321,6 +336,7 @@ import DocumentTable from '@/widgets/document-table/DocumentTable.vue';
 import CreateDocumentModal from '@/widgets/create-document/CreateDocumentModal.vue';
 import InfoBanner from '@/widgets/info-banner/InfoBanner.vue';
 import ThemeToggle from '@/features/theme-toggle/ThemeToggle.vue';
+import ChatDock from '@/features/agent/ChatDock.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import Icon from '@/components/Icon.vue';
 import { getDefaultProfileData } from '@/utils/profileDefaults';
@@ -349,6 +365,7 @@ const documents = ref<DocumentMeta[]>([]);
 const titlePages = ref<any[]>([]);
 const showCreateModal = ref(false);
 const isCreating = ref(false);
+const showAIPanel = ref(false);
 
 // Состояние генерации для каждого документа
 const generatingStates = ref<Map<string, Set<'pdf' | 'ddoc'>>>(new Map());
@@ -720,6 +737,10 @@ function handleSettings() {
 	router.push('/settings');
 }
 
+const handleChatDockWidthChanged = (width: number) => {
+	// Layout can react to panel width if needed
+};
+
 async function handleLogout() {
 	await authStore.logout();
 	router.push('/auth');
@@ -1007,6 +1028,30 @@ onMounted(async () => {
 	gap: 1rem;
 	flex-wrap: nowrap;
 	white-space: nowrap;
+}
+
+.main-page__ai-btn {
+	padding: 0.5rem 1rem;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-primary);
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.main-page__ai-btn:hover {
+	background: var(--bg-tertiary);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.main-page__ai-btn--active {
+	background: var(--accent);
+	color: white;
+	border-color: var(--accent);
 }
 
 .search-section {

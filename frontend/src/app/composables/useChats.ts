@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import ChatAPI, { type ChatSession, type ChatSessionWithMessages } from '@/shared/api/ChatAPI';
+import ChatAPI, { type ChatSession, type ChatSessionWithMessages, type ChatScope } from '@/shared/api/ChatAPI';
 
 export function useChats() {
 	const chats = ref<ChatSession[]>([]);
@@ -10,18 +10,19 @@ export function useChats() {
 	const error = ref<string | null>(null);
 
 	/**
-	 * Загрузить чаты документа
+	 * Загрузить чаты по scope
+	 * @param scope - 'global' или 'document'
+	 * @param documentId - обязателен при scope='document'
 	 */
-	const loadChats = async (documentId: string) => {
+	const loadChats = async (scope: ChatScope, documentId?: string | null) => {
 		isLoading.value = true;
 		error.value = null;
-		
+
 		try {
-			const allChats = await ChatAPI.getChatsByDocument(documentId, true);
+			const allChats = await ChatAPI.getChats(scope, documentId ?? undefined, true);
 			chats.value = allChats.filter(c => !c.isArchived);
 			archivedChats.value = allChats.filter(c => c.isArchived);
-			
-			// Если нет активного чата, выбираем первый активный
+
 			if (!activeChatId.value && chats.value.length > 0) {
 				activeChatId.value = chats.value[0].id;
 				await loadChatById(chats.value[0].id);
@@ -32,6 +33,13 @@ export function useChats() {
 		} finally {
 			isLoading.value = false;
 		}
+	};
+
+	/**
+	 * Загрузить чаты документа (обёртка для scope=document)
+	 */
+	const loadChatsByDocument = async (documentId: string) => {
+		await loadChats('document', documentId);
 	};
 
 	/**
@@ -74,13 +82,15 @@ export function useChats() {
 
 	/**
 	 * Создать новый чат
+	 * @param scope - 'global' или 'document'
+	 * @param documentId - обязателен при scope='document'
 	 */
-	const createChat = async (documentId: string, title?: string) => {
+	const createChat = async (scope: ChatScope, documentId?: string | null, title?: string) => {
 		isLoading.value = true;
 		error.value = null;
-		
+
 		try {
-			const newChat = await ChatAPI.createChat({ documentId, title });
+			const newChat = await ChatAPI.createChat({ scope, documentId, title });
 			chats.value.unshift(newChat);
 			activeChatId.value = newChat.id;
 			activeChat.value = {
@@ -239,6 +249,7 @@ export function useChats() {
 		isLoading,
 		error,
 		loadChats,
+		loadChatsByDocument,
 		loadChatById,
 		createChat,
 		switchChat,

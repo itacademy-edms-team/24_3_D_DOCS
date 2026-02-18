@@ -1,4 +1,4 @@
-namespace RusalProject.Services.Agent.Tools;
+namespace RusalProject.Services.Agent.Tools.ChangeDocTools;
 
 public class WebSearchTool : ITool
 {
@@ -12,18 +12,12 @@ public class WebSearchTool : ITool
             ["type"] = "object",
             ["properties"] = new Dictionary<string, object>
             {
-                ["query"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "Поисковый запрос"
-                }
+                ["query"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "Поисковый запрос" }
             },
             ["required"] = new[] { "query" }
         };
     }
 
     public Task<string> ExecuteAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult("Веб-поиск пока не реализован");
-    }
+        => Task.FromResult("Веб-поиск пока не реализован");
 }
