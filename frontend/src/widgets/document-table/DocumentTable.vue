@@ -21,7 +21,6 @@
 						</button>
 					</th>
 					<th class="document-table__col-profile">Профиль стиля</th>
-					<th class="document-table__col-status">Статус</th>
 					<th class="document-table__col-modified">
 						Изменён
 						<button
@@ -58,22 +57,6 @@
 							class="document-table__badge document-table__badge--profile"
 						>
 							{{ document.profileName }}
-						</span>
-						<span v-else class="document-table__empty">—</span>
-					</td>
-					<td class="document-table__col-status">
-						<span
-							v-if="document.hasPdf"
-							class="document-table__badge document-table__badge--pdf"
-							title="PDF сгенерирован"
-						>
-							📄 PDF
-						</span>
-						<span
-							v-else-if="document.status === 'draft'"
-							class="document-table__badge document-table__badge--draft"
-						>
-							Черновик
 						</span>
 						<span v-else class="document-table__empty">—</span>
 					</td>
@@ -120,7 +103,7 @@
 					</td>
 				</tr>
 				<tr v-if="sortedDocuments.length === 0" class="document-table__empty-row">
-					<td colspan="6" class="document-table__empty-message">
+					<td colspan="5" class="document-table__empty-message">
 						{{ isLoading ? 'Загрузка...' : 'Нет документов' }}
 					</td>
 				</tr>
@@ -321,10 +304,6 @@ const formatDate = (dateString: string): string => {
 	width: 150px;
 }
 
-.document-table__col-status {
-	width: 120px;
-}
-
 .document-table__badge {
 	display: inline-block;
 	padding: 4px 8px;
@@ -336,16 +315,6 @@ const formatDate = (dateString: string): string => {
 .document-table__badge--profile {
 	background: var(--accent-light);
 	color: var(--accent);
-}
-
-.document-table__badge--pdf {
-	background: rgba(59, 130, 246, 0.1);
-	color: var(--info);
-}
-
-.document-table__badge--draft {
-	background: var(--bg-tertiary);
-	color: var(--text-secondary);
 }
 
 .document-table__empty {

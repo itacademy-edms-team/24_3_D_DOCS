@@ -52,7 +52,6 @@ public class DocumentService : IDocumentService
             Description = dto.Description,
             ProfileId = dto.ProfileId,
             TitlePageId = dto.TitlePageId,
-            Status = "draft",
             IsArchived = false,
             MdMinioPath = $"documents/{Guid.NewGuid()}/content.md"
         };
@@ -130,7 +129,6 @@ public class DocumentService : IDocumentService
             TitlePageId = dto.TitlePageId,
             TitlePageName = dto.TitlePageName,
             Metadata = dto.Metadata,
-            Status = dto.Status,
             IsArchived = dto.IsArchived,
             DeletedAt = dto.DeletedAt,
             CreatedAt = dto.CreatedAt,
@@ -682,7 +680,6 @@ public class DocumentService : IDocumentService
             ProfileName = document.Profile?.Name,
             TitlePageId = document.TitlePageId,
             TitlePageName = document.TitlePage?.Name,
-            Status = document.Status,
             IsArchived = document.IsArchived,
             DeletedAt = document.DeletedAt,
             CreatedAt = document.CreatedAt,
@@ -1138,7 +1135,6 @@ public class DocumentService : IDocumentService
             Description = null,
             ProfileId = profileId,
             TitlePageId = titlePageId,
-            Status = "draft",
             IsArchived = false,
             MdMinioPath = $"documents/{Guid.NewGuid()}/content.md"
         };

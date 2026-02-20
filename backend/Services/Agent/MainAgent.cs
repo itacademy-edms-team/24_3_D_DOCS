@@ -103,7 +103,7 @@ public class MainAgent : IMainAgent
 
             var response = result.FinalMessage;
 
-            var (textBefore, toolBlock) = _toolExecutor.SplitToolCall(response);
+            var (_, toolBlock) = _toolExecutor.SplitToolCall(response);
 
             if (string.IsNullOrEmpty(toolBlock))
             {

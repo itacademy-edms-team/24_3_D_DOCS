@@ -119,6 +119,7 @@ public class MainAgentToolExecutor
             "list_documents" => "Получение списка документов",
             "create_document" => "Создание документа",
             "delete_document" => "Удаление документа",
+            "rename_document" => "Переименование документа",
             _ => $"Вызов {toolName}"
         };
     }

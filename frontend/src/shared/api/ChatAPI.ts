@@ -69,8 +69,8 @@ class ChatAPI extends HttpClient {
 		documentId?: string | null,
 		includeArchived: boolean = false
 	): Promise<ChatSession[]> {
-		const params: Record<string, string | number | boolean> = {
-			scope: scope === 'global' ? 0 : 1,
+		const params: Record<string, string | boolean> = {
+			scope,
 			includeArchived
 		};
 		if (scope === 'document' && documentId) {
@@ -109,7 +109,7 @@ class ChatAPI extends HttpClient {
 	 */
 	async createChat(dto: CreateChatSession): Promise<ChatSession> {
 		const body = {
-			scope: dto.scope === 'global' ? 0 : 1,
+			scope: dto.scope === 'global' ? 'Global' : 'Document',
 			documentId: dto.documentId ?? null,
 			title: dto.title
 		};

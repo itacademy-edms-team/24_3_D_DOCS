@@ -330,6 +330,8 @@ public class ChatService : IChatService
         };
 
         _context.ChatMessages.Add(chatMessage);
+        // Keep chat ordering stable: every new message should bump chat activity timestamp.
+        chat.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         _logger.LogDebug("Message added to chat: ChatId={ChatId}, Role={Role}, ContentLength={ContentLength}", 

@@ -32,11 +32,6 @@ public class DocumentLink
     [MaxLength(500)]
     public string? PdfMinioPath { get; set; } // Может быть null если PDF еще не сгенерирован
 
-    [Required]
-    [Column("status")]
-    [MaxLength(50)]
-    public string Status { get; set; } = "draft"; // draft, processing, completed, failed
-
     [Column("conversion_log")]
     public string? ConversionLog { get; set; } // Лог ошибок конвертации
 

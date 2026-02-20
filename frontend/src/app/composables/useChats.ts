@@ -8,6 +8,8 @@ export function useChats() {
 	const activeChat = ref<ChatSessionWithMessages | null>(null);
 	const isLoading = ref(false);
 	const error = ref<string | null>(null);
+	let loadChatsRequestId = 0;
+	let loadChatRequestId = 0;
 
 	/**
 	 * Загрузить чаты по scope
@@ -15,23 +17,34 @@ export function useChats() {
 	 * @param documentId - обязателен при scope='document'
 	 */
 	const loadChats = async (scope: ChatScope, documentId?: string | null) => {
+		const requestId = ++loadChatsRequestId;
 		isLoading.value = true;
 		error.value = null;
 
 		try {
 			const allChats = await ChatAPI.getChats(scope, documentId ?? undefined, true);
+			if (requestId !== loadChatsRequestId) return;
+
 			chats.value = allChats.filter(c => !c.isArchived);
 			archivedChats.value = allChats.filter(c => c.isArchived);
 
-			if (!activeChatId.value && chats.value.length > 0) {
-				activeChatId.value = chats.value[0].id;
-				await loadChatById(chats.value[0].id);
+			const hasCurrentActive = !!activeChatId.value && chats.value.some(c => c.id === activeChatId.value);
+			if (!hasCurrentActive) {
+				activeChatId.value = chats.value.length > 0 ? chats.value[0].id : null;
+				activeChat.value = null;
+			}
+
+			if (activeChatId.value) {
+				await loadChatById(activeChatId.value, { silent: true });
 			}
 		} catch (err: any) {
+			if (requestId !== loadChatsRequestId) return;
 			error.value = err.message || 'Ошибка при загрузке чатов';
 			console.error('Error loading chats:', err);
 		} finally {
-			isLoading.value = false;
+			if (requestId === loadChatsRequestId) {
+				isLoading.value = false;
+			}
 		}
 	};
 
@@ -45,12 +58,17 @@ export function useChats() {
 	/**
 	 * Загрузить чат с сообщениями по ID
 	 */
-	const loadChatById = async (chatId: string) => {
-		isLoading.value = true;
+	const loadChatById = async (chatId: string, options?: { silent?: boolean }) => {
+		const requestId = ++loadChatRequestId;
+		if (!options?.silent) {
+			isLoading.value = true;
+		}
 		error.value = null;
 		
 		try {
 			const chat = await ChatAPI.getChatById(chatId);
+			if (requestId !== loadChatRequestId) return;
+
 			activeChat.value = chat;
 			activeChatId.value = chatId;
 			
@@ -73,10 +91,13 @@ export function useChats() {
 				}
 			}
 		} catch (err: any) {
+			if (requestId !== loadChatRequestId) return;
 			error.value = err.message || 'Ошибка при загрузке чата';
 			console.error('Error loading chat:', err);
 		} finally {
-			isLoading.value = false;
+			if (!options?.silent && requestId === loadChatRequestId) {
+				isLoading.value = false;
+			}
 		}
 	};
 
@@ -91,12 +112,17 @@ export function useChats() {
 
 		try {
 			const newChat = await ChatAPI.createChat({ scope, documentId, title });
-			chats.value.unshift(newChat);
+			// Invalidate stale load responses so a late GET /chats can't drop a freshly created chat.
+			loadChatsRequestId++;
+			chats.value = [newChat, ...chats.value.filter(c => c.id !== newChat.id)];
 			activeChatId.value = newChat.id;
 			activeChat.value = {
 				...newChat,
 				messages: []
 			};
+
+			// Load server copy to keep history/state consistent.
+			await loadChatById(newChat.id, { silent: true });
 			return newChat;
 		} catch (err: any) {
 			error.value = err.message || 'Ошибка при создании чата';
@@ -234,6 +260,8 @@ export function useChats() {
 	 * Сбросить состояние
 	 */
 	const reset = () => {
+		loadChatsRequestId++;
+		loadChatRequestId++;
 		chats.value = [];
 		archivedChats.value = [];
 		activeChatId.value = null;

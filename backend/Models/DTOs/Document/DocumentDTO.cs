@@ -11,7 +11,6 @@ public class DocumentDTO
     public Guid? TitlePageId { get; set; }
     public string? TitlePageName { get; set; }
     public DocumentMetadataDTO? Metadata { get; set; }
-    public string Status { get; set; } = "draft";
     public bool IsArchived { get; set; }
     public DateTime? DeletedAt { get; set; }
     public DateTime CreatedAt { get; set; }

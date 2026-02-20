@@ -4,7 +4,7 @@ using RusalProject.Services.Document;
 namespace RusalProject.Services.Agent.Tools.CRUDdocTools;
 
 /// <summary>
-/// Returns list of documents with id, name, updatedAt, status. No content.
+/// Returns list of documents with id, name and updatedAt. No content.
 /// </summary>
 public class ListDocumentTool : ITool
 {
@@ -12,7 +12,7 @@ public class ListDocumentTool : ITool
     private readonly ILogger<ListDocumentTool> _logger;
 
     public string Name => "list_documents";
-    public string Description => "Возвращает список всех документов пользователя: id, название, дата изменения, статус. Без содержимого.";
+    public string Description => "Возвращает список всех документов пользователя: id, название, дата изменения. Без содержимого.";
 
     public ListDocumentTool(IDocumentService documentService, ILogger<ListDocumentTool> logger)
     {
@@ -27,11 +27,6 @@ public class ListDocumentTool : ITool
             ["type"] = "object",
             ["properties"] = new Dictionary<string, object>
             {
-                ["status"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "Фильтр статуса: draft, archived (опционально)"
-                },
                 ["search"] = new Dictionary<string, object>
                 {
                     ["type"] = "string",
@@ -48,17 +43,15 @@ public class ListDocumentTool : ITool
             return "Ошибка: user_id обязателен";
 
         var userId = Guid.Parse(GetStringValue(arguments, "user_id"));
-        string? status = GetStringValueSafe(arguments, "status");
         string? search = GetStringValueSafe(arguments, "search");
 
-        var documents = await _documentService.GetDocumentsAsync(userId, status, search);
+        var documents = await _documentService.GetDocumentsAsync(userId, null, search);
 
         var result = documents.Select(d => new
         {
             id = d.Id.ToString(),
             name = d.Name,
-            updatedAt = d.UpdatedAt.ToString("O"),
-            status = d.Status
+            updatedAt = d.UpdatedAt.ToString("O")
         }).ToList();
 
         return System.Text.Json.JsonSerializer.Serialize(result);

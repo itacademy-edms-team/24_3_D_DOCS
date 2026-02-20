@@ -7,7 +7,6 @@ export interface DocumentMeta {
 	profileName?: string;
 	titlePageId?: string;
 	titlePageName?: string;
-	status: string;
 	isArchived: boolean;
 	deletedAt?: string;
 	createdAt: string;

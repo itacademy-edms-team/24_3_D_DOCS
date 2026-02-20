@@ -137,12 +137,14 @@ builder.Services.AddScoped<IDocumentAgent, DocumentAgent>();
 builder.Services.AddScoped<ListDocumentTool>();
 builder.Services.AddScoped<CreateDocumentTool>();
 builder.Services.AddScoped<DeleteDocumentTool>();
+builder.Services.AddScoped<RenameDocumentTool>();
 builder.Services.AddScoped<MainAgentToolExecutor>(sp =>
 {
     var list = sp.GetRequiredService<ListDocumentTool>();
     var create = sp.GetRequiredService<CreateDocumentTool>();
     var del = sp.GetRequiredService<DeleteDocumentTool>();
-    return new MainAgentToolExecutor(new[] { (ITool)list, create, del }, sp.GetRequiredService<ILogger<MainAgentToolExecutor>>());
+    var rename = sp.GetRequiredService<RenameDocumentTool>();
+    return new MainAgentToolExecutor(new[] { (ITool)list, create, del, rename }, sp.GetRequiredService<ILogger<MainAgentToolExecutor>>());
 });
 builder.Services.AddScoped<IMainAgent, MainAgent>();
 builder.Services.AddScoped<IAgentService, AgentService>();

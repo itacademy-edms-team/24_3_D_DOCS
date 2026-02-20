@@ -95,9 +95,6 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasIndex(e => e.CreatorId)
                   .HasDatabaseName("IX_DocumentLinks_CreatorId");
 
-            entity.HasIndex(e => e.Status)
-                  .HasDatabaseName("IX_DocumentLinks_Status");
-
             entity.HasIndex(e => e.ProfileId)
                   .HasDatabaseName("IX_DocumentLinks_ProfileId");
 
@@ -109,9 +106,6 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
 
             entity.HasIndex(e => e.DeletedAt)
                   .HasDatabaseName("IX_DocumentLinks_DeletedAt");
-
-            entity.Property(e => e.Status)
-                  .HasDefaultValue("draft");
 
             entity.Property(e => e.IsArchived)
                   .HasDefaultValue(false);
@@ -230,9 +224,6 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             
             entity.HasIndex(e => e.DeletedAt)
                   .HasDatabaseName("IX_ChatSessions_DeletedAt");
-
-            entity.Property(e => e.Scope)
-                  .HasDefaultValue(Models.Types.ChatScope.Document);
 
             entity.Property(e => e.IsArchived)
                   .HasDefaultValue(false);
@@ -384,4 +375,3 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
         }
     }
 }
-

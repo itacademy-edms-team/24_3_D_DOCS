@@ -24,6 +24,10 @@ public class AIController : ControllerBase
     private readonly IAgentLogService _logService;
     private readonly IUserOllamaApiKeyService _ollamaKeyService;
     private readonly ILogger<AIController> _logger;
+    private static readonly JsonSerializerOptions ToolCallsJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public AIController(
         IAgentService agentService,
@@ -214,7 +218,7 @@ public class AIController : ControllerBase
                         collectedSteps.Add(step);
                         
                         var toolCallsJson = step.ToolCalls != null && step.ToolCalls.Count > 0
-                            ? JsonSerializer.Serialize(step.ToolCalls)
+                            ? JsonSerializer.Serialize(step.ToolCalls, ToolCallsJsonOptions)
                             : null;
 
                         var assistantMessage = new ChatMessageDTO

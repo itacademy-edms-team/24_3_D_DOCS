@@ -283,7 +283,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useAgent } from '@/app/composables/useAgent';
-import { useChats } from '@/app/composables/useChats';
+import { useGlobalChats } from '@/app/composables/useGlobalChats';
+import { useDocumentChats } from '@/app/composables/useDocumentChats';
 import Icon from '@/components/Icon.vue';
 import '@/styles/chat-ui.css';
 import 'katex/dist/katex.css';
@@ -326,23 +327,25 @@ const emit = defineEmits<{
 }>();
 
 const { isProcessing, currentResponse, steps: agentSteps, events: agentEvents, error: agentError, sendMessage, stop: stopAgent, reset: resetAgent } = useAgent();
-const {
-	chats,
-	archivedChats,
-	activeChatId,
-	activeChat,
-	error: chatsError,
-	loadChats,
-	loadChatsByDocument,
-	loadChatById,
-	createChat,
-	switchChat,
-	updateChatTitle,
-	archiveChat,
-	restoreChat,
-	deleteChatPermanently,
-	reset: resetChats
-} = useChats();
+const globalChatsStore = useGlobalChats();
+const documentChatsStore = useDocumentChats();
+const isGlobalScope = computed(() => props.scope === 'global');
+
+const chats = computed(() =>
+	isGlobalScope.value ? globalChatsStore.chats.value : documentChatsStore.chats.value
+);
+const archivedChats = computed(() =>
+	isGlobalScope.value ? globalChatsStore.archivedChats.value : documentChatsStore.archivedChats.value
+);
+const activeChatId = computed(() =>
+	isGlobalScope.value ? globalChatsStore.activeChatId.value : documentChatsStore.activeChatId.value
+);
+const activeChat = computed(() =>
+	isGlobalScope.value ? globalChatsStore.activeChat.value : documentChatsStore.activeChat.value
+);
+const chatsError = computed(() =>
+	isGlobalScope.value ? globalChatsStore.error.value : documentChatsStore.error.value
+);
 
 const userMessage = ref('');
 const pendingUserMessage = ref<string | null>(null);
@@ -380,7 +383,12 @@ function parseToolCalls(toolCallsJson: string | undefined): Array<{ toolName: st
 	if (!toolCallsJson) return [];
 	try {
 		const arr = JSON.parse(toolCallsJson);
-		return Array.isArray(arr) ? arr.map((tc: any) => ({ toolName: tc.toolName ?? tc.tool_name ?? '', result: tc.result })) : [];
+		return Array.isArray(arr)
+			? arr.map((tc: any) => ({
+					toolName: tc.toolName ?? tc.tool_name ?? tc.ToolName ?? '',
+					result: tc.result ?? tc.Result,
+			  }))
+			: [];
 	} catch {
 		return [];
 	}
@@ -391,6 +399,7 @@ function getToolLabel(toolName: string): string {
 		list_documents: 'Получение списка документов',
 		create_document: 'Создание документа',
 		delete_document: 'Удаление документа',
+		rename_document: 'Переименование документа',
 	};
 	return labels[toolName] ?? `Вызов ${toolName}`;
 }
@@ -425,6 +434,22 @@ const hasSelection = computed(() => {
 	return props.startLine !== undefined && props.endLine !== undefined;
 });
 
+const loadChatsForCurrentScope = async () => {
+	if (isGlobalScope.value) {
+		await globalChatsStore.loadChats();
+		return;
+	}
+	if (props.documentId) {
+		await documentChatsStore.loadChats(props.documentId);
+	}
+};
+
+const ensureGlobalChatExists = async () => {
+	if (!isGlobalScope.value) return;
+	if (chats.value.length > 0) return;
+	await globalChatsStore.createChat();
+};
+
 // Accessibility helpers for keyboard interaction
 onMounted(() => {
 	// placeholder for potential focus management
@@ -432,24 +457,19 @@ onMounted(() => {
 
 // Load chats on mount
 onMounted(async () => {
-	if (props.scope === 'global') {
-		await loadChats('global');
-	} else if (props.documentId) {
-		await loadChats('document', props.documentId);
-	}
+	await loadChatsForCurrentScope();
+	await ensureGlobalChatExists();
 });
 
 // Watch for scope/documentId changes
 watch(
 	() => [props.scope, props.documentId] as const,
-	async ([newScope, newDocId]) => {
-		resetChats();
+	async () => {
+		globalChatsStore.reset();
+		documentChatsStore.reset();
 		resetAgent();
-		if (newScope === 'global') {
-			await loadChats('global');
-		} else if (newDocId) {
-			await loadChats('document', newDocId);
-		}
+		await loadChatsForCurrentScope();
+		await ensureGlobalChatExists();
 	}
 );
 
@@ -463,28 +483,30 @@ watch(
 	}
 );
 
-// Watch for chat changes and reload messages
-watch(activeChatId, async (newChatId) => {
-	if (newChatId && activeChat.value) {
-		if (props.scope === 'global') await loadChats('global');
-		else if (props.documentId) await loadChats('document', props.documentId);
-	}
-});
-
 const clearSelection = () => {
 	emit('clearSelection');
 };
 
 const handleCreateChat = async () => {
 	try {
-		await createChat(props.scope, props.documentId ?? null);
+		if (isGlobalScope.value) {
+			await globalChatsStore.createChat();
+		} else if (props.documentId) {
+			await documentChatsStore.createChat(props.documentId);
+		}
+		// Keep tabs list in sync with server ordering/metadata.
+		await loadChatsForCurrentScope();
 	} catch (err) {
 		console.error('Error creating chat:', err);
 	}
 };
 
 const handleSwitchChat = async (chatId: string) => {
-	await switchChat(chatId);
+	if (isGlobalScope.value) {
+		await globalChatsStore.switchChat(chatId);
+	} else {
+		await documentChatsStore.switchChat(chatId);
+	}
 	resetAgent();
 };
 
@@ -500,7 +522,11 @@ const handleStartRename = (chatId: string, currentTitle: string) => {
 const handleFinishRename = async () => {
 	if (editingChatId.value && editingTitle.value.trim()) {
 		try {
-			await updateChatTitle(editingChatId.value, editingTitle.value.trim());
+			if (isGlobalScope.value) {
+				await globalChatsStore.updateChatTitle(editingChatId.value, editingTitle.value.trim());
+			} else {
+				await documentChatsStore.updateChatTitle(editingChatId.value, editingTitle.value.trim());
+			}
 		} catch (err) {
 			console.error('Error renaming chat:', err);
 		}
@@ -516,7 +542,11 @@ const handleCancelRename = () => {
 
 const handleArchiveChat = async (chatId: string) => {
 	try {
-		await archiveChat(chatId);
+		if (isGlobalScope.value) {
+			await globalChatsStore.archiveChat(chatId);
+		} else {
+			await documentChatsStore.archiveChat(chatId);
+		}
 	} catch (err) {
 		console.error('Error archiving chat:', err);
 	}
@@ -524,8 +554,13 @@ const handleArchiveChat = async (chatId: string) => {
 
 const handleRestoreChat = async (chatId: string) => {
 	try {
-		await restoreChat(chatId);
-		await switchChat(chatId);
+		if (isGlobalScope.value) {
+			await globalChatsStore.restoreChat(chatId);
+			await globalChatsStore.switchChat(chatId);
+		} else {
+			await documentChatsStore.restoreChat(chatId);
+			await documentChatsStore.switchChat(chatId);
+		}
 	} catch (err) {
 		console.error('Error restoring chat:', err);
 	}
@@ -533,7 +568,11 @@ const handleRestoreChat = async (chatId: string) => {
 
 const handleDeletePermanently = async (chatId: string) => {
 	try {
-		await deleteChatPermanently(chatId);
+		if (isGlobalScope.value) {
+			await globalChatsStore.deleteChatPermanently(chatId);
+		} else {
+			await documentChatsStore.deleteChatPermanently(chatId);
+		}
 	} catch (err) {
 		console.error('Error deleting chat permanently:', err);
 	}
@@ -555,24 +594,23 @@ const handleSend = async () => {
 		endLine: props.endLine,
 		chatId: activeChatId.value,
 	};
-	// Backend expects scope as number: 0=global, 1=document
-	const payload = { ...request } as Record<string, unknown>;
-	if (payload.scope) {
-		payload.scope = payload.scope === 'global' ? 0 : 1;
-	}
 
 	try {
-		await sendMessage(payload as AgentRequestDTO);
+		const payload = {
+			...request,
+			scope: request.scope === 'global' ? 'Global' : 'Document',
+		} as unknown as AgentRequestDTO;
+		await sendMessage(payload);
 
 		// Обновить историю чата с сервера (без этого видны только последнее сообщение до перезагрузки)
 		if (activeChatId.value) {
-			await loadChatById(activeChatId.value);
+			if (isGlobalScope.value) {
+				await globalChatsStore.loadChatById(activeChatId.value);
+			} else {
+				await documentChatsStore.loadChatById(activeChatId.value);
+			}
 		}
-		if (props.scope === 'global') {
-			await loadChats('global');
-		} else if (props.documentId) {
-			await loadChats('document', props.documentId);
-		}
+		await loadChatsForCurrentScope();
 	} catch (err) {
 		console.error('Error sending message to agent:', err);
 		userMessage.value = text;
