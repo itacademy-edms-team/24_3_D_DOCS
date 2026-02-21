@@ -139,29 +139,13 @@ public class AIController : ControllerBase
 
             var userId = GetUserId();
 
-            if (!string.IsNullOrEmpty(request.ClientMessageId))
-            {
-                var idempotentResponse = await _chatService.GetIdempotentAssistantResponseAsync(request.ChatId.Value, request.ClientMessageId, userId, cancellationToken);
-                if (idempotentResponse != null)
-                {
-                    await SendSSEEvent("complete", new AgentResponseDTO
-                    {
-                        FinalMessage = idempotentResponse,
-                        Steps = new List<AgentStepDTO>(),
-                        IsComplete = true
-                    });
-                    return;
-                }
-            }
-
             // Сохраняем сообщение пользователя в чат
             try
             {
                 var userMessage = new ChatMessageDTO
                 {
                     Role = "user",
-                    Content = request.UserMessage,
-                    ClientMessageId = request.ClientMessageId
+                    Content = request.UserMessage
                 };
                 await _chatService.AddMessageAsync(request.ChatId.Value, userMessage, userId);
             }

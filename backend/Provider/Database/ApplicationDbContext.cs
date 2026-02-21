@@ -253,11 +253,6 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasIndex(e => e.ChatSessionId)
                   .HasDatabaseName("IX_ChatMessages_ChatSessionId");
 
-            entity.HasIndex(e => new { e.ChatSessionId, e.ClientMessageId })
-                  .HasDatabaseName("IX_ChatMessages_ChatSessionId_ClientMessageId")
-                  .HasFilter("\"client_message_id\" IS NOT NULL")
-                  .IsUnique();
-
             entity.Property(e => e.CreatedAt)
                   .HasDefaultValueSql("NOW()");
 

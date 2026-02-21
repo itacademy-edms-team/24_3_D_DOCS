@@ -114,7 +114,6 @@ public class ChatService : IChatService
                     Content = m.Content,
                     StepNumber = m.StepNumber,
                     ToolCalls = m.ToolCalls,
-                    ClientMessageId = m.ClientMessageId,
                     CreatedAt = m.CreatedAt
                 }).ToList()
         };
@@ -325,8 +324,7 @@ public class ChatService : IChatService
             Role = message.Role,
             Content = message.Content,
             StepNumber = message.StepNumber,
-            ToolCalls = message.ToolCalls,
-            ClientMessageId = message.ClientMessageId
+            ToolCalls = message.ToolCalls
         };
 
         _context.ChatMessages.Add(chatMessage);
@@ -336,23 +334,5 @@ public class ChatService : IChatService
 
         _logger.LogDebug("Message added to chat: ChatId={ChatId}, Role={Role}, ContentLength={ContentLength}", 
             chatId, message.Role, message.Content.Length);
-    }
-
-    public async Task<string?> GetIdempotentAssistantResponseAsync(Guid chatId, string clientMessageId, Guid userId, CancellationToken cancellationToken = default)
-    {
-        var chat = await _context.ChatSessions
-            .Include(c => c.Messages)
-            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId && c.DeletedAt == null, cancellationToken);
-
-        if (chat == null)
-            return null;
-
-        var messages = chat.Messages.OrderBy(m => m.CreatedAt).ToList();
-        var userIdx = messages.FindIndex(m => m.ClientMessageId == clientMessageId && m.Role == "user");
-        if (userIdx < 0 || userIdx + 1 >= messages.Count)
-            return null;
-
-        var next = messages[userIdx + 1];
-        return next.Role == "assistant" ? next.Content : null;
     }
 }

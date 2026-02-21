@@ -10,6 +10,5 @@ public class AgentRequestDTO
     public int? StartLine { get; set; }
     public int? EndLine { get; set; }
     public Guid? ChatId { get; set; }
-    public string? ClientMessageId { get; set; }
     public AgentMode? Mode { get; set; }
 }

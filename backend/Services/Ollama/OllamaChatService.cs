@@ -46,7 +46,6 @@ public class OllamaChatService : IOllamaChatService
         Guid userId,
         Guid chatId,
         string userMessage,
-        string? clientMessageId,
         Guid documentId,
         Func<string, Task>? onChunk = null,
         Func<string, Task>? onStatusCheck = null,

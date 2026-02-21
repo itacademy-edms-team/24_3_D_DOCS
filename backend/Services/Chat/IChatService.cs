@@ -14,5 +14,4 @@ public interface IChatService
     Task RestoreChatAsync(Guid chatId, Guid userId);
     Task DeleteChatPermanentlyAsync(Guid chatId, Guid userId);
     Task AddMessageAsync(Guid chatId, ChatMessageDTO message, Guid userId);
-    Task<string?> GetIdempotentAssistantResponseAsync(Guid chatId, string clientMessageId, Guid userId, CancellationToken cancellationToken = default);
 }
