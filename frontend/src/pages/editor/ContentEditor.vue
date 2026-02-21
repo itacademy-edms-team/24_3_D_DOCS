@@ -290,7 +290,10 @@
 					ref="markdownEditorRef"
 					v-model="content"
 					:documentId="documentId"
+					:aiPendingChanges="aiPendingChanges"
 					@update:modelValue="handleContentChange"
+					@accept-ai-change="handleAcceptAiChange"
+					@undo-ai-change="handleUndoAiChange"
 				/>
 				<!-- Title Page Variables Panel -->
 				<TitlePageVariablesPanel
@@ -431,7 +434,7 @@
 			:startLine="selectedStartLine"
 			:endLine="selectedEndLine"
 			@clearSelection="selectedStartLine = undefined; selectedEndLine = undefined"
-			@documentUpdated="handleDocumentUpdated"
+			@document-changes-proposed="handleDocumentChangesProposed"
 			@width-changed="handleChatDockWidthChanged"
 		/>
 	</div>
@@ -453,6 +456,7 @@ import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import { useDebounceFn } from '@vueuse/core';
 import type { Document, DocumentMetadata, TocItem, DocumentVersion } from '@/entities/document/types';
 import type { Profile } from '@/entities/profile/types';
+import type { DocumentEntityChangeDTO } from '@/shared/api/AIAPI';
 
 const route = useRoute();
 const router = useRouter();
@@ -465,6 +469,7 @@ const showPreview = ref(true);
 const swapped = ref(false);
 const activeTab = ref<'editor' | 'titlePage'>('editor');
 const markdownEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null);
+const aiPendingChanges = ref<DocumentEntityChangeDTO[]>([]);
 const isDownloadingPdf = ref(false);
 const isExportingDdoc = ref(false);
 
@@ -692,6 +697,196 @@ const handleContentChange = useDebounceFn(async (newContent: string) => {
 	}
 }, 1000);
 
+const splitContentLines = (value: string): string[] => {
+	if (!value) return [];
+	return value.replace(/\r\n/g, '\n').split('\n');
+};
+
+const joinContentLines = (lines: string[]): string => {
+	return lines.length > 0 ? lines.join('\n') : '';
+};
+
+const applyInsertChange = (
+	currentContent: string,
+	change: DocumentEntityChangeDTO
+): { updatedContent: string; insertedLineCount: number } => {
+	const currentLines = splitContentLines(currentContent);
+	const insertAfterLine = Math.max(0, Math.min(change.startLine, currentLines.length));
+	const entityLines = splitContentLines(change.content);
+
+	const linesToInsert: string[] = [];
+	const previousLine = insertAfterLine > 0 ? currentLines[insertAfterLine - 1] : null;
+	const nextLine = insertAfterLine < currentLines.length ? currentLines[insertAfterLine] : null;
+
+	if (previousLine !== null && previousLine.trim() !== '') {
+		linesToInsert.push('');
+	}
+	linesToInsert.push(...entityLines);
+	if (nextLine !== null && nextLine.trim() !== '') {
+		linesToInsert.push('');
+	}
+
+	const updatedLines = [
+		...currentLines.slice(0, insertAfterLine),
+		...linesToInsert,
+		...currentLines.slice(insertAfterLine),
+	];
+
+	return {
+		updatedContent: joinContentLines(updatedLines),
+		insertedLineCount: linesToInsert.length,
+	};
+};
+
+const applyDeleteChange = (
+	currentContent: string,
+	change: DocumentEntityChangeDTO
+): { updatedContent: string; deletedLineCount: number } => {
+	const currentLines = splitContentLines(currentContent);
+	if (currentLines.length === 0) {
+		return { updatedContent: currentContent, deletedLineCount: 0 };
+	}
+
+	const startLine = Math.max(1, Math.min(change.startLine, currentLines.length));
+	const endLine = Math.max(
+		startLine,
+		Math.min(change.endLine ?? change.startLine, currentLines.length)
+	);
+
+	const startIndex = startLine - 1;
+	const endIndex = endLine - 1;
+	const deletedLineCount = endIndex - startIndex + 1;
+
+	const updatedLines = [
+		...currentLines.slice(0, startIndex),
+		...currentLines.slice(endIndex + 1),
+	];
+
+	return {
+		updatedContent: joinContentLines(updatedLines),
+		deletedLineCount,
+	};
+};
+
+const shiftPendingChangesAfterInsert = (
+	pending: DocumentEntityChangeDTO[],
+	appliedChange: DocumentEntityChangeDTO,
+	insertedLineCount: number
+): DocumentEntityChangeDTO[] => {
+	if (insertedLineCount <= 0) return pending;
+
+	const appliedOrder = appliedChange.order ?? 0;
+
+	return pending.map((change) => {
+		const sameGroupForward =
+			change.changeType === 'insert' &&
+			change.groupId &&
+			appliedChange.groupId &&
+			change.groupId === appliedChange.groupId &&
+			(change.order ?? 0) > appliedOrder;
+
+		const shouldShiftStart = change.startLine > appliedChange.startLine || sameGroupForward;
+		const shouldShiftEnd = change.endLine !== undefined && change.endLine > appliedChange.startLine;
+
+		if (!shouldShiftStart && !shouldShiftEnd) {
+			return change;
+		}
+
+		return {
+			...change,
+			startLine: shouldShiftStart ? change.startLine + insertedLineCount : change.startLine,
+			endLine:
+				change.endLine !== undefined && shouldShiftEnd
+					? change.endLine + insertedLineCount
+					: change.endLine,
+		};
+	});
+};
+
+const shiftPendingChangesAfterDelete = (
+	pending: DocumentEntityChangeDTO[],
+	appliedChange: DocumentEntityChangeDTO,
+	deletedLineCount: number
+): DocumentEntityChangeDTO[] => {
+	if (deletedLineCount <= 0) return pending;
+
+	const deleteStart = appliedChange.startLine;
+	const deleteEnd = appliedChange.endLine ?? appliedChange.startLine;
+
+	return pending
+		.filter((change) => {
+			// Drop conflicting pending changes that intersect removed range.
+			if (change.changeType === 'delete') {
+				const rangeStart = change.startLine;
+				const rangeEnd = change.endLine ?? change.startLine;
+				const intersects = rangeEnd >= deleteStart && rangeStart <= deleteEnd;
+				return !intersects;
+			}
+
+			// Insert anchored inside deleted segment is moved to just before removed range.
+			return true;
+		})
+		.map((change) => {
+			if (change.changeType === 'insert') {
+				if (change.startLine > deleteEnd) {
+					return { ...change, startLine: Math.max(0, change.startLine - deletedLineCount) };
+				}
+				if (change.startLine >= deleteStart && change.startLine <= deleteEnd) {
+					return { ...change, startLine: Math.max(0, deleteStart - 1) };
+				}
+				return change;
+			}
+
+			const rangeStart = change.startLine;
+			const rangeEnd = change.endLine ?? change.startLine;
+			if (rangeStart > deleteEnd) {
+				return {
+					...change,
+					startLine: Math.max(1, rangeStart - deletedLineCount),
+					endLine: Math.max(1, rangeEnd - deletedLineCount),
+				};
+			}
+
+			return change;
+		});
+};
+
+const handleDocumentChangesProposed = (changes: DocumentEntityChangeDTO[]) => {
+	if (changes.length === 0) return;
+
+	const existingIds = new Set(aiPendingChanges.value.map((c) => c.changeId));
+	const uniqueIncoming = changes.filter((c) => !existingIds.has(c.changeId));
+	if (uniqueIncoming.length === 0) return;
+
+	aiPendingChanges.value = [...aiPendingChanges.value, ...uniqueIncoming];
+};
+
+const handleUndoAiChange = (changeId: string) => {
+	aiPendingChanges.value = aiPendingChanges.value.filter((change) => change.changeId !== changeId);
+};
+
+const handleAcceptAiChange = (changeId: string) => {
+	const target = aiPendingChanges.value.find((change) => change.changeId === changeId);
+	if (!target) return;
+
+	let updatedContent = content.value;
+	let nextPending = aiPendingChanges.value.filter((change) => change.changeId !== changeId);
+
+	if (target.changeType === 'insert') {
+		const insertResult = applyInsertChange(updatedContent, target);
+		updatedContent = insertResult.updatedContent;
+		nextPending = shiftPendingChangesAfterInsert(nextPending, target, insertResult.insertedLineCount);
+	} else {
+		const deleteResult = applyDeleteChange(updatedContent, target);
+		updatedContent = deleteResult.updatedContent;
+		nextPending = shiftPendingChangesAfterDelete(nextPending, target, deleteResult.deletedLineCount);
+	}
+
+	content.value = updatedContent;
+	handleContentChange(updatedContent);
+	aiPendingChanges.value = nextPending;
+};
+
 const handleProfileChange = useDebounceFn(async (event: Event) => {
 	if (!document.value) return;
 
@@ -810,6 +1005,7 @@ const loadDocument = async () => {
 		document.value = doc;
 		documentName.value = doc.name || 'Документ';
 		content.value = doc.content || '';
+		aiPendingChanges.value = [];
 		selectedProfileId.value = doc.profileId || '';
 		selectedTitlePageId.value = doc.titlePageId || '';
 		const toc = await DocumentAPI.getTableOfContents(documentId.value);
@@ -980,11 +1176,6 @@ const handleResetToc = async () => {
 	} finally {
 		isGeneratingToc.value = false;
 	}
-};
-
-const handleDocumentUpdated = async () => {
-	// Reload document content after agent edits
-	await loadDocument();
 };
 
 // Handle window resize to prevent preview "shaking"

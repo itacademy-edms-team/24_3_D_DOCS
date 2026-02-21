@@ -13,6 +13,7 @@ using RusalProject.Provider.Redis;
 using RusalProject.Services.Agent;
 using RusalProject.Services.Agent.Tools;
 using RusalProject.Services.Agent.Tools.CRUDdocTools;
+using RusalProject.Services.Agent.Tools.DocumentTools;
 using RusalProject.Services.Auth;
 using RusalProject.Services.Document;
 using RusalProject.Services.Attachment;
@@ -133,6 +134,16 @@ builder.Services.AddScoped<IMarkdownParserService, MarkdownParserService>();
 
 // Agent Services
 builder.Services.AddScoped<IAgentLogService, AgentLogService>();
+builder.Services.AddScoped<ReadDocumentTool>();
+builder.Services.AddScoped<ProposeDocumentChangesTool>();
+builder.Services.AddScoped<DocumentAgentToolExecutor>(sp =>
+{
+    var readDocument = sp.GetRequiredService<ReadDocumentTool>();
+    var proposeChanges = sp.GetRequiredService<ProposeDocumentChangesTool>();
+    return new DocumentAgentToolExecutor(
+        new IDocumentAgentTool[] { readDocument, proposeChanges },
+        sp.GetRequiredService<ILogger<DocumentAgentToolExecutor>>());
+});
 builder.Services.AddScoped<IDocumentAgent, DocumentAgent>();
 builder.Services.AddScoped<ListDocumentTool>();
 builder.Services.AddScoped<CreateDocumentTool>();

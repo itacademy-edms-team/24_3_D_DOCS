@@ -293,7 +293,7 @@ import markdownItMark from 'markdown-it-mark';
 import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
 import { renderLatex } from '@/utils/renderers/formulaRenderer';
-import type { AgentRequestDTO } from '@/shared/api/AIAPI';
+import type { AgentRequestDTO, DocumentEntityChangeDTO } from '@/shared/api/AIAPI';
 
 const md = new MarkdownIt({
 	html: true,
@@ -323,7 +323,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
 	close: [];
 	clearSelection: [];
-	documentUpdated: [];
+	documentChangesProposed: [changes: DocumentEntityChangeDTO[]];
 }>();
 
 const { isProcessing, currentResponse, steps: agentSteps, events: agentEvents, error: agentError, sendMessage, stop: stopAgent, reset: resetAgent } = useAgent();
@@ -354,6 +354,8 @@ const editingChatId = ref<string | null>(null);
 const editingTitle = ref('');
 const renameInputRef = ref<HTMLInputElement | null>(null);
 const hoveredMessageId = ref<string | null>(null);
+const isRequestInFlight = ref(false);
+const processedDocumentChangeSteps = ref<Set<number>>(new Set());
 
 // Auto-scroll state
 const messagesContainerRef = ref<HTMLElement | null>(null);
@@ -400,6 +402,8 @@ function getToolLabel(toolName: string): string {
 		create_document: 'Создание документа',
 		delete_document: 'Удаление документа',
 		rename_document: 'Переименование документа',
+		read_document: 'Чтение документа',
+		propose_document_changes: 'Предложение правок по сущностям',
 	};
 	return labels[toolName] ?? `Вызов ${toolName}`;
 }
@@ -473,14 +477,20 @@ watch(
 	}
 );
 
-// Watch for agent completion and emit documentUpdated event
+// Emit proposed document changes from live step events only.
 watch(
-	() => currentResponse.value?.isComplete,
-	(isComplete) => {
-		if (isComplete) {
-			emit('documentUpdated');
+	agentSteps,
+	(steps) => {
+		if (!isRequestInFlight.value) return;
+		for (const step of steps) {
+			if (processedDocumentChangeSteps.value.has(step.stepNumber)) continue;
+			if (!step.documentChanges || step.documentChanges.length === 0) continue;
+
+			processedDocumentChangeSteps.value.add(step.stepNumber);
+			emit('documentChangesProposed', step.documentChanges);
 		}
-	}
+	},
+	{ deep: true }
 );
 
 const clearSelection = () => {
@@ -583,6 +593,8 @@ const handleSend = async () => {
 	if (!userMessage.value.trim() || !activeChatId.value) return;
 
 	const text = userMessage.value.trim();
+	isRequestInFlight.value = true;
+	processedDocumentChangeSteps.value = new Set();
 	pendingUserMessage.value = text;
 	userMessage.value = '';
 
@@ -615,6 +627,7 @@ const handleSend = async () => {
 		console.error('Error sending message to agent:', err);
 		userMessage.value = text;
 	} finally {
+		isRequestInFlight.value = false;
 		pendingUserMessage.value = null;
 	}
 };

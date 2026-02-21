@@ -1,6 +1,7 @@
 <template>
 	<div ref="editorContainerRef" class="markdown-editor">
 		<MdEditor
+			ref="mdEditorRef"
 			:id="editorId"
 			:modelValue="localContent"
 			:theme="editorTheme"
@@ -16,32 +17,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, h } from 'vue';
+import { ref, computed, watch, h, nextTick, onMounted } from 'vue';
 import { MdEditor } from 'md-editor-v3';
 import type { UploadImgEvent } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
+import { StateEffect } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 import { useTheme } from '@/app/composables/useTheme';
 import { useMarkdownEditorShortcuts } from '@/app/composables/useMarkdownEditorShortcuts';
 import UploadAPI from '@/shared/api/UploadAPI';
+import type { DocumentEntityChangeDTO } from '@/shared/api/AIAPI';
 import HighlightToolbarButton from './components/HighlightToolbarButton.vue';
 import CaptionToolbarButton from './components/CaptionToolbarButton.vue';
 import DownloadPdfToolbarButton from './components/DownloadPdfToolbarButton.vue';
+import { createAiChangeExtensions, setAiChangesEffect } from './aiChangeDecorations';
 
 interface Props {
 	modelValue: string;
 	documentId?: string;
+	aiPendingChanges?: DocumentEntityChangeDTO[];
 }
 
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
 	'update:modelValue': [value: string];
+	acceptAiChange: [changeId: string];
+	undoAiChange: [changeId: string];
 }>();
 
 const { theme } = useTheme();
 const editorId = 'markdown-editor';
 const editorContainerRef = ref<HTMLElement>();
+const mdEditorRef = ref<{ getEditorView?: () => EditorView | undefined } | null>(null);
 const localContent = ref(props.modelValue);
+const aiExtensionInstalled = ref(false);
+
+const aiChangeExtensions = createAiChangeExtensions(
+	(changeId) => emit('acceptAiChange', changeId),
+	(changeId) => emit('undoAiChange', changeId),
+);
 
 const editorTheme = computed(() => {
 	return theme.value === 'dark' ? 'dark' : 'light';
@@ -129,6 +144,45 @@ const handleChange = (value: string) => {
 	emit('update:modelValue', value);
 };
 
+const ensureAiExtensionInstalled = () => {
+	const editorView = mdEditorRef.value?.getEditorView?.();
+	if (!editorView || aiExtensionInstalled.value) {
+		return;
+	}
+
+	editorView.dispatch({
+		effects: StateEffect.appendConfig.of(aiChangeExtensions),
+	});
+	aiExtensionInstalled.value = true;
+};
+
+const pushPendingAiChangesToEditor = () => {
+	const editorView = mdEditorRef.value?.getEditorView?.();
+	if (!editorView || !aiExtensionInstalled.value) {
+		return;
+	}
+
+	editorView.dispatch({
+		effects: setAiChangesEffect.of(props.aiPendingChanges ?? []),
+	});
+};
+
+onMounted(async () => {
+	await nextTick();
+	ensureAiExtensionInstalled();
+	pushPendingAiChangesToEditor();
+});
+
+watch(
+	() => props.aiPendingChanges,
+	async () => {
+		await nextTick();
+		ensureAiExtensionInstalled();
+		pushPendingAiChangesToEditor();
+	},
+	{ deep: true, immediate: true }
+);
+
 </script>
 
 <style scoped>
@@ -157,5 +211,70 @@ const handleChange = (value: string) => {
 :deep(.md-editor-content) {
 	flex: 1;
 	overflow: auto;
+}
+
+:deep(.cm-ai-change-delete) {
+	background: rgba(239, 68, 68, 0.16);
+	border-radius: 4px;
+}
+
+:deep(.cm-ai-change-widget) {
+	border: 1px solid transparent;
+	border-radius: 8px;
+	margin: 6px 0;
+	padding: 8px 10px;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+:deep(.cm-ai-change-widget--insert) {
+	background: rgba(34, 197, 94, 0.16);
+	border-color: rgba(34, 197, 94, 0.38);
+}
+
+:deep(.cm-ai-change-widget--delete) {
+	background: rgba(239, 68, 68, 0.16);
+	border-color: rgba(239, 68, 68, 0.38);
+}
+
+:deep(.cm-ai-change-widget__header) {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-weight: 600;
+}
+
+:deep(.cm-ai-change-widget__actions) {
+	display: inline-flex;
+	gap: 6px;
+}
+
+:deep(.cm-ai-change-widget__btn) {
+	border: 1px solid transparent;
+	border-radius: 6px;
+	padding: 3px 8px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+:deep(.cm-ai-change-widget__btn--accept) {
+	background: rgba(34, 197, 94, 0.22);
+	border-color: rgba(34, 197, 94, 0.45);
+	color: #166534;
+}
+
+:deep(.cm-ai-change-widget__btn--undo) {
+	background: rgba(239, 68, 68, 0.2);
+	border-color: rgba(239, 68, 68, 0.4);
+	color: #991b1b;
+}
+
+:deep(.cm-ai-change-widget__content) {
+	margin: 8px 0 0 0;
+	white-space: pre-wrap;
+	font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+	font-size: 12px;
 }
 </style>

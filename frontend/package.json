@@ -9,6 +9,7 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore"
   },
   "dependencies": {
+    "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.39.9",
     "@types/markdown-it": "^14.1.2",
     "@vueuse/core": "^14.1.0",
