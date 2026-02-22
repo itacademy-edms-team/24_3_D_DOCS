@@ -127,7 +127,7 @@
 						<button
 							class="content-editor__header-btn"
 							:class="{ 'content-editor__header-btn--active': showVersionsPanel }"
-							@click="showVersionsPanel = !showVersionsPanel"
+							@click="toggleVersionsPanel"
 							:disabled="!documentId"
 							title="История версий"
 						>
@@ -554,6 +554,7 @@ const handleBack = () => {
 };
 
 const showAIPanel = ref(false);
+const aiPendingChanges = ref<unknown[]>([]);
 const selectedStartLine = ref<number | undefined>();
 const selectedEndLine = ref<number | undefined>();
 const chatDockWidth = ref(400);
@@ -864,6 +865,7 @@ const loadVersions = async () => {
 };
 
 const loadDocument = async () => {
+	if (!documentId.value) return;
 	try {
 		const doc = await DocumentAPI.getById(documentId.value);
 		document.value = doc;
@@ -872,9 +874,18 @@ const loadDocument = async () => {
 		aiPendingChanges.value = [];
 		selectedProfileId.value = doc.profileId || '';
 		selectedTitlePageId.value = doc.titlePageId || '';
-		const toc = await DocumentAPI.getTableOfContents(documentId.value);
-		tableOfContents.value = toc;
-		await loadVersions();
+		const [tocResult, versionsResult] = await Promise.allSettled([
+			DocumentAPI.getTableOfContents(documentId.value),
+			DocumentAPI.getVersions(documentId.value),
+		]);
+		tableOfContents.value = tocResult.status === 'fulfilled' ? tocResult.value : [];
+		versions.value = versionsResult.status === 'fulfilled' ? versionsResult.value : [];
+		if (tocResult.status === 'rejected') {
+			console.error('Failed to load table of contents:', tocResult.reason);
+		}
+		if (versionsResult.status === 'rejected') {
+			console.error('Failed to load versions:', versionsResult.reason);
+		}
 	} catch (error) {
 		console.error('Failed to load document:', error);
 	}
@@ -1057,9 +1068,26 @@ const handleWindowResize = useDebounceFn(() => {
 	}
 }, 100);
 
+const toggleVersionsPanel = () => {
+	showVersionsPanel.value = !showVersionsPanel.value;
+	if (showVersionsPanel.value && documentId.value) {
+		loadVersions();
+	}
+};
+
 onClickOutside(versionsDropdownRef, () => {
 	showVersionsPanel.value = false;
 });
+
+watch(
+	() => route.params.id as string,
+	(newId, oldId) => {
+		if (newId && newId !== oldId) {
+			loadDocument();
+		}
+	},
+	{ immediate: false }
+);
 
 onMounted(async () => {
 	await loadDocument();
