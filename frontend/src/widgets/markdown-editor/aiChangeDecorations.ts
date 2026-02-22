@@ -1,90 +1,101 @@
 import {
 	RangeSetBuilder,
-	StateEffect,
-	StateField,
 	type Extension,
 } from '@codemirror/state';
 import {
 	Decoration,
 	type DecorationSet,
 	EditorView,
+	ViewPlugin,
+	type ViewUpdate,
 	WidgetType,
 } from '@codemirror/view';
-import type { Text } from '@codemirror/state';
-import type { DocumentEntityChangeDTO } from '@/shared/api/AIAPI';
 
-type ChangeHandler = (changeId: string) => void;
+type ChangeHandler = (changeId: string, changeType: 'insert' | 'delete') => void;
 
-interface AiDecorationsState {
-	changes: DocumentEntityChangeDTO[];
-	decorations: DecorationSet;
+interface ParsedMarker {
+	changeId: string;
+	changeType: 'insert' | 'delete';
+	startMarkerFrom: number;
+	startMarkerTo: number;
+	contentFrom: number;
+	contentTo: number;
+	endMarkerFrom: number;
+	endMarkerTo: number;
 }
 
-export const setAiChangesEffect = StateEffect.define<DocumentEntityChangeDTO[]>();
+const AI_MARKER_REGEX = /<!-- AI:(INSERT|DELETE):(\w+) -->([\s\S]*?)<!-- \/AI:\1:\2 -->/g;
 
-class AiChangeWidget extends WidgetType {
+function parseMarkersFromDoc(docText: string): ParsedMarker[] {
+	const markers: ParsedMarker[] = [];
+	let match;
+	
+	while ((match = AI_MARKER_REGEX.exec(docText)) !== null) {
+		const changeType = match[1].toLowerCase() as 'insert' | 'delete';
+		const changeId = match[2];
+		const fullMatchStart = match.index;
+		const fullMatchEnd = fullMatchStart + match[0].length;
+		
+		const startMarkerText = `<!-- AI:${match[1]}:${changeId} -->`;
+		const endMarkerText = `<!-- /AI:${match[1]}:${changeId} -->`;
+		
+		markers.push({
+			changeId,
+			changeType,
+			startMarkerFrom: fullMatchStart,
+			startMarkerTo: fullMatchStart + startMarkerText.length,
+			contentFrom: fullMatchStart + startMarkerText.length,
+			contentTo: fullMatchEnd - endMarkerText.length,
+			endMarkerFrom: fullMatchEnd - endMarkerText.length,
+			endMarkerTo: fullMatchEnd,
+		});
+	}
+	
+	AI_MARKER_REGEX.lastIndex = 0;
+	return markers;
+}
+
+class AiActionButtonsWidget extends WidgetType {
 	constructor(
-		private readonly change: DocumentEntityChangeDTO,
+		private readonly changeId: string,
+		private readonly changeType: 'insert' | 'delete',
 		private readonly onAccept: ChangeHandler,
 		private readonly onUndo: ChangeHandler
 	) {
 		super();
 	}
 
-	eq(other: AiChangeWidget): boolean {
-		return (
-			this.change.changeId === other.change.changeId &&
-			this.change.changeType === other.change.changeType &&
-			this.change.content === other.change.content &&
-			this.change.entityType === other.change.entityType
-		);
+	eq(other: AiActionButtonsWidget): boolean {
+		return this.changeId === other.changeId && this.changeType === other.changeType;
 	}
 
 	toDOM(): HTMLElement {
-		const wrapper = document.createElement('div');
-		wrapper.className = `cm-ai-change-widget cm-ai-change-widget--${this.change.changeType}`;
-
-		const header = document.createElement('div');
-		header.className = 'cm-ai-change-widget__header';
-		header.textContent =
-			this.change.changeType === 'insert'
-				? `Добавление: ${this.change.entityType}`
-				: `Удаление: ${this.change.entityType}`;
-
-		const actions = document.createElement('div');
-		actions.className = 'cm-ai-change-widget__actions';
+		const wrapper = document.createElement('span');
+		wrapper.className = 'cm-ai-actions';
 
 		const acceptButton = document.createElement('button');
 		acceptButton.type = 'button';
-		acceptButton.className = 'cm-ai-change-widget__btn cm-ai-change-widget__btn--accept';
-		acceptButton.textContent = 'Accept';
-		acceptButton.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			this.onAccept(this.change.changeId);
+		acceptButton.className = 'cm-ai-btn cm-ai-btn--accept';
+		acceptButton.textContent = '✓';
+		acceptButton.title = 'Принять';
+		acceptButton.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.onAccept(this.changeId, this.changeType);
 		});
 
 		const undoButton = document.createElement('button');
 		undoButton.type = 'button';
-		undoButton.className = 'cm-ai-change-widget__btn cm-ai-change-widget__btn--undo';
-		undoButton.textContent = 'Undo';
-		undoButton.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			this.onUndo(this.change.changeId);
+		undoButton.className = 'cm-ai-btn cm-ai-btn--undo';
+		undoButton.textContent = '✕';
+		undoButton.title = 'Отклонить';
+		undoButton.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.onUndo(this.changeId, this.changeType);
 		});
 
-		actions.append(acceptButton, undoButton);
-		header.appendChild(actions);
-		wrapper.appendChild(header);
-
-		if (this.change.changeType === 'insert') {
-			const contentBlock = document.createElement('pre');
-			contentBlock.className = 'cm-ai-change-widget__content';
-			contentBlock.textContent = this.change.content;
-			wrapper.appendChild(contentBlock);
-		}
-
+		wrapper.append(acceptButton, undoButton);
 		return wrapper;
 	}
 
@@ -93,112 +104,164 @@ class AiChangeWidget extends WidgetType {
 	}
 }
 
-const clampLine = (line: number, min: number, max: number): number => {
-	return Math.max(min, Math.min(line, max));
-};
-
-const getInsertPosition = (doc: Text, insertAfterLine: number): number => {
-	if (insertAfterLine <= 0) {
-		return 0;
-	}
-
-	const lineNumber = clampLine(insertAfterLine, 1, doc.lines);
-	const line = doc.line(lineNumber);
-	if (lineNumber >= doc.lines) {
-		return doc.length;
-	}
-
-	return Math.min(doc.length, line.to + 1);
-};
-
-const buildDecorations = (
-	doc: Text,
-	changes: DocumentEntityChangeDTO[],
+function buildDecorations(
+	view: EditorView,
 	onAccept: ChangeHandler,
 	onUndo: ChangeHandler
-): DecorationSet => {
-	const ranges: Array<{ from: number; to?: number; deco: Decoration }> = [];
+): DecorationSet {
+	const docText = view.state.doc.toString();
+	const markers = parseMarkersFromDoc(docText);
+	
+	if (markers.length === 0) {
+		return Decoration.none;
+	}
 
-	for (const change of changes) {
-		if (change.changeType === 'insert') {
-			const insertPos = getInsertPosition(doc, change.startLine);
-			ranges.push({
-				from: insertPos,
-				deco: Decoration.widget({
-					block: true,
-					side: 1,
-					widget: new AiChangeWidget(change, onAccept, onUndo),
-				}),
-			});
-			continue;
-		}
+	const builder = new RangeSetBuilder<Decoration>();
+	
+	const sortedDecos: Array<{ from: number; to: number; deco: Decoration }> = [];
 
-		const startLine = clampLine(change.startLine, 1, doc.lines);
-		const rawEndLine = change.endLine ?? change.startLine;
-		const endLine = clampLine(Math.max(startLine, rawEndLine), startLine, doc.lines);
-		const from = doc.line(startLine).from;
-		const to = doc.line(endLine).to;
-
-		ranges.push({
-			from,
-			to,
-			deco: Decoration.mark({ class: 'cm-ai-change-delete' }),
+	for (const marker of markers) {
+		const markerClass = marker.changeType === 'insert' 
+			? 'cm-ai-marker cm-ai-marker--insert' 
+			: 'cm-ai-marker cm-ai-marker--delete';
+		
+		sortedDecos.push({
+			from: marker.startMarkerFrom,
+			to: marker.startMarkerTo,
+			deco: Decoration.mark({ class: markerClass }),
 		});
-
-		ranges.push({
-			from: to,
+		
+		sortedDecos.push({
+			from: marker.endMarkerFrom,
+			to: marker.endMarkerTo,
+			deco: Decoration.mark({ class: markerClass }),
+		});
+		
+		const contentClass = marker.changeType === 'insert'
+			? 'cm-ai-content cm-ai-content--insert'
+			: 'cm-ai-content cm-ai-content--delete';
+		
+		const contentStart = marker.contentFrom;
+		const contentEnd = marker.contentTo;
+		
+		if (contentEnd > contentStart) {
+			let actualContentStart = contentStart;
+			if (docText[contentStart] === '\n') {
+				actualContentStart = contentStart + 1;
+			}
+			let actualContentEnd = contentEnd;
+			if (docText[contentEnd - 1] === '\n') {
+				actualContentEnd = contentEnd - 1;
+			}
+			
+			if (actualContentEnd > actualContentStart) {
+				sortedDecos.push({
+					from: actualContentStart,
+					to: actualContentEnd,
+					deco: Decoration.mark({ class: contentClass }),
+				});
+			}
+		}
+		
+		sortedDecos.push({
+			from: marker.endMarkerTo,
+			to: marker.endMarkerTo,
 			deco: Decoration.widget({
-				block: true,
+				widget: new AiActionButtonsWidget(marker.changeId, marker.changeType, onAccept, onUndo),
 				side: 1,
-				widget: new AiChangeWidget(change, onAccept, onUndo),
 			}),
 		});
 	}
-
-	ranges.sort((a, b) => a.from - b.from || (a.to ?? a.from) - (b.to ?? b.from));
-
-	const rangeBuilder = new RangeSetBuilder<Decoration>();
-	for (const range of ranges) {
-		rangeBuilder.add(range.from, range.to ?? range.from, range.deco);
+	
+	sortedDecos.sort((a, b) => a.from - b.from || a.to - b.to);
+	
+	for (const { from, to, deco } of sortedDecos) {
+		builder.add(from, to, deco);
 	}
 
-	return rangeBuilder.finish();
-};
+	return builder.finish();
+}
 
-export const createAiChangeExtensions = (
+export function createAiChangeExtensions(
 	onAccept: ChangeHandler,
 	onUndo: ChangeHandler
-): Extension => {
-	return StateField.define<AiDecorationsState>({
-		create: () => ({
-			changes: [],
-			decorations: Decoration.none,
-		}),
-		update: (value, transaction) => {
-			let nextChanges = value.changes;
+): Extension {
+	return ViewPlugin.fromClass(
+		class {
+			decorations: DecorationSet;
 
-			for (const effect of transaction.effects) {
-				if (effect.is(setAiChangesEffect)) {
-					nextChanges = effect.value;
+			constructor(view: EditorView) {
+				this.decorations = buildDecorations(view, onAccept, onUndo);
+			}
+
+			update(update: ViewUpdate) {
+				if (update.docChanged || update.viewportChanged) {
+					this.decorations = buildDecorations(update.view, onAccept, onUndo);
 				}
 			}
-
-			if (
-				transaction.docChanged ||
-				transaction.effects.some((effect) => effect.is(setAiChangesEffect))
-			) {
-				return {
-					changes: nextChanges,
-					decorations: buildDecorations(transaction.state.doc, nextChanges, onAccept, onUndo),
-				};
-			}
-
-			return {
-				changes: nextChanges,
-				decorations: value.decorations.map(transaction.changes),
-			};
 		},
-		provide: (field) =>
-			EditorView.decorations.from(field, (state) => state.decorations),
-	});
-};
+		{
+			decorations: (v) => v.decorations,
+		}
+	);
+}
+
+export const aiChangeStyles = EditorView.baseTheme({
+	'.cm-ai-marker': {
+		fontSize: '0.75em',
+		color: '#9ca3af',
+		fontFamily: 'monospace',
+		opacity: '0.7',
+	},
+	'.cm-ai-marker--insert': {
+		color: '#16a34a',
+	},
+	'.cm-ai-marker--delete': {
+		color: '#dc2626',
+	},
+	'.cm-ai-content--insert': {
+		backgroundColor: 'rgba(34, 197, 94, 0.15)',
+		borderRadius: '2px',
+	},
+	'.cm-ai-content--delete': {
+		backgroundColor: 'rgba(239, 68, 68, 0.15)',
+		textDecoration: 'line-through',
+		textDecorationColor: 'rgba(239, 68, 68, 0.5)',
+	},
+	'.cm-ai-actions': {
+		display: 'inline-flex',
+		gap: '4px',
+		marginLeft: '8px',
+		verticalAlign: 'middle',
+	},
+	'.cm-ai-btn': {
+		display: 'inline-flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		width: '20px',
+		height: '20px',
+		border: '1px solid',
+		borderRadius: '4px',
+		cursor: 'pointer',
+		fontSize: '12px',
+		fontWeight: 'bold',
+		lineHeight: '1',
+		padding: '0',
+	},
+	'.cm-ai-btn--accept': {
+		backgroundColor: 'rgba(34, 197, 94, 0.2)',
+		borderColor: 'rgba(34, 197, 94, 0.4)',
+		color: '#16a34a',
+	},
+	'.cm-ai-btn--accept:hover': {
+		backgroundColor: 'rgba(34, 197, 94, 0.3)',
+	},
+	'.cm-ai-btn--undo': {
+		backgroundColor: 'rgba(239, 68, 68, 0.2)',
+		borderColor: 'rgba(239, 68, 68, 0.4)',
+		color: '#dc2626',
+	},
+	'.cm-ai-btn--undo:hover': {
+		backgroundColor: 'rgba(239, 68, 68, 0.3)',
+	},
+});

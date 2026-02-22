@@ -293,7 +293,7 @@ import markdownItMark from 'markdown-it-mark';
 import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
 import { renderLatex } from '@/utils/renderers/formulaRenderer';
-import type { AgentRequestDTO, DocumentEntityChangeDTO } from '@/shared/api/AIAPI';
+import type { AgentRequestDTO } from '@/shared/api/AIAPI';
 
 const md = new MarkdownIt({
 	html: true,
@@ -323,7 +323,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
 	close: [];
 	clearSelection: [];
-	documentChangesProposed: [changes: DocumentEntityChangeDTO[]];
+	documentContentChanged: [];
 }>();
 
 const { isProcessing, currentResponse, steps: agentSteps, events: agentEvents, error: agentError, sendMessage, stop: stopAgent, reset: resetAgent } = useAgent();
@@ -477,17 +477,22 @@ watch(
 	}
 );
 
-// Emit proposed document changes from live step events only.
+// Notify when agent proposes document changes (now written directly to document on backend).
 watch(
 	agentSteps,
 	(steps) => {
 		if (!isRequestInFlight.value) return;
 		for (const step of steps) {
 			if (processedDocumentChangeSteps.value.has(step.stepNumber)) continue;
-			if (!step.documentChanges || step.documentChanges.length === 0) continue;
-
-			processedDocumentChangeSteps.value.add(step.stepNumber);
-			emit('documentChangesProposed', step.documentChanges);
+			
+			const hasDocChanges = step.toolCalls?.some(tc => 
+				tc.toolName === 'propose_document_changes' && tc.result
+			);
+			
+			if (hasDocChanges) {
+				processedDocumentChangeSteps.value.add(step.stepNumber);
+				emit('documentContentChanged');
+			}
 		}
 	},
 	{ deep: true }

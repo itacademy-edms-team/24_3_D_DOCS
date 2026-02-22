@@ -11,7 +11,7 @@
 			:endLine="endLine"
 			@close="emit('update:open', false)"
 			@clearSelection="handleClearSelection"
-			@document-changes-proposed="handleDocumentChangesProposed"
+			@document-content-changed="handleDocumentContentChanged"
 		/>
 	</div>
 </template>
@@ -20,7 +20,6 @@
 import { ref, watch, onUnmounted } from 'vue';
 import { useStorage } from '@vueuse/core';
 import AgentChat from './AgentChat.vue';
-import type { DocumentEntityChangeDTO } from '@/shared/api/AIAPI';
 
 interface Props {
 	open: boolean;
@@ -38,7 +37,7 @@ const emit = defineEmits<{
 	'update:open': [value: boolean];
 	'width-changed': [width: number];
 	clearSelection: [];
-	documentChangesProposed: [changes: DocumentEntityChangeDTO[]];
+	documentContentChanged: [];
 }>();
 
 // Chat dock width with persistence
@@ -100,8 +99,8 @@ const handleClearSelection = () => {
 	emit('clearSelection');
 };
 
-const handleDocumentChangesProposed = (changes: DocumentEntityChangeDTO[]) => {
-	emit('documentChangesProposed', changes);
+const handleDocumentContentChanged = () => {
+	emit('documentContentChanged');
 };
 
 </script>

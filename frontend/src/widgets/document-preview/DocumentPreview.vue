@@ -354,10 +354,13 @@ async function generateRenderedHTML(): Promise<string> {
 		}
 	}
 
+	// Clean AI markers from content for preview
+	const cleanedContent = cleanAiMarkersForPreview(props.content);
+	
 	// Reuse previous HTML when both content and profile object are unchanged.
 	if (
 		renderCache &&
-		renderCache.content === props.content &&
+		renderCache.content === cleanedContent &&
 		renderCache.profileRef === profileData.value
 	) {
 		return renderCache.html;
@@ -365,17 +368,38 @@ async function generateRenderedHTML(): Promise<string> {
 
 	// Render markdown with profile styles
 	const renderedHtml = renderDocument({
-		markdown: props.content,
+		markdown: cleanedContent,
 		profile: profileData.value,
 		overrides: {},
 		selectable: false,
 	});
 	renderCache = {
-		content: props.content,
+		content: cleanedContent,
 		profileRef: profileData.value,
 		html: renderedHtml,
 	};
 	return renderedHtml;
+}
+
+function cleanAiMarkersForPreview(content: string): string {
+	let cleaned = content;
+	
+	// Remove AI:DELETE blocks entirely (content marked for deletion should not appear in preview)
+	cleaned = cleaned.replace(
+		/<!-- AI:DELETE:\w+ -->[\s\S]*?<!-- \/AI:DELETE:\w+ -->\n?/g,
+		''
+	);
+	
+	// Keep AI:INSERT content but remove markers
+	cleaned = cleaned.replace(
+		/<!-- AI:INSERT:(\w+) -->\n?([\s\S]*?)\n?<!-- \/AI:INSERT:\1 -->/g,
+		'$2'
+	);
+	
+	// Clean up multiple consecutive newlines
+	cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+	
+	return cleaned;
 }
 
 /**

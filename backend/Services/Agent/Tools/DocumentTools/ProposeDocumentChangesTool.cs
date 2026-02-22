@@ -11,7 +11,7 @@ public class ProposeDocumentChangesTool : IDocumentAgentTool
     private readonly ILogger<ProposeDocumentChangesTool> _logger;
 
     public string Name => "propose_document_changes";
-    public string Description => "Предлагает изменения документа как атомарные сущности (insert/delete), не изменяя документ напрямую.";
+    public string Description => "Предлагает изменения документа, записывая их прямо в документ с маркерами. Пользователь увидит изменения и сможет принять или отклонить их.";
 
     public ProposeDocumentChangesTool(IDocumentService documentService, ILogger<ProposeDocumentChangesTool> logger)
     {
@@ -84,11 +84,8 @@ public class ProposeDocumentChangesTool : IDocumentAgentTool
             }
 
             var fullContent = (document.Content ?? string.Empty).Replace("\r\n", "\n");
-            var lines = fullContent.Length == 0 ? Array.Empty<string>() : fullContent.Split('\n');
-            var totalLines = lines.Length;
-
-            var existingEntities = ParseEntitiesFromLines(lines);
-            var proposedChanges = new List<DocumentEntityChangeDTO>();
+            var lines = fullContent.Length == 0 ? new List<string>() : fullContent.Split('\n').ToList();
+            var totalLines = lines.Count;
 
             if (operation == "insert")
             {
@@ -98,62 +95,55 @@ public class ProposeDocumentChangesTool : IDocumentAgentTool
                     return result;
                 }
 
+                var changeId = Guid.NewGuid().ToString("N")[..12];
                 var insertAfterLine = Math.Max(0, Math.Min(startLine, totalLines));
-                var insertEntities = ParseEntitiesFromText(content);
-                if (insertEntities.Count == 0)
+                
+                var wrappedContent = $"<!-- AI:INSERT:{changeId} -->\n{content.Trim()}\n<!-- /AI:INSERT:{changeId} -->";
+                var wrappedLines = wrappedContent.Split('\n').ToList();
+
+                if (insertAfterLine > 0 && insertAfterLine <= lines.Count && 
+                    !string.IsNullOrWhiteSpace(lines[insertAfterLine - 1]))
                 {
-                    result.ResultMessage = "Ошибка: не удалось выделить сущности для вставки (content пуст или состоит только из пустых строк).";
-                    return result;
+                    wrappedLines.Insert(0, "");
+                }
+                if (insertAfterLine < lines.Count && 
+                    !string.IsNullOrWhiteSpace(lines[insertAfterLine]))
+                {
+                    wrappedLines.Add("");
                 }
 
-                var groupId = Guid.NewGuid().ToString("N");
-                for (var i = 0; i < insertEntities.Count; i++)
-                {
-                    var entity = insertEntities[i];
-                    proposedChanges.Add(new DocumentEntityChangeDTO
-                    {
-                        ChangeId = Guid.NewGuid().ToString("N"),
-                        ChangeType = "insert",
-                        EntityType = entity.EntityType,
-                        StartLine = insertAfterLine,
-                        EndLine = null,
-                        Content = entity.Content,
-                        GroupId = groupId,
-                        Order = i
-                    });
-                }
+                lines.InsertRange(insertAfterLine, wrappedLines);
+                
+                var updatedContent = string.Join("\n", lines);
+                await _documentService.UpdateDocumentContentAsync(documentId, userId, updatedContent);
 
-                result.DocumentChanges = proposedChanges;
-                result.ResultMessage = $"Предложено {proposedChanges.Count} вставок по сущностям.";
+                result.ResultMessage = $"Вставка предложена (changeId: {changeId}). Контент добавлен после строки {insertAfterLine} с маркерами AI:INSERT.";
                 return result;
             }
 
             if (operation == "delete")
             {
                 var (rangeStart, rangeEnd) = NormalizeRange(startLine, endLine, totalLines);
-                var deleteEntities = GetIntersectingEntities(existingEntities, rangeStart, rangeEnd);
-
-                if (deleteEntities.Count == 0)
+                
+                if (rangeStart > totalLines || totalLines == 0)
                 {
-                    result.ResultMessage = $"В указанном диапазоне {rangeStart}-{rangeEnd} не найдено сущностей для удаления.";
+                    result.ResultMessage = $"Ошибка: указанный диапазон {rangeStart}-{rangeEnd} выходит за пределы документа ({totalLines} строк).";
                     return result;
                 }
 
-                foreach (var entity in deleteEntities)
-                {
-                    proposedChanges.Add(new DocumentEntityChangeDTO
-                    {
-                        ChangeId = Guid.NewGuid().ToString("N"),
-                        ChangeType = "delete",
-                        EntityType = entity.EntityType,
-                        StartLine = entity.StartLine,
-                        EndLine = entity.EndLine,
-                        Content = entity.Content
-                    });
-                }
+                var changeId = Guid.NewGuid().ToString("N")[..12];
+                
+                var contentToDelete = string.Join("\n", lines.GetRange(rangeStart - 1, rangeEnd - rangeStart + 1));
+                
+                var wrappedContent = $"<!-- AI:DELETE:{changeId} -->\n{contentToDelete}\n<!-- /AI:DELETE:{changeId} -->";
+                
+                lines.RemoveRange(rangeStart - 1, rangeEnd - rangeStart + 1);
+                lines.Insert(rangeStart - 1, wrappedContent);
+                
+                var updatedContent = string.Join("\n", lines);
+                await _documentService.UpdateDocumentContentAsync(documentId, userId, updatedContent);
 
-                result.DocumentChanges = proposedChanges;
-                result.ResultMessage = $"Предложено {proposedChanges.Count} удалений по сущностям.";
+                result.ResultMessage = $"Удаление предложено (changeId: {changeId}). Строки {rangeStart}-{rangeEnd} обёрнуты маркерами AI:DELETE.";
                 return result;
             }
 
@@ -166,43 +156,30 @@ public class ProposeDocumentChangesTool : IDocumentAgentTool
                 }
 
                 var (rangeStart, rangeEnd) = NormalizeRange(startLine, endLine, totalLines);
-                var deleteEntities = GetIntersectingEntities(existingEntities, rangeStart, rangeEnd);
-
-                foreach (var entity in deleteEntities)
+                
+                if (rangeStart > totalLines || totalLines == 0)
                 {
-                    proposedChanges.Add(new DocumentEntityChangeDTO
-                    {
-                        ChangeId = Guid.NewGuid().ToString("N"),
-                        ChangeType = "delete",
-                        EntityType = entity.EntityType,
-                        StartLine = entity.StartLine,
-                        EndLine = entity.EndLine,
-                        Content = entity.Content
-                    });
+                    result.ResultMessage = $"Ошибка: указанный диапазон {rangeStart}-{rangeEnd} выходит за пределы документа ({totalLines} строк).";
+                    return result;
                 }
 
-                var insertAfterLine = Math.Max(rangeStart - 1, 0);
-                var insertEntities = ParseEntitiesFromText(content);
-                var groupId = Guid.NewGuid().ToString("N");
+                var deleteChangeId = Guid.NewGuid().ToString("N")[..12];
+                var insertChangeId = Guid.NewGuid().ToString("N")[..12];
+                
+                var contentToDelete = string.Join("\n", lines.GetRange(rangeStart - 1, rangeEnd - rangeStart + 1));
+                
+                var deleteMarker = $"<!-- AI:DELETE:{deleteChangeId} -->\n{contentToDelete}\n<!-- /AI:DELETE:{deleteChangeId} -->";
+                var insertMarker = $"<!-- AI:INSERT:{insertChangeId} -->\n{content.Trim()}\n<!-- /AI:INSERT:{insertChangeId} -->";
+                
+                var combinedReplacement = $"{deleteMarker}\n{insertMarker}";
+                
+                lines.RemoveRange(rangeStart - 1, rangeEnd - rangeStart + 1);
+                lines.Insert(rangeStart - 1, combinedReplacement);
+                
+                var updatedContent = string.Join("\n", lines);
+                await _documentService.UpdateDocumentContentAsync(documentId, userId, updatedContent);
 
-                for (var i = 0; i < insertEntities.Count; i++)
-                {
-                    var entity = insertEntities[i];
-                    proposedChanges.Add(new DocumentEntityChangeDTO
-                    {
-                        ChangeId = Guid.NewGuid().ToString("N"),
-                        ChangeType = "insert",
-                        EntityType = entity.EntityType,
-                        StartLine = insertAfterLine,
-                        EndLine = null,
-                        Content = entity.Content,
-                        GroupId = groupId,
-                        Order = i
-                    });
-                }
-
-                result.DocumentChanges = proposedChanges;
-                result.ResultMessage = $"Предложено {deleteEntities.Count} удалений и {insertEntities.Count} вставок (replace по сущностям).";
+                result.ResultMessage = $"Замена предложена. Строки {rangeStart}-{rangeEnd} помечены на удаление (changeId: {deleteChangeId}), новый контент добавлен (changeId: {insertChangeId}).";
                 return result;
             }
 
@@ -235,107 +212,6 @@ public class ProposeDocumentChangesTool : IDocumentAgentTool
         return (start, end);
     }
 
-    private static List<ParsedEntity> GetIntersectingEntities(List<ParsedEntity> entities, int startLine, int endLine)
-    {
-        return entities
-            .Where(e => e.EndLine >= startLine && e.StartLine <= endLine)
-            .ToList();
-    }
-
-    private static List<ParsedEntity> ParseEntitiesFromText(string content)
-    {
-        var lines = content.Replace("\r\n", "\n").Split('\n');
-        return ParseEntitiesFromLines(lines);
-    }
-
-    private static List<ParsedEntity> ParseEntitiesFromLines(string[] lines)
-    {
-        var entities = new List<ParsedEntity>();
-        var i = 0;
-
-        while (i < lines.Length)
-        {
-            while (i < lines.Length && string.IsNullOrWhiteSpace(lines[i]))
-            {
-                i++;
-            }
-
-            if (i >= lines.Length)
-            {
-                break;
-            }
-
-            var start = i + 1; // 1-based
-            var chunkLines = new List<string>();
-            while (i < lines.Length && !string.IsNullOrWhiteSpace(lines[i]))
-            {
-                chunkLines.Add(lines[i]);
-                i++;
-            }
-
-            var end = i; // 1-based
-            var chunk = string.Join("\n", chunkLines).TrimEnd();
-            var entityType = DetectEntityType(chunkLines);
-
-            entities.Add(new ParsedEntity
-            {
-                StartLine = start,
-                EndLine = end,
-                Content = chunk,
-                EntityType = entityType
-            });
-        }
-
-        return entities;
-    }
-
-    private static string DetectEntityType(IReadOnlyList<string> chunkLines)
-    {
-        if (chunkLines.Count == 0)
-        {
-            return "paragraph";
-        }
-
-        var first = chunkLines[0].TrimStart();
-        if (first.StartsWith("#"))
-        {
-            return "heading";
-        }
-        if (first.StartsWith("![")) // markdown image
-        {
-            return "image";
-        }
-        if (Regex.IsMatch(first, @"^\[(IMAGE|TABLE|FORMULA)-CAPTION:", RegexOptions.IgnoreCase))
-        {
-            return "caption";
-        }
-        if (first.StartsWith("```"))
-        {
-            return "code";
-        }
-        if (first.StartsWith("\\["))
-        {
-            return "formula";
-        }
-        if (first.StartsWith(">"))
-        {
-            return "quote";
-        }
-        if (Regex.IsMatch(first, @"^(\s*)[-*+]\s+") || Regex.IsMatch(first, @"^(\s*)\d+\.\s+"))
-        {
-            return "list";
-        }
-        if (first.Contains("|") && first.Count(c => c == '|') >= 2)
-        {
-            return "table";
-        }
-        if (Regex.IsMatch(first, @"^(\*{3,}|-{3,}|_{3,}|~{3,})$"))
-        {
-            return "horizontal_rule";
-        }
-        return "paragraph";
-    }
-
     private static string GetStringValue(Dictionary<string, object> arguments, string key)
     {
         if (!arguments.TryGetValue(key, out var value))
@@ -365,13 +241,5 @@ public class ProposeDocumentChangesTool : IDocumentAgentTool
             string s when int.TryParse(s, out var parsed) => parsed,
             _ => Convert.ToInt32(value)
         };
-    }
-
-    private class ParsedEntity
-    {
-        public int StartLine { get; set; }
-        public int EndLine { get; set; }
-        public string Content { get; set; } = string.Empty;
-        public string EntityType { get; set; } = string.Empty;
     }
 }
