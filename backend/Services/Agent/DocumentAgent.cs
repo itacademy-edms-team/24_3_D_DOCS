@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Chat;
@@ -11,7 +12,7 @@ namespace RusalProject.Services.Agent;
 /// </summary>
 public class DocumentAgent : IDocumentAgent
 {
-    private const int MaxToolIterations = 8;
+    private const int MaxToolIterations = 16;
 
     private readonly IOllamaChatService _ollamaChatService;
     private readonly IChatService _chatService;
@@ -49,13 +50,24 @@ public class DocumentAgent : IDocumentAgent
             throw new InvalidOperationException("Чат не найден.");
 
         var messages = new List<OllamaMessageInput>();
+        _logger.LogInformation("DocumentAgent: Loading {Count} messages from chat", chat.Messages.Count);
         foreach (var m in chat.Messages.OrderBy(x => x.CreatedAt))
         {
+            // Пропускаем служебные сообщения (шаги агента с StepNumber) — 
+            // они нужны только для UI, не для контекста LLM
+            if (m.StepNumber.HasValue)
+            {
+                _logger.LogDebug("DocumentAgent: Skipping step message: {Content}", m.Content.Substring(0, Math.Min(50, m.Content.Length)));
+                continue;
+            }
+                
             if (m.Role is "user" or "assistant" or "system")
             {
+                _logger.LogInformation("DocumentAgent: Adding message [{Role}]: {Content}", m.Role, m.Content.Substring(0, Math.Min(80, m.Content.Length)));
                 messages.Add(new OllamaMessageInput(m.Role, m.Content));
             }
         }
+        _logger.LogInformation("DocumentAgent: Total messages to send to LLM: {Count}", messages.Count);
 
         var systemPrompt = AgentSystemPrompt.GetSystemPrompt("ru");
         var steps = new List<AgentStepDTO>();
@@ -106,6 +118,10 @@ public class DocumentAgent : IDocumentAgent
                 cancellationToken);
 
             var response = result.FinalMessage;
+            _logger.LogInformation("DocumentAgent: LLM response (length={Length}): {Preview}", 
+                response?.Length ?? 0, 
+                response?.Substring(0, Math.Min(100, response?.Length ?? 0)) ?? "(empty)");
+            
             var (_, toolBlock) = _toolExecutor.SplitToolCall(response);
 
             if (string.IsNullOrEmpty(toolBlock))
@@ -119,6 +135,18 @@ public class DocumentAgent : IDocumentAgent
                 _logger.LogWarning("DocumentAgent: failed to parse TOOL_CALL block: {Block}", toolBlock);
                 finalMessage = response.Trim();
                 break;
+            }
+            
+            // Пропускаем неизвестные инструменты (например "TOOL_CALL" от нативного API)
+            var knownTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+                { "read_document", "propose_document_changes" };
+            if (!knownTools.Contains(toolName))
+            {
+                _logger.LogWarning("DocumentAgent: skipping unknown tool: {ToolName}", toolName);
+                messages.Add(new OllamaMessageInput("assistant", response));
+                messages.Add(new OllamaMessageInput("user", 
+                    $"Инструмент '{toolName}' не существует. Используй только: read_document, propose_document_changes. Попробуй снова."));
+                continue;
             }
 
             stepNumber++;
@@ -164,13 +192,28 @@ public class DocumentAgent : IDocumentAgent
                 $"Результат вызова {toolName}: {toolResultMessage}\n\nПродолжай работу. Если задача завершена, дай финальный ответ пользователю без TOOL_CALL."));
         }
 
-        if (string.IsNullOrEmpty(finalMessage) && messages.Count > 0)
+        if (string.IsNullOrEmpty(finalMessage))
         {
-            var lastAssistant = messages.LastOrDefault(m => m.Role == "assistant");
-            finalMessage = lastAssistant?.Content ?? "Не удалось получить ответ.";
+            // Если были шаги (tool calls), значит агент выполнил работу — сформируем ответ автоматически
+            if (steps.Count > 0)
+            {
+                var hasChanges = steps.Any(s => s.DocumentChanges != null && s.DocumentChanges.Count > 0);
+                if (hasChanges)
+                {
+                    finalMessage = "Готово! Изменения предложены. Проверьте их и примите или отклоните.";
+                }
+                else
+                {
+                    finalMessage = "Готово.";
+                }
+                _logger.LogInformation("DocumentAgent: Generated automatic response after {StepsCount} steps", steps.Count);
+            }
+            else
+            {
+                _logger.LogWarning("DocumentAgent: LLM returned empty response, using fallback message");
+                finalMessage = "Не удалось получить ответ от модели. Попробуйте ещё раз.";
+            }
         }
-
-        finalMessage ??= "Готово.";
 
         await _chatService.AddMessageAsync(request.ChatId.Value, new ChatMessageDTO
         {

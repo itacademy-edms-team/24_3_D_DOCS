@@ -283,25 +283,73 @@ public class OllamaChatService : IOllamaChatService
         using var reader = new StreamReader(stream);
         var fullContent = new StringBuilder();
         string? lastContent = null;
+        var lineCount = 0;
 
         while (!reader.EndOfStream)
         {
             var line = await reader.ReadLineAsync(cancellationToken);
+            lineCount++;
             if (string.IsNullOrWhiteSpace(line)) continue;
+            
+            _logger.LogInformation("Ollama stream line {LineNum}: {Line}", lineCount, line.Substring(0, Math.Min(200, line.Length)));
+            
             try
             {
                 var evt = JsonSerializer.Deserialize<OllamaStreamEvent>(line);
-                if (evt?.Message?.Content != null)
+                
+                // Обработка обычного контента
+                if (!string.IsNullOrEmpty(evt?.Message?.Content))
                 {
                     fullContent.Append(evt.Message.Content);
                     lastContent = evt.Message.Content;
                     if (onChunk != null)
                         await onChunk(evt.Message.Content);
                 }
+                
+                // Fallback: если модель использует нативные tool_calls, конвертируем в текстовый формат
+                if (evt?.Message?.ToolCalls != null && evt.Message.ToolCalls.Count > 0)
+                {
+                    foreach (var tc in evt.Message.ToolCalls)
+                    {
+                        if (tc.Function != null)
+                        {
+                            var toolName = tc.Function.Name ?? "unknown";
+                            var argsJson = tc.Function.Arguments?.ToString() ?? "{}";
+                            
+                            // Если name = "TOOL_CALL", аргументы содержат реальные tool/args
+                            if (toolName == "TOOL_CALL" && tc.Function.Arguments.HasValue)
+                            {
+                                try
+                                {
+                                    var innerArgs = tc.Function.Arguments.Value;
+                                    if (innerArgs.TryGetProperty("tool", out var toolProp) && 
+                                        innerArgs.TryGetProperty("args", out var argsProp))
+                                    {
+                                        toolName = toolProp.GetString() ?? "unknown";
+                                        argsJson = argsProp.ToString();
+                                    }
+                                }
+                                catch { }
+                            }
+                            
+                            var textToolCall = $"\nTOOL_CALL\ntool: {toolName}\nargs: {argsJson}\n";
+                            fullContent.Append(textToolCall);
+                            _logger.LogInformation("Converted native tool_call to text format: {Tool}", toolName);
+                        }
+                    }
+                }
+                
                 if (evt?.Done == true) break;
             }
-            catch (JsonException) { }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning("Ollama JSON parse error on line {LineNum}: {Error}. Line: {Line}", 
+                    lineCount, ex.Message, line.Substring(0, Math.Min(200, line.Length)));
+            }
         }
+        
+        _logger.LogInformation("Ollama stream finished. Lines read: {LineCount}, Content length: {ContentLength}", 
+            lineCount, fullContent.Length);
 
         var finalMessage = fullContent.ToString() ?? lastContent ?? string.Empty;
         return new OllamaChatResult { FinalMessage = finalMessage, IsComplete = true, IsIdempotentRetry = false };
@@ -311,8 +359,13 @@ public class OllamaChatService : IOllamaChatService
     {
         var result = new List<OllamaMessage> { new OllamaMessage { Role = "system", Content = systemPrompt } };
         foreach (var m in history.OrderBy(x => x.CreatedAt))
+        {
+            // Пропускаем служебные сообщения (шаги агента)
+            if (m.StepNumber.HasValue)
+                continue;
             if (m.Role is "user" or "assistant" or "system")
                 result.Add(new OllamaMessage { Role = m.Role, Content = m.Content });
+        }
         return result;
     }
 
@@ -328,6 +381,9 @@ public class OllamaChatService : IOllamaChatService
 
         foreach (var m in history.OrderBy(x => x.CreatedAt))
         {
+            // Пропускаем служебные сообщения (шаги агента)
+            if (m.StepNumber.HasValue)
+                continue;
             if (m.Role is "user" or "assistant" or "system")
             {
                 result.Add(new OllamaMessage { Role = m.Role, Content = m.Content });
@@ -358,5 +414,29 @@ public class OllamaChatService : IOllamaChatService
     {
         [JsonPropertyName("content")]
         public string? Content { get; set; }
+        
+        [JsonPropertyName("thinking")]
+        public string? Thinking { get; set; }
+        
+        [JsonPropertyName("tool_calls")]
+        public List<OllamaToolCall>? ToolCalls { get; set; }
+    }
+    
+    private class OllamaToolCall
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+        
+        [JsonPropertyName("function")]
+        public OllamaToolFunction? Function { get; set; }
+    }
+    
+    private class OllamaToolFunction
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+        
+        [JsonPropertyName("arguments")]
+        public JsonElement? Arguments { get; set; }
     }
 }

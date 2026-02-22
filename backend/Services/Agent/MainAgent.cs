@@ -50,6 +50,11 @@ public class MainAgent : IMainAgent
         var messages = new List<OllamaMessageInput>();
         foreach (var m in chat.Messages.OrderBy(x => x.CreatedAt))
         {
+            // Пропускаем служебные сообщения (шаги агента с StepNumber) — 
+            // они нужны только для UI, не для контекста LLM
+            if (m.StepNumber.HasValue)
+                continue;
+                
             if (m.Role is "user" or "assistant" or "system")
                 messages.Add(new OllamaMessageInput(m.Role, m.Content));
         }
@@ -136,13 +141,11 @@ public class MainAgent : IMainAgent
             messages.Add(new OllamaMessageInput("user", $"Результат вызова {toolName}: {toolResult}\n\nИспользуй этот результат для ответа пользователю."));
         }
 
-        if (string.IsNullOrEmpty(finalMessage) && messages.Count > 0)
+        if (string.IsNullOrEmpty(finalMessage))
         {
-            var lastAssistant = messages.LastOrDefault(m => m.Role == "assistant");
-            finalMessage = lastAssistant.Content ?? "Не удалось получить ответ.";
+            _logger.LogWarning("MainAgent: LLM returned empty response, using fallback message");
+            finalMessage = "Не удалось получить ответ от модели. Попробуйте ещё раз.";
         }
-
-        finalMessage ??= "Готово.";
 
         await _chatService.AddMessageAsync(request.ChatId.Value, new ChatMessageDTO
         {
