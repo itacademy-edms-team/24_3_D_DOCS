@@ -155,9 +155,7 @@ public class DocumentAgent : IDocumentAgent
                 break;
             }
 
-            // При нескольких insert в одну позицию (start_line) порядок выполнения обратный:
-            // первый в списке (заголовок) должен оказаться сверху, значит его выполняем последним
-            var orderedCalls = ReorderInsertsForCorrectPlacement(toolCalls);
+            var orderedCalls = ApplyInsertBatchOrder(toolCalls);
 
             var knownTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 { "read_document", "propose_document_changes" };
@@ -269,56 +267,27 @@ public class DocumentAgent : IDocumentAgent
     }
 
     /// <summary>
-    /// При нескольких insert в одну и ту же строку (например start_line:1) каждый следующий
-    /// вставленный блок сдвигает предыдущий вниз. Чтобы первый блок (заголовок) оказался
-    /// сверху, выполняем блок insert-ов в обратном порядке. read_document и др. не трогаем.
+    /// Батч из одних insert-ов: выполняем в обратном порядке, каждый в начало (start_line 0).
     /// </summary>
-    private static IReadOnlyList<(string ToolName, Dictionary<string, object> Args)> ReorderInsertsForCorrectPlacement(
+    private static IReadOnlyList<(string ToolName, Dictionary<string, object> Args)> ApplyInsertBatchOrder(
         IReadOnlyList<(string ToolName, Dictionary<string, object> Args)> calls)
     {
         if (calls.Count <= 1) return calls;
 
-        var list = calls.ToList();
+        var allInserts = calls.All(c =>
+            string.Equals(c.ToolName, "propose_document_changes", StringComparison.OrdinalIgnoreCase)
+            && GetArgString(c.Args.TryGetValue("operation", out var o) ? o : null)?.ToLowerInvariant() == "insert");
+        if (!allInserts) return calls;
 
-        static bool IsInsert(string name, Dictionary<string, object> args) =>
-            string.Equals(name, "propose_document_changes", StringComparison.OrdinalIgnoreCase)
-            && GetArgString(args.TryGetValue("operation", out var o) ? o : null)?.ToLowerInvariant() == "insert";
-
-        var insertRunStart = -1;
-        var insertRunEnd = -1;
-        for (var i = 0; i < list.Count; i++)
+        var reversed = calls.Reverse().ToList();
+        var result = new List<(string ToolName, Dictionary<string, object> Args)>();
+        foreach (var (name, args) in reversed)
         {
-            if (IsInsert(list[i].ToolName, list[i].Args))
-            {
-                if (insertRunStart < 0) insertRunStart = i;
-                insertRunEnd = i;
-            }
-            else
-            {
-                insertRunStart = -1;
-                insertRunEnd = -1;
-            }
+            var argsCopy = new Dictionary<string, object>(args);
+            argsCopy["start_line"] = 0;
+            result.Add((name, argsCopy));
         }
-
-        if (insertRunStart < 0 || insertRunEnd <= insertRunStart) return calls;
-
-        var insertRun = list.Skip(insertRunStart).Take(insertRunEnd - insertRunStart + 1).ToList();
-        var samePos = true;
-        int? refLine = null;
-        foreach (var (_, args) in insertRun)
-        {
-            var sl = GetArgInt(args, "start_line");
-            if (refLine == null) refLine = sl;
-            else if (sl != refLine) { samePos = false; break; }
-        }
-
-        if (!samePos || insertRun.Count <= 1) return calls;
-
-        insertRun.Reverse();
-        for (var i = 0; i < insertRun.Count; i++)
-            list[insertRunStart + i] = insertRun[i];
-
-        return list;
+        return result;
     }
 
     private static string? GetArgString(object? v)
