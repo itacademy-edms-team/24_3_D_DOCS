@@ -24,6 +24,7 @@ using RusalProject.Services.Profile;
 using RusalProject.Services.Storage;
 using RusalProject.Services.TitlePage;
 using RusalProject.Services.Chat;
+using RusalProject.Services.ChatContext;
 using RusalProject.Services.Ollama;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -162,6 +163,11 @@ builder.Services.AddScoped<IAgentService, AgentService>();
 
 // Chat Services
 builder.Services.AddScoped<IChatService, ChatService>();
+
+// Chat Context Files
+builder.Services.AddScoped<TextFileParser>();
+builder.Services.AddScoped<ImageParser>();
+builder.Services.AddScoped<IChatContextFileService, ChatContextFileService>();
 
 // Ollama Services
 builder.Services.AddHttpClient();

@@ -3,6 +3,7 @@ using System.Text.Json;
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Chat;
 using RusalProject.Services.Chat;
+using RusalProject.Services.ChatContext;
 using RusalProject.Services.Ollama;
 
 namespace RusalProject.Services.Agent;
@@ -16,17 +17,20 @@ public class DocumentAgent : IDocumentAgent
 
     private readonly IOllamaChatService _ollamaChatService;
     private readonly IChatService _chatService;
+    private readonly IChatContextFileService _chatContextFileService;
     private readonly DocumentAgentToolExecutor _toolExecutor;
     private readonly ILogger<DocumentAgent> _logger;
 
     public DocumentAgent(
         IOllamaChatService ollamaChatService,
         IChatService chatService,
+        IChatContextFileService chatContextFileService,
         DocumentAgentToolExecutor toolExecutor,
         ILogger<DocumentAgent> logger)
     {
         _ollamaChatService = ollamaChatService;
         _chatService = chatService;
+        _chatContextFileService = chatContextFileService;
         _toolExecutor = toolExecutor;
         _logger = logger;
     }
@@ -70,6 +74,19 @@ public class DocumentAgent : IDocumentAgent
         _logger.LogInformation("DocumentAgent: Total messages to send to LLM: {Count}", messages.Count);
 
         var systemPrompt = AgentSystemPrompt.GetSystemPrompt("ru");
+        var contextBlock = await _chatContextFileService.GetContextForPromptAsync(request.ChatId.Value, userId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(contextBlock))
+        {
+            systemPrompt += "\n\n[Контекст из загруженных файлов]\n\n" + contextBlock;
+            _logger.LogInformation("DocumentAgent: Injected context block for ChatId={ChatId}, length={Length}, preview={Preview}",
+                request.ChatId.Value, contextBlock.Length,
+                contextBlock.Length > 500 ? contextBlock[..500] + "..." : contextBlock);
+        }
+        else
+        {
+            _logger.LogInformation("DocumentAgent: No context injected for ChatId={ChatId} (empty or no files)", request.ChatId.Value);
+        }
+
         var steps = new List<AgentStepDTO>();
         var stepNumber = 0;
         string? finalMessage = null;
@@ -117,10 +134,10 @@ public class DocumentAgent : IDocumentAgent
                 chunkCallback,
                 cancellationToken);
 
-            var response = result.FinalMessage;
+            var response = result.FinalMessage ?? string.Empty;
             _logger.LogInformation("DocumentAgent: LLM response (length={Length}): {Preview}", 
-                response?.Length ?? 0, 
-                response?.Substring(0, Math.Min(100, response?.Length ?? 0)) ?? "(empty)");
+                response.Length, 
+                response.Length > 0 ? response.Substring(0, Math.Min(100, response.Length)) : "(empty)");
             
             var (_, toolBlock) = _toolExecutor.SplitToolCall(response);
 
@@ -130,66 +147,82 @@ public class DocumentAgent : IDocumentAgent
                 break;
             }
 
-            if (!_toolExecutor.TryParseToolCall(toolBlock, out var toolName, out var args))
+            var toolCalls = _toolExecutor.ParseAllToolCalls(toolBlock);
+            if (toolCalls.Count == 0)
             {
-                _logger.LogWarning("DocumentAgent: failed to parse TOOL_CALL block: {Block}", toolBlock);
+                _logger.LogWarning("DocumentAgent: failed to parse TOOL_CALL block: {Block}", toolBlock.Substring(0, Math.Min(200, toolBlock.Length)));
                 finalMessage = response.Trim();
                 break;
             }
-            
-            // Пропускаем неизвестные инструменты (например "TOOL_CALL" от нативного API)
-            var knownTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+
+            // При нескольких insert в одну позицию (start_line) порядок выполнения обратный:
+            // первый в списке (заголовок) должен оказаться сверху, значит его выполняем последним
+            var orderedCalls = ReorderInsertsForCorrectPlacement(toolCalls);
+
+            var knownTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 { "read_document", "propose_document_changes" };
-            if (!knownTools.Contains(toolName))
+
+            var allResults = new System.Collections.Generic.List<string>();
+            var allSteps = new List<AgentStepDTO>();
+
+            foreach (var (toolName, args) in orderedCalls)
             {
-                _logger.LogWarning("DocumentAgent: skipping unknown tool: {ToolName}", toolName);
-                messages.Add(new OllamaMessageInput("assistant", response));
-                messages.Add(new OllamaMessageInput("user", 
-                    $"Инструмент '{toolName}' не существует. Используй только: read_document, propose_document_changes. Попробуй снова."));
-                continue;
+                if (!knownTools.Contains(toolName))
+                {
+                    _logger.LogWarning("DocumentAgent: skipping unknown tool: {ToolName}", toolName);
+                    allResults.Add($"Инструмент '{toolName}' не существует. Используй только: read_document, propose_document_changes.");
+                    continue;
+                }
+
+                stepNumber++;
+                var (toolResult, toolCallDto) = await _toolExecutor.ExecuteAsync(
+                    toolName,
+                    args,
+                    userId,
+                    documentId,
+                    cancellationToken);
+
+                var step = new AgentStepDTO
+                {
+                    StepNumber = stepNumber,
+                    Description = DocumentAgentToolExecutor.GetToolDescription(toolName, args),
+                    ToolCalls = new List<ToolCallDTO> { toolCallDto },
+                    ToolResult = toolResult.ResultMessage,
+                    DocumentChanges = toolResult.DocumentChanges.Count > 0 ? toolResult.DocumentChanges : null
+                };
+
+                allSteps.Add(step);
+                await (onStepUpdate?.Invoke(step) ?? Task.CompletedTask);
+
+                var toolResultMessage = toolResult.ResultMessage;
+                if (toolResult.DocumentChanges.Count > 0)
+                {
+                    var compactChanges = toolResult.DocumentChanges.Select(c => new
+                    {
+                        c.ChangeId,
+                        c.ChangeType,
+                        c.EntityType,
+                        c.StartLine,
+                        c.EndLine,
+                        c.GroupId,
+                        c.Order
+                    });
+                    toolResultMessage += "\n" + JsonSerializer.Serialize(compactChanges);
+                }
+
+                allResults.Add($"Результат вызова {toolName}: {toolResultMessage}");
             }
 
-            stepNumber++;
-            var (toolResult, toolCallDto) = await _toolExecutor.ExecuteAsync(
-                toolName,
-                args,
-                userId,
-                documentId,
-                cancellationToken);
-
-            var step = new AgentStepDTO
-            {
-                StepNumber = stepNumber,
-                Description = DocumentAgentToolExecutor.GetToolDescription(toolName, args),
-                ToolCalls = new List<ToolCallDTO> { toolCallDto },
-                ToolResult = toolResult.ResultMessage,
-                DocumentChanges = toolResult.DocumentChanges.Count > 0 ? toolResult.DocumentChanges : null
-            };
-
-            steps.Add(step);
-            await (onStepUpdate?.Invoke(step) ?? Task.CompletedTask);
+            steps.AddRange(allSteps);
 
             messages.Add(new OllamaMessageInput("assistant", response));
 
-            var toolResultMessage = toolResult.ResultMessage;
-            if (toolResult.DocumentChanges.Count > 0)
-            {
-                var compactChanges = toolResult.DocumentChanges.Select(c => new
-                {
-                    c.ChangeId,
-                    c.ChangeType,
-                    c.EntityType,
-                    c.StartLine,
-                    c.EndLine,
-                    c.GroupId,
-                    c.Order
-                });
-                toolResultMessage += "\n" + JsonSerializer.Serialize(compactChanges);
-            }
+            var combinedResults = string.Join("\n\n", allResults);
+            var continuationPrompt = toolCalls.Count > 1
+                ? $"\n\nВсе {toolCalls.Count} вызова выполнены. Если задача завершена — дай финальный ответ пользователю без TOOL_CALL. Если нужно ещё изменения — вызови TOOL_CALL снова."
+                : "\n\nПродолжай работу. Если задача завершена — дай финальный ответ пользователю без TOOL_CALL.";
 
-            messages.Add(new OllamaMessageInput(
-                "user",
-                $"Результат вызова {toolName}: {toolResultMessage}\n\nПродолжай работу. Если задача завершена, дай финальный ответ пользователю без TOOL_CALL."));
+            messages.Add(new OllamaMessageInput("user", combinedResults + continuationPrompt));
         }
 
         if (string.IsNullOrEmpty(finalMessage))
@@ -233,5 +266,77 @@ public class DocumentAgent : IDocumentAgent
             Steps = steps,
             IsComplete = true
         };
+    }
+
+    /// <summary>
+    /// При нескольких insert в одну и ту же строку (например start_line:1) каждый следующий
+    /// вставленный блок сдвигает предыдущий вниз. Чтобы первый блок (заголовок) оказался
+    /// сверху, выполняем блок insert-ов в обратном порядке. read_document и др. не трогаем.
+    /// </summary>
+    private static IReadOnlyList<(string ToolName, Dictionary<string, object> Args)> ReorderInsertsForCorrectPlacement(
+        IReadOnlyList<(string ToolName, Dictionary<string, object> Args)> calls)
+    {
+        if (calls.Count <= 1) return calls;
+
+        var list = calls.ToList();
+
+        static bool IsInsert(string name, Dictionary<string, object> args) =>
+            string.Equals(name, "propose_document_changes", StringComparison.OrdinalIgnoreCase)
+            && GetArgString(args.TryGetValue("operation", out var o) ? o : null)?.ToLowerInvariant() == "insert";
+
+        var insertRunStart = -1;
+        var insertRunEnd = -1;
+        for (var i = 0; i < list.Count; i++)
+        {
+            if (IsInsert(list[i].ToolName, list[i].Args))
+            {
+                if (insertRunStart < 0) insertRunStart = i;
+                insertRunEnd = i;
+            }
+            else
+            {
+                insertRunStart = -1;
+                insertRunEnd = -1;
+            }
+        }
+
+        if (insertRunStart < 0 || insertRunEnd <= insertRunStart) return calls;
+
+        var insertRun = list.Skip(insertRunStart).Take(insertRunEnd - insertRunStart + 1).ToList();
+        var samePos = true;
+        int? refLine = null;
+        foreach (var (_, args) in insertRun)
+        {
+            var sl = GetArgInt(args, "start_line");
+            if (refLine == null) refLine = sl;
+            else if (sl != refLine) { samePos = false; break; }
+        }
+
+        if (!samePos || insertRun.Count <= 1) return calls;
+
+        insertRun.Reverse();
+        for (var i = 0; i < insertRun.Count; i++)
+            list[insertRunStart + i] = insertRun[i];
+
+        return list;
+    }
+
+    private static string? GetArgString(object? v)
+    {
+        if (v == null) return null;
+        if (v is string s) return s;
+        if (v is JsonElement je) return je.GetString();
+        return v.ToString();
+    }
+
+    private static int GetArgInt(Dictionary<string, object> args, string key)
+    {
+        if (!args.TryGetValue(key, out var v)) return 1;
+        if (v is int i) return i;
+        if (v is long l) return (int)l;
+        if (v is JsonElement je && je.ValueKind == JsonValueKind.Number) return je.GetInt32();
+        if (v is JsonElement je2 && je2.ValueKind == JsonValueKind.String)
+            return int.TryParse(je2.GetString(), out var n) ? n : 1;
+        return 1;
     }
 }

@@ -30,52 +30,78 @@ public class DocumentAgentToolExecutor
 
     public bool TryParseToolCall(string text, out string toolName, out Dictionary<string, object> args)
     {
-        toolName = string.Empty;
-        args = new Dictionary<string, object>();
+        var parsed = ParseAllToolCalls(text);
+        if (parsed.Count == 0)
+        {
+            toolName = string.Empty;
+            args = new Dictionary<string, object>();
+            return false;
+        }
+        toolName = parsed[0].ToolName;
+        args = parsed[0].Args;
+        return true;
+    }
 
+    /// <summary>
+    /// Parses all TOOL_CALL blocks from response. Supports multiple tool calls in one response.
+    /// </summary>
+    public IReadOnlyList<(string ToolName, Dictionary<string, object> Args)> ParseAllToolCalls(string text)
+    {
+        var result = new List<(string ToolName, Dictionary<string, object> Args)>();
         var normalized = text
             .Replace("```json", string.Empty, StringComparison.OrdinalIgnoreCase)
             .Replace("```", string.Empty, StringComparison.OrdinalIgnoreCase)
             .Replace("\r\n", "\n")
             .Trim();
 
-        var toolCallIndex = normalized.IndexOf("TOOL_CALL", StringComparison.OrdinalIgnoreCase);
-        if (toolCallIndex < 0)
-            return false;
-
-        var working = normalized.Substring(toolCallIndex);
-        var toolMatch = Regex.Match(working, @"tool:\s*([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        if (!toolMatch.Success)
-            return false;
-
-        toolName = toolMatch.Groups[1].Value.Trim();
-
-        var argsIndex = working.IndexOf("args:", toolMatch.Index + toolMatch.Length, StringComparison.OrdinalIgnoreCase);
-        if (argsIndex < 0)
-            return false;
-
-        var argsRaw = working.Substring(argsIndex + "args:".Length).Trim();
-        var argsJson = ExtractBalancedJson(argsRaw);
-        if (string.IsNullOrWhiteSpace(argsJson))
-            return false;
-
-        try
+        var searchStart = 0;
+        while (true)
         {
-            var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson);
-            if (dict == null)
-                return false;
+            var toolCallIndex = normalized.IndexOf("TOOL_CALL", searchStart, StringComparison.OrdinalIgnoreCase);
+            if (toolCallIndex < 0)
+                break;
 
-            foreach (var kv in dict)
+            var working = normalized.Substring(toolCallIndex);
+            var toolMatch = Regex.Match(working, @"tool:\s*([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
+            if (!toolMatch.Success)
+                break;
+
+            var name = toolMatch.Groups[1].Value.Trim();
+
+            var argsIdx = working.IndexOf("args:", toolMatch.Index + toolMatch.Length, StringComparison.OrdinalIgnoreCase);
+            if (argsIdx < 0)
+                break;
+
+            var argsRaw = working.Substring(argsIdx + "args:".Length).Trim();
+            var argsJson = ExtractBalancedJson(argsRaw);
+            if (string.IsNullOrWhiteSpace(argsJson))
+                break;
+
+            try
             {
-                args[kv.Key] = kv.Value;
+                var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson);
+                if (dict == null)
+                    break;
+
+                var args = new Dictionary<string, object>();
+                foreach (var kv in dict)
+                    args[kv.Key] = kv.Value;
+
+                result.Add((name, args));
             }
-            return true;
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse TOOL_CALL args: {Args}", argsJson);
+                break;
+            }
+
+            var nextCall = working.IndexOf("TOOL_CALL", argsIdx, StringComparison.OrdinalIgnoreCase);
+            if (nextCall < 0)
+                break;
+            searchStart = toolCallIndex + nextCall;
         }
-        catch (JsonException ex)
-        {
-            _logger.LogWarning(ex, "Failed to parse document TOOL_CALL args: {Args}", argsJson);
-            return false;
-        }
+
+        return result;
     }
 
     public async Task<(DocumentToolResult Result, ToolCallDTO Dto)> ExecuteAsync(

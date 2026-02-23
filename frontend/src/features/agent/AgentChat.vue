@@ -204,6 +204,44 @@
 
 		<div v-if="error" class="chat-error">{{ error }}</div>
 
+		<!-- Context files (document scope only) -->
+		<div v-if="props.scope === 'document' && activeChatId" class="chat-context-files">
+			<div class="chat-context-files-header">
+				<span>Контекстные файлы</span>
+				<div class="chat-context-files-upload">
+					<input
+						ref="contextFileInputRef"
+						type="file"
+						accept=".txt,.md,.csv,.log,.pdf,.jpg,.jpeg,.png,.gif,.webp"
+						@change="handleContextFileSelect"
+						style="display: none;"
+					/>
+					<button
+						type="button"
+						class="button-ghost"
+						:disabled="isUploadingContext"
+						@click="contextFileInputRef?.click()"
+					>
+						{{ isUploadingContext ? 'Загрузка…' : 'Загрузить файл' }}
+					</button>
+				</div>
+			</div>
+			<ul v-if="contextFiles.length > 0" class="chat-context-files-list">
+				<li v-for="f in contextFiles" :key="f.id" class="chat-context-files-item">
+					<span :title="f.fileName">{{ f.fileName }}</span>
+					<button
+						type="button"
+						class="button-ghost"
+						title="Удалить"
+						@click="handleDeleteContextFile(f.id)"
+						style="padding: 4px;"
+					>
+						<Icon name="close" size="14" ariaLabel="Удалить" />
+					</button>
+				</li>
+			</ul>
+		</div>
+
 		<!-- Archive section -->
 		<div class="chat-archive" v-if="archivedChats.length > 0">
 			<div
@@ -285,6 +323,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useAgent } from '@/app/composables/useAgent';
 import { useGlobalChats } from '@/app/composables/useGlobalChats';
 import { useDocumentChats } from '@/app/composables/useDocumentChats';
+import ChatAPI, { type ChatContextFile } from '@/shared/api/ChatAPI';
 import Icon from '@/components/Icon.vue';
 import '@/styles/chat-ui.css';
 import 'katex/dist/katex.css';
@@ -356,6 +395,10 @@ const renameInputRef = ref<HTMLInputElement | null>(null);
 const hoveredMessageId = ref<string | null>(null);
 const isRequestInFlight = ref(false);
 const processedDocumentChangeSteps = ref<Set<number>>(new Set());
+
+const contextFiles = ref<ChatContextFile[]>([]);
+const isUploadingContext = ref(false);
+const contextFileInputRef = ref<HTMLInputElement | null>(null);
 
 // Auto-scroll state
 const messagesContainerRef = ref<HTMLElement | null>(null);
@@ -448,6 +491,45 @@ const loadChatsForCurrentScope = async () => {
 	}
 };
 
+const loadContextFiles = async () => {
+	if (!activeChatId.value || props.scope !== 'document') {
+		contextFiles.value = [];
+		return;
+	}
+	try {
+		contextFiles.value = await ChatAPI.getContextFiles(activeChatId.value);
+	} catch {
+		contextFiles.value = [];
+	}
+};
+
+const handleContextFileSelect = async (e: Event) => {
+	const input = e.target as HTMLInputElement;
+	const file = input.files?.[0];
+	input.value = '';
+	if (!file || !activeChatId.value) return;
+	isUploadingContext.value = true;
+	try {
+		await ChatAPI.uploadContextFile(activeChatId.value, file);
+		await loadContextFiles();
+	} catch (err: any) {
+		console.error('Context file upload failed:', err);
+		alert(err?.response?.data?.message ?? 'Ошибка загрузки файла');
+	} finally {
+		isUploadingContext.value = false;
+	}
+};
+
+const handleDeleteContextFile = async (fileId: string) => {
+	if (!activeChatId.value) return;
+	try {
+		await ChatAPI.deleteContextFile(activeChatId.value, fileId);
+		await loadContextFiles();
+	} catch {
+		// ignore
+	}
+};
+
 const ensureGlobalChatExists = async () => {
 	if (!isGlobalScope.value) return;
 	if (chats.value.length > 0) return;
@@ -466,6 +548,8 @@ onMounted(async () => {
 });
 
 // Watch for scope/documentId changes
+watch(activeChatId, () => loadContextFiles(), { immediate: true });
+
 watch(
 	() => [props.scope, props.documentId] as const,
 	async () => {
@@ -909,6 +993,44 @@ watch(() => activeChat.value?.messages, () => {
 
 .agent-chat__scroll-down-btn:active {
 	transform: scale(0.95);
+}
+
+.chat-context-files {
+	margin: 8px 12px;
+	padding: 8px 12px;
+	background: var(--chat-assistant-bubble-solid);
+	border-radius: var(--chat-radius-sm);
+	border: 1px solid var(--chat-border);
+}
+.chat-context-files-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: var(--chat-small);
+	color: var(--chat-muted);
+	margin-bottom: 6px;
+}
+.chat-context-files-upload button {
+	font-size: 12px;
+}
+.chat-context-files-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.chat-context-files-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 0;
+	font-size: 13px;
+}
+.chat-context-files-item span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .chat-messages-wrapper {

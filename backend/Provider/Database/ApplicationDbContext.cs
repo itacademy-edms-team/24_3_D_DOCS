@@ -24,6 +24,7 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<AgentLog> AgentLogs { get; set; }
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
     public DbSet<UserOllamaApiKey> UserOllamaApiKeys { get; set; }
+    public DbSet<ChatContextFile> ChatContextFiles { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -320,6 +321,27 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
                   .WithMany()
                   .HasForeignKey(a => a.ChatSessionId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ChatContextFile>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.ChatSessionId)
+                  .HasDatabaseName("IX_ChatContextFiles_ChatSessionId");
+
+            entity.Property(e => e.CreatedAt)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.HasOne(e => e.ChatSession)
+                  .WithMany()
+                  .HasForeignKey(e => e.ChatSessionId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

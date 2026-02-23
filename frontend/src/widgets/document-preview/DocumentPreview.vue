@@ -836,7 +836,12 @@ onMounted(async () => {
 .document-preview__content :deep(blockquote),
 .document-preview__content :deep(pre) {
 	page-break-inside: avoid;
+	max-width: 100%;
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
 }
+
 
 /* Keep KaTeX size aligned with Profile fontSize.
    KaTeX default CSS sets .katex font-size to 1.21em, which inflates formulas.

@@ -46,6 +46,14 @@ export interface ChatSessionWithMessages extends ChatSession {
 	messages: ChatMessage[];
 }
 
+export interface ChatContextFile {
+	id: string;
+	chatSessionId: string;
+	fileName: string;
+	contentType: string;
+	createdAt: string;
+}
+
 export interface CreateChatSession {
 	scope: ChatScope;
 	documentId?: string | null;
@@ -147,6 +155,37 @@ class ChatAPI extends HttpClient {
 	 */
 	async deleteChatPermanently(chatId: string): Promise<void> {
 		await this.instance.delete(`/api/chats/${chatId}/permanent`);
+	}
+
+	/**
+	 * Список контекстных файлов чата
+	 */
+	async getContextFiles(chatId: string): Promise<ChatContextFile[]> {
+		const response = await this.instance.get<ChatContextFile[]>(
+			`/api/chats/${chatId}/context-files`
+		);
+		return response.data;
+	}
+
+	/**
+	 * Загрузить контекстный файл
+	 */
+	async uploadContextFile(chatId: string, file: File): Promise<ChatContextFile> {
+		const formData = new FormData();
+		formData.append('file', file);
+		const response = await this.instance.post<ChatContextFile>(
+			`/api/chats/${chatId}/context-files`,
+			formData,
+			{ headers: { 'Content-Type': 'multipart/form-data' } }
+		);
+		return response.data;
+	}
+
+	/**
+	 * Удалить контекстный файл
+	 */
+	async deleteContextFile(chatId: string, fileId: string): Promise<void> {
+		await this.instance.delete(`/api/chats/${chatId}/context-files/${fileId}`);
 	}
 }
 

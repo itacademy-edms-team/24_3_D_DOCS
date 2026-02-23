@@ -29,6 +29,7 @@
     <PackageReference Include="Markdig" Version="0.37.0" />
     <PackageReference Include="Minio" Version="5.0.0" />
     <PackageReference Include="PuppeteerSharp" Version="20.2.5" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
   </ItemGroup>
 
   <ItemGroup>
