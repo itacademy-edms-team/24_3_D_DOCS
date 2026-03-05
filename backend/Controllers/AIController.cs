@@ -99,6 +99,12 @@ public class AIController : ControllerBase
 
         try
         {
+            if (request == null)
+            {
+                await SendSSEEvent("error", new { message = "Тело запроса обязательно." });
+                return;
+            }
+
             if (!ModelState.IsValid)
             {
                 // #region agent log
@@ -248,10 +254,13 @@ public class AIController : ControllerBase
             } catch {}
             // #endregion
 
-            // OllamaChatService already saves the assistant message to chat
-
             // Отправляем финальное событие
             await SendSSEEvent("complete", finalResponse);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Agent request validation/configuration error");
+            await SendSSEEvent("error", new { message = ex.Message });
         }
         catch (Exception ex)
         {

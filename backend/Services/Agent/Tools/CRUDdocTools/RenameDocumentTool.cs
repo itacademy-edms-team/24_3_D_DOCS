@@ -1,81 +1,66 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RusalProject.Models.DTOs.Document;
+using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Agent.Tools.CRUDdocTools;
 
-/// <summary>
-/// Renames a document by id.
-/// </summary>
-public class RenameDocumentTool : ITool
+public sealed class RenameDocumentTool : AgentToolBase<RenameDocumentTool.Args>
 {
     private readonly IDocumentService _documentService;
-    private readonly ILogger<RenameDocumentTool> _logger;
 
-    public string Name => "rename_document";
-    public string Description => "Переименовывает документ по ID. Параметры: document_id, name.";
-
-    public RenameDocumentTool(IDocumentService documentService, ILogger<RenameDocumentTool> logger)
+    public RenameDocumentTool(IDocumentService documentService)
     {
         _documentService = documentService;
-        _logger = logger;
     }
 
-    public Dictionary<string, object> GetParametersSchema()
+    public override string Name => "rename_document";
+    public override string Description => "Переименовывает документ.";
+
+    public override object ParametersSchema => new
     {
-        return new Dictionary<string, object>
+        type = "object",
+        properties = new
         {
-            ["type"] = "object",
-            ["properties"] = new Dictionary<string, object>
+            document_id = new { type = "string", description = "Id документа" },
+            name = new { type = "string", description = "Новое название документа" }
+        },
+        required = new[] { "document_id", "name" }
+    };
+
+    protected override async Task<AgentToolExecutionResult> ExecuteTypedAsync(
+        Args arguments,
+        AgentExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(arguments.DocumentId, out var documentId))
+            throw new InvalidOperationException("document_id должен быть корректным Guid.");
+        if (string.IsNullOrWhiteSpace(arguments.Name))
+            throw new InvalidOperationException("name обязателен для rename_document.");
+
+        var updated = await _documentService.UpdateDocumentAsync(documentId, context.UserId, new UpdateDocumentDTO
+        {
+            Name = arguments.Name.Trim()
+        });
+
+        return new AgentToolExecutionResult
+        {
+            ResultMessage = JsonSerializer.Serialize(new
             {
-                ["document_id"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "ID документа для переименования"
-                },
-                ["name"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "Новое название документа"
-                }
-            },
-            ["required"] = new[] { "document_id", "name" }
+                id = updated.Id,
+                name = updated.Name,
+                renamed = true
+            })
         };
     }
 
-    public async Task<string> ExecuteAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
+    public sealed class Args
     {
-        if (!arguments.TryGetValue("user_id", out var _))
-            return "Ошибка: user_id обязателен";
+        [JsonPropertyName("document_id")]
+        public string DocumentId { get; init; } = string.Empty;
 
-        var userId = Guid.Parse(GetStringValue(arguments, "user_id"));
-        var documentId = Guid.Parse(GetStringValue(arguments, "document_id"));
-        var newName = GetStringValue(arguments, "name").Trim();
-
-        if (string.IsNullOrWhiteSpace(newName))
-            return "Ошибка: name не должен быть пустым";
-
-        var updated = await _documentService.UpdateDocumentAsync(documentId, userId, new UpdateDocumentDTO
-        {
-            Name = newName
-        });
-
-        return JsonSerializer.Serialize(new
-        {
-            renamed = true,
-            name = updated.Name,
-            message = $"Документ переименован в «{updated.Name}»"
-        });
-    }
-
-    private static string GetStringValue(Dictionary<string, object> arguments, string key)
-    {
-        if (!arguments.TryGetValue(key, out var value)) throw new ArgumentException($"Missing required argument: {key}");
-        return value switch
-        {
-            string str => str,
-            JsonElement jsonElement => jsonElement.GetString() ?? throw new InvalidOperationException($"Cannot convert {key} to string"),
-            _ => value.ToString() ?? throw new InvalidOperationException($"Cannot convert {key} to string")
-        };
+        [JsonPropertyName("name")]
+        public string Name { get; init; } = string.Empty;
     }
 }

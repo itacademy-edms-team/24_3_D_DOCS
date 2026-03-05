@@ -281,7 +281,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, shallowRef, computed, watch, onMounted, nextTick } from 'vue';
 import { useAgent } from '@/app/composables/useAgent';
 import { useGlobalChats } from '@/app/composables/useGlobalChats';
 import { useDocumentChats } from '@/app/composables/useDocumentChats';
@@ -294,6 +294,16 @@ import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
 import { renderLatex } from '@/utils/renderers/formulaRenderer';
 import type { AgentRequestDTO } from '@/shared/api/AIAPI';
+
+const DOCUMENT_REFRESH_TOOL_NAMES = new Set([
+	'create_document',
+	'rename_document',
+	'delete_document',
+	'propose_insert',
+	'propose_delete',
+	'propose_replace',
+	'propose_document_changes',
+]);
 
 const md = new MarkdownIt({
 	html: true,
@@ -354,8 +364,7 @@ const editingChatId = ref<string | null>(null);
 const editingTitle = ref('');
 const renameInputRef = ref<HTMLInputElement | null>(null);
 const hoveredMessageId = ref<string | null>(null);
-const isRequestInFlight = ref(false);
-const processedDocumentChangeSteps = ref<Set<number>>(new Set());
+const processedDocumentChangeSteps = shallowRef<Set<number>>(new Set());
 
 // Auto-scroll state
 const messagesContainerRef = ref<HTMLElement | null>(null);
@@ -402,7 +411,11 @@ function getToolLabel(toolName: string): string {
 		create_document: 'Создание документа',
 		delete_document: 'Удаление документа',
 		rename_document: 'Переименование документа',
+		delegate_to_document_agent: 'Передача задачи агенту документа',
 		read_document: 'Чтение документа',
+		propose_insert: 'Предложение вставки',
+		propose_delete: 'Предложение удаления',
+		propose_replace: 'Предложение замены',
 		propose_document_changes: 'Предложение правок по сущностям',
 	};
 	return labels[toolName] ?? `Вызов ${toolName}`;
@@ -477,22 +490,31 @@ watch(
 	}
 );
 
-// Notify when agent proposes document changes (now written directly to document on backend).
+// Notify when agent mutates document metadata or proposes edits (streaming + late step updates).
 watch(
 	agentSteps,
 	(steps) => {
-		if (!isRequestInFlight.value) return;
+		let changed = false;
+		const next = new Set(processedDocumentChangeSteps.value);
+
 		for (const step of steps) {
-			if (processedDocumentChangeSteps.value.has(step.stepNumber)) continue;
-			
-			const hasDocChanges = step.toolCalls?.some(tc => 
-				tc.toolName === 'propose_document_changes' && tc.result
-			);
-			
+			if (next.has(step.stepNumber)) continue;
+
+			const hasDocChanges =
+				(step.documentChanges?.length ?? 0) > 0 ||
+				step.toolCalls?.some(
+					(tc) => DOCUMENT_REFRESH_TOOL_NAMES.has(tc.toolName) && !!tc.result
+				) === true;
+
 			if (hasDocChanges) {
-				processedDocumentChangeSteps.value.add(step.stepNumber);
-				emit('documentContentChanged');
+				next.add(step.stepNumber);
+				changed = true;
 			}
+		}
+
+		if (changed) {
+			processedDocumentChangeSteps.value = next;
+			emit('documentContentChanged');
 		}
 	},
 	{ deep: true }
@@ -523,6 +545,7 @@ const handleSwitchChat = async (chatId: string) => {
 		await documentChatsStore.switchChat(chatId);
 	}
 	resetAgent();
+	processedDocumentChangeSteps.value = new Set();
 };
 
 const handleStartRename = (chatId: string, currentTitle: string) => {
@@ -598,7 +621,6 @@ const handleSend = async () => {
 	if (!userMessage.value.trim() || !activeChatId.value) return;
 
 	const text = userMessage.value.trim();
-	isRequestInFlight.value = true;
 	processedDocumentChangeSteps.value = new Set();
 	pendingUserMessage.value = text;
 	userMessage.value = '';
@@ -632,7 +654,6 @@ const handleSend = async () => {
 		console.error('Error sending message to agent:', err);
 		userMessage.value = text;
 	} finally {
-		isRequestInFlight.value = false;
 		pendingUserMessage.value = null;
 	}
 };

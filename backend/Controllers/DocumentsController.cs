@@ -168,6 +168,56 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// Принять предложенное AI-изменение документа
+    /// </summary>
+    [HttpPost("{id}/ai-changes/{changeId}/accept")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AcceptAiChange(Guid id, string changeId)
+    {
+        try
+        {
+            var userId = GetUserId();
+            await _documentService.AcceptPendingDocumentChangeAsync(id, userId, changeId);
+            return NoContent();
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Документ или AI-изменение не найдено" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error accepting AI change {ChangeId} for document {DocumentId}", changeId, id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Отклонить предложенное AI-изменение документа
+    /// </summary>
+    [HttpPost("{id}/ai-changes/{changeId}/reject")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RejectAiChange(Guid id, string changeId)
+    {
+        try
+        {
+            var userId = GetUserId();
+            await _documentService.RejectPendingDocumentChangeAsync(id, userId, changeId);
+            return NoContent();
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Документ или AI-изменение не найдено" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rejecting AI change {ChangeId} for document {DocumentId}", changeId, id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
     /// Обновить переопределения стилей
     /// </summary>
     [HttpPut("{id}/overrides")]
@@ -638,7 +688,7 @@ public class DocumentsController : ControllerBase
             using var pdfStream = await _minioService.DownloadFileAsync(bucket, pdfPath);
             
             var pdfBytes = new byte[pdfStream.Length];
-            await pdfStream.ReadAsync(pdfBytes, 0, (int)pdfStream.Length);
+            await pdfStream.ReadExactlyAsync(pdfBytes);
 
             return File(pdfBytes, "application/pdf", $"{document.Name}.pdf");
         }

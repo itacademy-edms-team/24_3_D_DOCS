@@ -3,19 +3,12 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.EntityFrameworkCore;
-using RusalProject.Models.DTOs.Chat;
-using RusalProject.Provider.Database;
-using RusalProject.Services.Agent;
-using RusalProject.Services.Chat;
 
 namespace RusalProject.Services.Ollama;
 
 public class OllamaChatService : IOllamaChatService
 {
-    private readonly ApplicationDbContext _context;
     private readonly IUserOllamaApiKeyService _keyService;
-    private readonly IChatService _chatService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<OllamaChatService> _logger;
@@ -27,222 +20,22 @@ public class OllamaChatService : IOllamaChatService
     };
 
     public OllamaChatService(
-        ApplicationDbContext context,
         IUserOllamaApiKeyService keyService,
-        IChatService chatService,
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<OllamaChatService> logger)
     {
-        _context = context;
         _keyService = keyService;
-        _chatService = chatService;
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _logger = logger;
     }
 
-    public async Task<OllamaChatResult> ChatAsync(
+    public async Task<OllamaChatResponse> CompleteAsync(
         Guid userId,
-        Guid chatId,
-        string userMessage,
-        Guid documentId,
-        Func<string, Task>? onChunk = null,
-        Func<string, Task>? onStatusCheck = null,
-        CancellationToken cancellationToken = default)
-    {
-        if (!await _keyService.HasApiKeyAsync(userId, cancellationToken))
-        {
-            throw new InvalidOperationException("Настройте Ollama API ключ перед использованием ассистента.");
-        }
-
-        var apiKey = await _keyService.GetDecryptedApiKeyAsync(userId, cancellationToken);
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Не удалось получить API ключ. Попробуйте настроить его заново.");
-        }
-
-        var chat = await _chatService.GetChatByIdAsync(chatId, userId);
-        if (chat == null)
-        {
-            throw new InvalidOperationException("Чат не найден.");
-        }
-
-        var ollamaMessages = BuildMessages(chat.Messages);
-        var model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
-        var baseUrl = _configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
-        var url = $"{baseUrl.TrimEnd('/')}/api/chat";
-
-        var requestBody = new
-        {
-            model,
-            messages = ollamaMessages,
-            stream = true
-        };
-
-        var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody, JsonOptions),
-            Encoding.UTF8,
-            "application/json");
-
-        var client = _httpClientFactory.CreateClient();
-        var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            _logger.LogWarning("Ollama API returned 401 for user {UserId}", userId);
-            throw new InvalidOperationException("API ключ недействителен. Проверьте ключ на ollama.com/settings/keys.");
-        }
-
-        if (response.StatusCode == (HttpStatusCode)429)
-        {
-            _logger.LogWarning("Ollama API returned 429 for user {UserId}", userId);
-            throw new InvalidOperationException("Провайдер временно ограничил запросы. Попробуйте позже.");
-        }
-
-        if ((int)response.StatusCode >= 500)
-        {
-            _logger.LogWarning("Ollama API returned {StatusCode} for user {UserId}", response.StatusCode, userId);
-            throw new InvalidOperationException("Временная ошибка сервиса. Попробуйте позже.");
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogWarning("Ollama API returned {StatusCode} for user {UserId}", response.StatusCode, userId);
-            throw new InvalidOperationException("Ошибка при обращении к Ollama. Попробуйте позже.");
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream);
-
-        var fullContent = new StringBuilder();
-        string? lastContent = null;
-
-        while (!reader.EndOfStream)
-        {
-            var line = await reader.ReadLineAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            try
-            {
-                var evt = JsonSerializer.Deserialize<OllamaStreamEvent>(line);
-                if (evt?.Message?.Content != null)
-                {
-                    fullContent.Append(evt.Message.Content);
-                    lastContent = evt.Message.Content;
-                    if (onChunk != null)
-                    {
-                        await onChunk(evt.Message.Content);
-                    }
-                }
-
-                if (evt?.Done == true)
-                {
-                    break;
-                }
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to parse Ollama stream line: {Line}", line);
-            }
-        }
-
-        var finalMessage = fullContent.ToString();
-        if (string.IsNullOrEmpty(finalMessage))
-        {
-            finalMessage = lastContent ?? string.Empty;
-        }
-
-        await _chatService.AddMessageAsync(chatId, new ChatMessageDTO
-        {
-            Role = "assistant",
-            Content = finalMessage
-        }, userId);
-
-        return new OllamaChatResult
-        {
-            FinalMessage = finalMessage,
-            IsComplete = true,
-            IsIdempotentRetry = false
-        };
-    }
-
-    public async Task<OllamaChatResult> ChatWithPromptAsync(
-        Guid userId,
-        Guid chatId,
-        string userMessage,
+        IReadOnlyList<OllamaMessageInput> messages,
         string systemPrompt,
-        Func<string, Task>? onChunk = null,
-        CancellationToken cancellationToken = default)
-    {
-        if (!await _keyService.HasApiKeyAsync(userId, cancellationToken))
-            throw new InvalidOperationException("Настройте Ollama API ключ перед использованием ассистента.");
-
-        var apiKey = await _keyService.GetDecryptedApiKeyAsync(userId, cancellationToken);
-        if (string.IsNullOrEmpty(apiKey))
-            throw new InvalidOperationException("Не удалось получить API ключ.");
-
-        var chat = await _chatService.GetChatByIdAsync(chatId, userId);
-        if (chat == null)
-            throw new InvalidOperationException("Чат не найден.");
-
-        var ollamaMessages = BuildMessagesWithPrompt(chat.Messages, systemPrompt);
-        var model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
-        var baseUrl = _configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
-        var url = $"{baseUrl.TrimEnd('/')}/api/chat";
-
-        var requestBody = new { model, messages = ollamaMessages, stream = true };
-        var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-        request.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
-
-        var client = _httpClientFactory.CreateClient();
-        var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("API ключ недействителен.");
-        if (response.StatusCode == (HttpStatusCode)429)
-            throw new InvalidOperationException("Провайдер временно ограничил запросы.");
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException("Ошибка при обращении к Ollama.");
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream);
-        var fullContent = new StringBuilder();
-        string? lastContent = null;
-
-        while (!reader.EndOfStream)
-        {
-            var line = await reader.ReadLineAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
-            {
-                var evt = JsonSerializer.Deserialize<OllamaStreamEvent>(line);
-                if (evt?.Message?.Content != null)
-                {
-                    fullContent.Append(evt.Message.Content);
-                    lastContent = evt.Message.Content;
-                    if (onChunk != null)
-                        await onChunk(evt.Message.Content);
-                }
-                if (evt?.Done == true) break;
-            }
-            catch (JsonException) { }
-        }
-
-        var finalMessage = fullContent.ToString() ?? lastContent ?? string.Empty;
-        await _chatService.AddMessageAsync(chatId, new ChatMessageDTO { Role = "assistant", Content = finalMessage }, userId);
-
-        return new OllamaChatResult { FinalMessage = finalMessage, IsComplete = true, IsIdempotentRetry = false };
-    }
-
-    public async Task<OllamaChatResult> SendMessagesAsync(
-        Guid userId,
-        List<OllamaMessageInput> messages,
-        string systemPrompt,
+        IReadOnlyList<OllamaToolDefinition> tools,
         Func<string, Task>? onChunk = null,
         CancellationToken cancellationToken = default)
     {
@@ -253,21 +46,31 @@ public class OllamaChatService : IOllamaChatService
         if (string.IsNullOrEmpty(apiKey))
             throw new InvalidOperationException("Не удалось получить API ключ.");
 
-        var ollamaMessages = new List<OllamaMessage>
-        {
-            new() { Role = "system", Content = systemPrompt }
-        };
-        foreach (var m in messages)
-            ollamaMessages.Add(new OllamaMessage { Role = m.Role, Content = m.Content });
-
         var model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
         var baseUrl = _configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
         var url = $"{baseUrl.TrimEnd('/')}/api/chat";
 
-        var requestBody = new { model, messages = ollamaMessages, stream = true };
+        var requestBody = new
+        {
+            model,
+            stream = onChunk != null,
+            messages = BuildMessages(systemPrompt, messages),
+            tools = tools.Select(t => new
+            {
+                type = "function",
+                function = new
+                {
+                    name = t.Name,
+                    description = t.Description,
+                    parameters = t.Parameters
+                }
+            }).ToList()
+        };
+        var serializedRequestBody = JsonSerializer.Serialize(requestBody, JsonOptions);
+
         var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-        request.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
+        request.Content = new StringContent(serializedRequestBody, Encoding.UTF8, "application/json");
 
         var client = _httpClientFactory.CreateClient();
         var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -277,166 +80,171 @@ public class OllamaChatService : IOllamaChatService
         if (response.StatusCode == (HttpStatusCode)429)
             throw new InvalidOperationException("Провайдер временно ограничил запросы.");
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException("Ошибка при обращении к Ollama.");
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Ollama returned error {StatusCode}. Response body: {ResponseBody}. Request body: {RequestBody}",
+                (int)response.StatusCode,
+                Truncate(errorBody, 4000),
+                Truncate(serializedRequestBody, 8000));
+            throw new InvalidOperationException($"Ошибка при обращении к Ollama: {(int)response.StatusCode}.");
+        }
+
+        if (onChunk == null)
+        {
+            var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+            var parsed = JsonSerializer.Deserialize<OllamaStreamEvent>(payload, JsonOptions)
+                ?? throw new InvalidOperationException("Пустой ответ от Ollama.");
+            return ToResponse(parsed);
+        }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
+
         var fullContent = new StringBuilder();
-        string? lastContent = null;
-        var lineCount = 0;
+        var toolCalls = new List<OllamaToolCall>();
+        string? thinking = null;
 
         while (!reader.EndOfStream)
         {
             var line = await reader.ReadLineAsync(cancellationToken);
-            lineCount++;
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            
-            _logger.LogInformation("Ollama stream line {LineNum}: {Line}", lineCount, line.Substring(0, Math.Min(200, line.Length)));
-            
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
             try
             {
-                var evt = JsonSerializer.Deserialize<OllamaStreamEvent>(line);
-                
-                // Обработка обычного контента
-                if (!string.IsNullOrEmpty(evt?.Message?.Content))
+                var evt = JsonSerializer.Deserialize<OllamaStreamEvent>(line, JsonOptions);
+                if (evt?.Message == null)
+                    continue;
+
+                if (!string.IsNullOrEmpty(evt.Message.Content))
                 {
                     fullContent.Append(evt.Message.Content);
-                    lastContent = evt.Message.Content;
-                    if (onChunk != null)
-                        await onChunk(evt.Message.Content);
+                    await onChunk(evt.Message.Content);
                 }
-                
-                // Fallback: если модель использует нативные tool_calls, конвертируем в текстовый формат
-                if (evt?.Message?.ToolCalls != null && evt.Message.ToolCalls.Count > 0)
+
+                if (!string.IsNullOrEmpty(evt.Message.Thinking))
                 {
-                    foreach (var tc in evt.Message.ToolCalls)
-                    {
-                        if (tc.Function != null)
-                        {
-                            var toolName = tc.Function.Name ?? "unknown";
-                            var argsJson = tc.Function.Arguments?.ToString() ?? "{}";
-                            
-                            // Если name = "TOOL_CALL", аргументы содержат реальные tool/args
-                            if (toolName == "TOOL_CALL" && tc.Function.Arguments.HasValue)
-                            {
-                                try
-                                {
-                                    var innerArgs = tc.Function.Arguments.Value;
-                                    if (innerArgs.TryGetProperty("tool", out var toolProp) && 
-                                        innerArgs.TryGetProperty("args", out var argsProp))
-                                    {
-                                        toolName = toolProp.GetString() ?? "unknown";
-                                        argsJson = argsProp.ToString();
-                                    }
-                                }
-                                catch { }
-                            }
-                            
-                            var textToolCall = $"\nTOOL_CALL\ntool: {toolName}\nargs: {argsJson}\n";
-                            fullContent.Append(textToolCall);
-                            _logger.LogInformation("Converted native tool_call to text format: {Tool}", toolName);
-                        }
-                    }
+                    thinking = evt.Message.Thinking;
                 }
-                
-                if (evt?.Done == true) break;
+
+                if (evt.Message.ToolCalls is { Count: > 0 })
+                {
+                    MergeToolCalls(toolCalls, evt.Message.ToolCalls);
+                }
+
+                if (evt.Done == true)
+                    break;
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning("Ollama JSON parse error on line {LineNum}: {Error}. Line: {Line}", 
-                    lineCount, ex.Message, line.Substring(0, Math.Min(200, line.Length)));
+                _logger.LogWarning(ex, "Failed to parse Ollama stream line: {Line}", line);
             }
         }
-        
-        _logger.LogInformation("Ollama stream finished. Lines read: {LineCount}, Content length: {ContentLength}", 
-            lineCount, fullContent.Length);
 
-        var finalMessage = fullContent.ToString() ?? lastContent ?? string.Empty;
-        return new OllamaChatResult { FinalMessage = finalMessage, IsComplete = true, IsIdempotentRetry = false };
+        return new OllamaChatResponse
+        {
+            Content = fullContent.ToString(),
+            ToolCalls = toolCalls,
+            Thinking = thinking
+        };
     }
 
-    private static List<OllamaMessage> BuildMessagesWithPrompt(List<ChatMessageDTO> history, string systemPrompt)
+    private static List<object> BuildMessages(string systemPrompt, IReadOnlyList<OllamaMessageInput> messages)
     {
-        var result = new List<OllamaMessage> { new OllamaMessage { Role = "system", Content = systemPrompt } };
-        foreach (var m in history.OrderBy(x => x.CreatedAt))
+        var payload = new List<object>
         {
-            // Пропускаем служебные сообщения (шаги агента)
-            if (m.StepNumber.HasValue)
-                continue;
-            if (m.Role is "user" or "assistant" or "system")
-                result.Add(new OllamaMessage { Role = m.Role, Content = m.Content });
-        }
-        return result;
-    }
-
-    private static List<OllamaMessage> BuildMessages(List<ChatMessageDTO> history)
-    {
-        var result = new List<OllamaMessage>();
-
-        result.Add(new OllamaMessage
-        {
-            Role = "system",
-            Content = AgentSystemPrompt.GetSystemPrompt("ru")
-        });
-
-        foreach (var m in history.OrderBy(x => x.CreatedAt))
-        {
-            // Пропускаем служебные сообщения (шаги агента)
-            if (m.StepNumber.HasValue)
-                continue;
-            if (m.Role is "user" or "assistant" or "system")
+            new
             {
-                result.Add(new OllamaMessage { Role = m.Role, Content = m.Content });
+                role = "system",
+                content = systemPrompt
             }
+        };
+
+        foreach (var message in messages)
+        {
+            payload.Add(new
+            {
+                role = message.Role,
+                thinking = message.Thinking,
+                content = message.Content,
+                tool_name = message.ToolName,
+                tool_calls = message.ToolCalls?.Select(tc => new
+                {
+                    type = tc.Type,
+                    id = string.IsNullOrWhiteSpace(tc.Id) ? null : tc.Id,
+                    function = new
+                    {
+                        index = tc.Function?.Index,
+                        name = tc.Name,
+                        arguments = tc.Arguments
+                    }
+                }).ToList()
+            });
         }
-        return result;
+
+        return payload;
     }
 
-    private class OllamaMessage
+    private static OllamaChatResponse ToResponse(OllamaStreamEvent evt)
     {
-        [JsonPropertyName("role")]
-        public string Role { get; set; } = string.Empty;
-
-        [JsonPropertyName("content")]
-        public string Content { get; set; } = string.Empty;
+        return new OllamaChatResponse
+        {
+            Content = evt.Message?.Content ?? string.Empty,
+            ToolCalls = evt.Message?.ToolCalls ?? new List<OllamaToolCall>(),
+            Thinking = evt.Message?.Thinking
+        };
     }
 
-    private class OllamaStreamEvent
+    private static void MergeToolCalls(List<OllamaToolCall> target, List<OllamaToolCall> incoming)
+    {
+        foreach (var toolCall in incoming)
+        {
+            var existingIndex = target.FindIndex(t => IsSameToolCall(t, toolCall));
+            if (existingIndex >= 0)
+                target[existingIndex] = toolCall;
+            else
+                target.Add(toolCall);
+        }
+    }
+
+    private static bool IsSameToolCall(OllamaToolCall left, OllamaToolCall right)
+    {
+        if (!string.IsNullOrWhiteSpace(left.Id) && !string.IsNullOrWhiteSpace(right.Id))
+            return string.Equals(left.Id, right.Id, StringComparison.Ordinal);
+
+        if (left.Function?.Index is not null && right.Function?.Index is not null)
+            return left.Function.Index == right.Function.Index;
+
+        return string.Equals(left.Name, right.Name, StringComparison.Ordinal);
+    }
+
+    private static string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            return value ?? string.Empty;
+
+        return value[..maxLength] + "...[truncated]";
+    }
+
+    private sealed class OllamaStreamEvent
     {
         [JsonPropertyName("message")]
-        public OllamaStreamMessage? Message { get; set; }
+        public OllamaStreamMessage? Message { get; init; }
 
         [JsonPropertyName("done")]
-        public bool? Done { get; set; }
+        public bool? Done { get; init; }
     }
 
-    private class OllamaStreamMessage
+    private sealed class OllamaStreamMessage
     {
         [JsonPropertyName("content")]
-        public string? Content { get; set; }
-        
+        public string? Content { get; init; }
+
         [JsonPropertyName("thinking")]
-        public string? Thinking { get; set; }
-        
+        public string? Thinking { get; init; }
+
         [JsonPropertyName("tool_calls")]
-        public List<OllamaToolCall>? ToolCalls { get; set; }
-    }
-    
-    private class OllamaToolCall
-    {
-        [JsonPropertyName("id")]
-        public string? Id { get; set; }
-        
-        [JsonPropertyName("function")]
-        public OllamaToolFunction? Function { get; set; }
-    }
-    
-    private class OllamaToolFunction
-    {
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
-        
-        [JsonPropertyName("arguments")]
-        public JsonElement? Arguments { get; set; }
+        public List<OllamaToolCall>? ToolCalls { get; init; }
     }
 }

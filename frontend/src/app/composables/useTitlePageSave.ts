@@ -1,6 +1,6 @@
 import { type Ref } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
-import { Canvas, Text, Line, type FabricObject } from 'fabric';
+import { Canvas, Text, Line } from 'fabric';
 import { MM_TO_PX, PX_TO_PT, PT_TO_PX } from '@/entities/title-page/constants';
 import { validateAndFixElementBounds } from '@/entities/title-page/utils/elementUtils';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';

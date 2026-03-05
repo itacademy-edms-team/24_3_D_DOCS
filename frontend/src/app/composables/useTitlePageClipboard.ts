@@ -1,6 +1,6 @@
 import { ref, type Ref, nextTick } from 'vue';
 import { Canvas, type FabricObject } from 'fabric';
-import { A4_WIDTH_PX, A4_HEIGHT_PX, MM_TO_PX } from '@/entities/title-page/constants';
+import { MM_TO_PX } from '@/entities/title-page/constants';
 import { serializeElement, deserializeElement, constrainToBounds, type SerializedElement } from '@/entities/title-page/utils/elementUtils';
 
 /**
@@ -83,13 +83,6 @@ export function useTitlePageClipboard(
 		if (!canvas.value || clipboard.value.length === 0) return;
 		
 		// Find minimum Y coordinate of the element group
-		const minTop = Math.min(...clipboard.value.map(item => {
-			if (item.type === 'line') {
-				return Math.min(item.data.y1, item.data.y2);
-			}
-			return item.data.top || 0;
-		}));
-		
 		// Offset only downward (no horizontal offset)
 		const offsetX = 0;
 		const offsetY = 10 * MM_TO_PX; // 10mm down

@@ -1,67 +1,55 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Agent.Tools.CRUDdocTools;
 
-/// <summary>
-/// Soft-deletes a document by id.
-/// </summary>
-public class DeleteDocumentTool : ITool
+public sealed class DeleteDocumentTool : AgentToolBase<DeleteDocumentTool.Args>
 {
     private readonly IDocumentService _documentService;
-    private readonly ILogger<DeleteDocumentTool> _logger;
 
-    public string Name => "delete_document";
-    public string Description => "Удаляет документ по ID (мягкое удаление — можно восстановить из архива).";
-
-    public DeleteDocumentTool(IDocumentService documentService, ILogger<DeleteDocumentTool> logger)
+    public DeleteDocumentTool(IDocumentService documentService)
     {
         _documentService = documentService;
-        _logger = logger;
     }
 
-    public Dictionary<string, object> GetParametersSchema()
+    public override string Name => "delete_document";
+    public override string Description => "Удаляет документ по id.";
+
+    public override object ParametersSchema => new
     {
-        return new Dictionary<string, object>
+        type = "object",
+        properties = new
         {
-            ["type"] = "object",
-            ["properties"] = new Dictionary<string, object>
+            document_id = new { type = "string", description = "Id документа для удаления" }
+        },
+        required = new[] { "document_id" }
+    };
+
+    protected override async Task<AgentToolExecutionResult> ExecuteTypedAsync(
+        Args arguments,
+        AgentExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(arguments.DocumentId, out var documentId))
+            throw new InvalidOperationException("document_id должен быть корректным Guid.");
+
+        await _documentService.DeleteDocumentAsync(documentId, context.UserId);
+
+        return new AgentToolExecutionResult
+        {
+            ResultMessage = JsonSerializer.Serialize(new
             {
-                ["document_id"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "ID документа для удаления"
-                }
-            },
-            ["required"] = new[] { "document_id" }
+                id = documentId,
+                deleted = true
+            })
         };
     }
 
-    public async Task<string> ExecuteAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
+    public sealed class Args
     {
-        if (!arguments.TryGetValue("user_id", out var _))
-            return "Ошибка: user_id обязателен";
-
-        var userId = Guid.Parse(GetStringValue(arguments, "user_id"));
-        var documentId = Guid.Parse(GetStringValue(arguments, "document_id"));
-
-        await _documentService.DeleteDocumentAsync(documentId, userId);
-        return System.Text.Json.JsonSerializer.Serialize(new
-        {
-            documentId = documentId.ToString(),
-            deleted = true,
-            message = "Документ удалён (можно восстановить из архива)"
-        });
-    }
-
-    private static string GetStringValue(Dictionary<string, object> arguments, string key)
-    {
-        if (!arguments.TryGetValue(key, out var value)) throw new ArgumentException($"Missing required argument: {key}");
-        return value switch
-        {
-            string str => str,
-            JsonElement jsonElement => jsonElement.GetString() ?? throw new InvalidOperationException($"Cannot convert {key} to string"),
-            _ => value.ToString() ?? throw new InvalidOperationException($"Cannot convert {key} to string")
-        };
+        [JsonPropertyName("document_id")]
+        public string DocumentId { get; init; } = string.Empty;
     }
 }

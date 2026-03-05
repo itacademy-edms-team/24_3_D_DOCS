@@ -1,34 +1,43 @@
-using System.Collections.Generic;
 using System.Linq;
 using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Chat;
+using RusalProject.Services.Agent.Core;
+using RusalProject.Services.Agent.Tools.CRUDdocTools;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
 
 namespace RusalProject.Services.Agent;
 
-/// <summary>
-/// Main agent for document management (scope=global). Uses CRUDdocTools with a tool-calling loop.
-/// </summary>
 public class MainAgent : IMainAgent
 {
-    private readonly IOllamaChatService _ollamaChatService;
     private readonly IChatService _chatService;
-    private readonly MainAgentToolExecutor _toolExecutor;
-    private readonly ILogger<MainAgent> _logger;
+    private readonly AgentLoopRunner _runner;
+    private readonly IDocumentAgent _documentAgent;
+    private readonly IReadOnlyList<IAgentTool> _tools;
 
-    private const int MaxToolIterations = 5;
+    private const int MaxToolIterations = 8;
 
     public MainAgent(
-        IOllamaChatService ollamaChatService,
         IChatService chatService,
-        MainAgentToolExecutor toolExecutor,
-        ILogger<MainAgent> logger)
+        AgentLoopRunner runner,
+        IDocumentAgent documentAgent,
+        ListDocumentTool listDocumentsTool,
+        CreateDocumentTool createDocumentTool,
+        DeleteDocumentTool deleteDocumentTool,
+        RenameDocumentTool renameDocumentTool,
+        DelegateToDocumentAgentTool delegateToDocumentAgentTool)
     {
-        _ollamaChatService = ollamaChatService;
         _chatService = chatService;
-        _toolExecutor = toolExecutor;
-        _logger = logger;
+        _runner = runner;
+        _documentAgent = documentAgent;
+        _tools = new IAgentTool[]
+        {
+            listDocumentsTool,
+            createDocumentTool,
+            deleteDocumentTool,
+            renameDocumentTool,
+            delegateToDocumentAgentTool
+        };
     }
 
     public async Task<AgentResponseDTO> RunAsync(
@@ -41,111 +50,58 @@ public class MainAgent : IMainAgent
         if (!request.ChatId.HasValue)
             throw new InvalidOperationException("ChatId обязателен для Main Agent.");
 
-        _logger.LogInformation("MainAgent: Running. ChatId={ChatId}, UserId={UserId}", request.ChatId, userId);
+        var chat = await _chatService.GetChatByIdAsync(request.ChatId.Value, userId)
+            ?? throw new InvalidOperationException("Чат не найден.");
 
-        var chat = await _chatService.GetChatByIdAsync(request.ChatId.Value, userId);
-        if (chat == null)
-            throw new InvalidOperationException("Чат не найден.");
-
-        var messages = new List<OllamaMessageInput>();
-        foreach (var m in chat.Messages.OrderBy(x => x.CreatedAt))
-        {
-            // Пропускаем служебные сообщения (шаги агента с StepNumber) — 
-            // они нужны только для UI, не для контекста LLM
-            if (m.StepNumber.HasValue)
-                continue;
-                
-            if (m.Role is "user" or "assistant" or "system")
-                messages.Add(new OllamaMessageInput(m.Role, m.Content));
-        }
-
-        var systemPrompt = MainAgentSystemPrompt.GetSystemPrompt();
-        var steps = new List<AgentStepDTO>();
-        var stepNumber = 0;
-        string? finalMessage = null;
-
-        Func<string, Task>? CreateFilteredChunkCallback()
-        {
-            if (onChunk == null) return null;
-            var buffer = new System.Text.StringBuilder();
-            var lastForwarded = 0;
-            var stopped = false;
-            return async (chunk) =>
+        var history = chat.Messages
+            .OrderBy(x => x.CreatedAt)
+            .Where(m => !m.StepNumber.HasValue && m.Role is "user" or "assistant" or "system")
+            .Select(m => new OllamaMessageInput
             {
-                if (stopped) return;
-                buffer.Append(chunk);
-                var s = buffer.ToString();
-                var idx = s.IndexOf("TOOL_CALL", StringComparison.OrdinalIgnoreCase);
-                if (idx >= 0)
-                {
-                    var toSend = s.Substring(lastForwarded, idx - lastForwarded);
-                    if (toSend.Length > 0)
-                        await onChunk(toSend);
-                    stopped = true;
-                    return;
-                }
-                var holdBack = Math.Min(8, s.Length);
-                var safeEnd = s.Length - holdBack;
-                if (safeEnd > lastForwarded)
-                {
-                    var toSend = s.Substring(lastForwarded, safeEnd - lastForwarded);
-                    await onChunk(toSend);
-                    lastForwarded = safeEnd;
-                }
-            };
-        }
+                Role = m.Role,
+                Content = m.Content
+            })
+            .ToList();
 
-        for (var i = 0; i < MaxToolIterations; i++)
+        var loopResult = await _runner.RunAsync(
+            new AgentExecutionContext { UserId = userId },
+            GetSystemPrompt(),
+            _tools,
+            history,
+            MaxToolIterations,
+            onStepUpdate,
+            onChunk,
+            cancellationToken);
+
+        if (loopResult.Delegation != null)
         {
-            var chunkCallback = CreateFilteredChunkCallback();
+            var delegatedRequest = new AgentRequestDTO
+            {
+                ChatId = request.ChatId,
+                Scope = Models.Types.ChatScope.Document,
+                DocumentId = loopResult.Delegation.DocumentId,
+                UserMessage = BuildDocumentAgentTask(loopResult.Delegation.Task)
+            };
 
-            var result = await _ollamaChatService.SendMessagesAsync(
+            var delegatedResponse = await _documentAgent.RunAsync(
+                delegatedRequest,
                 userId,
-                messages,
-                systemPrompt,
-                chunkCallback,
+                onStepUpdate,
+                null,
+                onChunk,
                 cancellationToken);
 
-            var response = result.FinalMessage;
-
-            var (_, toolBlock) = _toolExecutor.SplitToolCall(response);
-
-            if (string.IsNullOrEmpty(toolBlock))
+            return new AgentResponseDTO
             {
-                finalMessage = response.Trim();
-                break;
-            }
-
-            if (!_toolExecutor.TryParseToolCall(toolBlock, out var toolName, out var args))
-            {
-                _logger.LogWarning("Failed to parse TOOL_CALL block: {Block}", toolBlock);
-                finalMessage = response.Trim();
-                break;
-            }
-
-            stepNumber++;
-            var (toolResult, toolCallDto) = await _toolExecutor.ExecuteAsync(toolName, args, userId, cancellationToken);
-
-            var description = MainAgentToolExecutor.GetToolDescription(toolName, args);
-            var step = new AgentStepDTO
-            {
-                StepNumber = stepNumber,
-                Description = description,
-                ToolCalls = new List<ToolCallDTO> { toolCallDto },
-                ToolResult = toolResult
+                FinalMessage = delegatedResponse.FinalMessage,
+                Steps = loopResult.Steps.Concat(delegatedResponse.Steps).ToList(),
+                IsComplete = delegatedResponse.IsComplete
             };
-            steps.Add(step);
-            await (onStepUpdate?.Invoke(step) ?? Task.CompletedTask);
-
-            messages.Add(new OllamaMessageInput("assistant", response));
-            messages.Add(new OllamaMessageInput("user", $"Результат вызова {toolName}: {toolResult}\n\nИспользуй этот результат для ответа пользователю."));
         }
 
-        if (string.IsNullOrEmpty(finalMessage))
-        {
-            _logger.LogWarning("MainAgent: LLM returned empty response, using fallback message");
-            finalMessage = "Не удалось получить ответ от модели. Попробуйте ещё раз.";
-        }
+        var finalMessage = string.IsNullOrWhiteSpace(loopResult.FinalMessage)
+            ? "Готово."
+            : loopResult.FinalMessage;
 
         await _chatService.AddMessageAsync(request.ChatId.Value, new ChatMessageDTO
         {
@@ -153,7 +109,7 @@ public class MainAgent : IMainAgent
             Content = finalMessage
         }, userId);
 
-        if (steps.Count > 0 && onChunk != null && !string.IsNullOrWhiteSpace(finalMessage))
+        if (loopResult.Steps.Count > 0 && onChunk != null && !string.IsNullOrWhiteSpace(finalMessage))
         {
             await onChunk("\n\n");
             await onChunk(finalMessage);
@@ -162,8 +118,48 @@ public class MainAgent : IMainAgent
         return new AgentResponseDTO
         {
             FinalMessage = finalMessage,
-            Steps = steps,
+            Steps = loopResult.Steps,
             IsComplete = true
         };
+    }
+
+    private static string GetSystemPrompt()
+    {
+        return """
+IMPORTANT: Отвечай пользователю на русском языке.
+
+Ты главный агент управления документами.
+
+Ты умеешь:
+- получать список документов;
+- создавать документы;
+- переименовывать документы;
+- удалять документы;
+- передавать задачу агенту документа для работы с содержимым.
+
+Правила:
+- Никогда не редактируй содержимое документа сам.
+- Если пользователь просит изменить текст, раздел, абзац, таблицу, заголовок или другой контент документа, используй delegate_to_document_agent.
+- Если пользователь просит создать новый документ и сразу наполнить его содержимым, сначала создай документ через create_document, а затем в этом же ответе обязательно вызови delegate_to_document_agent для наполнения документа.
+- Не останавливайся после create_document, если запрос пользователя подразумевает содержимое документа, план, отчёт, статью, описание или другой текст внутри файла.
+- Если для делегации непонятно, какой документ нужен, сначала используй list_documents и выбери документ по названию.
+- Если пользователь просто общается или задаёт вопрос без действия, отвечай коротко без вызова инструментов.
+- В итоговом ответе не показывай пользователю внутренние id документов и сырые tool-результаты.
+- Когда задача сделана, дай короткий итоговый ответ.
+""";
+    }
+
+    private static string BuildDocumentAgentTask(string task)
+    {
+        var normalizedTask = task.Trim();
+        return $"""
+Выполни задачу через инструменты редактирования документа, а не обычным ответом в чат.
+Нужно изменить содержимое текущего документа.
+Если документ пустой и требуется написать новый текст, используй propose_insert со start_line = 0.
+Если для точной правки нужен контекст, сначала используй read_document, затем propose_insert, propose_replace или propose_delete.
+
+Задача:
+{normalizedTask}
+""";
     }
 }

@@ -1,4 +1,4 @@
-import { ref, type Ref, onMounted, onUnmounted } from 'vue';
+import { type Ref } from 'vue';
 import { useKeyModifier } from '@vueuse/core';
 import { useEventListener } from '@vueuse/core';
 import { Canvas, Line, type FabricObject } from 'fabric';

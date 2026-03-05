@@ -55,11 +55,11 @@ function measureElementHeight(element: HTMLElement): number {
 	return rect.height + marginTop + marginBottom;
 }
 
-export interface SplitIntoPagesOptions {
+interface SplitIntoPagesOptions {
 	returnElementPageMap?: boolean;
 }
 
-export interface SplitIntoPagesResult {
+interface SplitIntoPagesResult {
 	pages: string[];
 	elementPageMap: Record<number, number>;
 }

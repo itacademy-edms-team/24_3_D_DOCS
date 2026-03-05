@@ -4,7 +4,7 @@ import { A4_WIDTH_PX, A4_HEIGHT_PX, MM_TO_PX } from '../constants';
 /**
  * Element bounds with center points
  */
-export interface ElementBounds {
+interface ElementBounds {
 	left: number;
 	right: number;
 	top: number;

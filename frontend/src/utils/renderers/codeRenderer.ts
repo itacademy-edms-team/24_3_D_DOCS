@@ -40,7 +40,7 @@ export function renderInlineCode(
 	doc: Document,
 	usedIds: Set<string>,
 	profile: ProfileData | null,
-	overrides: Record<string, EntityStyle>,
+	_overrides: Record<string, EntityStyle>,
 	selectable: boolean
 ): void {
 	doc.querySelectorAll('code').forEach((codeElement) => {

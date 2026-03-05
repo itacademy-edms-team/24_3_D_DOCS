@@ -1,82 +1,55 @@
 using System.Text.Json;
+using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Agent.Tools.CRUDdocTools;
 
-/// <summary>
-/// Returns list of documents with id, name and updatedAt. No content.
-/// </summary>
-public class ListDocumentTool : ITool
+public sealed class ListDocumentTool : AgentToolBase<ListDocumentTool.Args>
 {
     private readonly IDocumentService _documentService;
-    private readonly ILogger<ListDocumentTool> _logger;
 
-    public string Name => "list_documents";
-    public string Description => "Возвращает список всех документов пользователя: id, название, дата изменения. Без содержимого.";
-
-    public ListDocumentTool(IDocumentService documentService, ILogger<ListDocumentTool> logger)
+    public ListDocumentTool(IDocumentService documentService)
     {
         _documentService = documentService;
-        _logger = logger;
     }
 
-    public Dictionary<string, object> GetParametersSchema()
+    public override string Name => "list_documents";
+    public override string Description => "Получает список документов пользователя с id, названием и датой изменения.";
+
+    public override object ParametersSchema => new
     {
-        return new Dictionary<string, object>
+        type = "object",
+        properties = new
         {
-            ["type"] = "object",
-            ["properties"] = new Dictionary<string, object>
+            search = new
             {
-                ["search"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "Поиск по названию (опционально)"
-                }
-            },
-            ["required"] = Array.Empty<string>()
-        };
-    }
-
-    public async Task<string> ExecuteAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
-    {
-        if (!arguments.TryGetValue("user_id", out var _))
-            return "Ошибка: user_id обязателен";
-
-        var userId = Guid.Parse(GetStringValue(arguments, "user_id"));
-        string? search = GetStringValueSafe(arguments, "search");
-
-        var documents = await _documentService.GetDocumentsAsync(userId, null, search);
-
-        var result = documents.Select(d => new
-        {
-            id = d.Id.ToString(),
-            name = d.Name,
-            updatedAt = d.UpdatedAt.ToString("O")
-        }).ToList();
-
-        return System.Text.Json.JsonSerializer.Serialize(result);
-    }
-
-    private static string GetStringValue(Dictionary<string, object> arguments, string key)
-    {
-        if (!arguments.TryGetValue(key, out var value)) throw new ArgumentException($"Missing required argument: {key}");
-        return value switch
-        {
-            string str => str,
-            JsonElement jsonElement => jsonElement.GetString() ?? throw new InvalidOperationException($"Cannot convert {key} to string"),
-            _ => value.ToString() ?? throw new InvalidOperationException($"Cannot convert {key} to string")
-        };
-    }
-
-    private static string? GetStringValueSafe(Dictionary<string, object> arguments, string key)
-    {
-        if (!arguments.TryGetValue(key, out var value) || value == null) return null;
-        if (value is string str && !string.IsNullOrWhiteSpace(str)) return str;
-        if (value is JsonElement je)
-        {
-            var s = je.GetString();
-            return string.IsNullOrWhiteSpace(s) ? null : s;
+                type = "string",
+                description = "Подстрока для поиска по названию документа"
+            }
         }
-        return value.ToString();
+    };
+
+    protected override async Task<AgentToolExecutionResult> ExecuteTypedAsync(
+        Args arguments,
+        AgentExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        var documents = await _documentService.GetDocumentsAsync(context.UserId, null, arguments.Search);
+        var payload = documents.Select(d => new
+        {
+            id = d.Id,
+            name = d.Name,
+            updatedAt = d.UpdatedAt
+        });
+
+        return new AgentToolExecutionResult
+        {
+            ResultMessage = JsonSerializer.Serialize(payload)
+        };
+    }
+
+    public sealed class Args
+    {
+        public string? Search { get; init; }
     }
 }

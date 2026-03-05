@@ -61,7 +61,7 @@ public class AttachmentsController : ControllerBase
 
             using var stream = await _attachmentService.DownloadAttachmentAsync(id, userId);
             var bytes = new byte[stream.Length];
-            await stream.ReadAsync(bytes, 0, (int)stream.Length);
+            await stream.ReadExactlyAsync(bytes);
             return File(bytes, attachment.ContentType, attachment.FileName);
         }
         catch (FileNotFoundException)
@@ -143,4 +143,3 @@ public class AttachmentsController : ControllerBase
         }
     }
 }
-

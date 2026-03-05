@@ -1,5 +1,5 @@
-import { computed, type Ref } from 'vue';
-import { A4_WIDTH_MM, A4_HEIGHT_MM, MM_TO_PX, type RulerMark, type MousePosition } from '@/entities/title-page/constants';
+import { computed } from 'vue';
+import { A4_WIDTH_MM, A4_HEIGHT_MM, MM_TO_PX, type RulerMark } from '@/entities/title-page/constants';
 
 /**
  * Composable for managing title page rulers

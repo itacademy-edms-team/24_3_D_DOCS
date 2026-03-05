@@ -111,7 +111,7 @@ public class PdfGeneratorService : IPdfGeneratorService
             // Attempt to embed images referenced in title page data (no-op if none)
             if (titlePage != null)
             {
-                titlePage.Data = await EmbedImagesInTitlePageDataAsync(titlePage.Data, userId);
+                titlePage.Data = await EmbedImagesInTitlePageDataAsync(titlePage.Data, userId) ?? new Models.Types.TitlePageData();
             }
 
             var renderData = new
@@ -152,7 +152,7 @@ public class PdfGeneratorService : IPdfGeneratorService
 
             // Prepare data for rendering
             // Embed images in title page data if any (no-op for most cases)
-            titlePage.Data = await EmbedImagesInTitlePageDataAsync(titlePage.Data, userId);
+            titlePage.Data = await EmbedImagesInTitlePageDataAsync(titlePage.Data, userId) ?? new Models.Types.TitlePageData();
 
             var renderData = new
             {

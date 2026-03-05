@@ -36,8 +36,6 @@ interface TitlePageElement {
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const MM_TO_PX = 3.7795275591;
-const PX_TO_MM = 1 / MM_TO_PX;
-const PX_TO_PT = 72 / 96; // 0.75
 const PT_TO_MM = 25.4 / 72; // Конвертация пунктов в миллиметры: 1pt = 25.4/72mm
 
 /**

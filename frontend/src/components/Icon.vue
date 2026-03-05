@@ -11,14 +11,10 @@
 <script setup>
 import { computed } from 'vue'
 import send from '../assets/icons/chat/send.svg?raw'
-import microphone from '../assets/icons/chat/microphone.svg?raw'
 import stop from '../assets/icons/chat/stop.svg?raw'
-import retry from '../assets/icons/chat/retry.svg?raw'
 import assistant from '../assets/icons/chat/assistant.svg?raw'
 import user from '../assets/icons/chat/user.svg?raw'
-import attachment from '../assets/icons/chat/attachment.svg?raw'
 import settings from '../assets/icons/chat/settings.svg?raw'
-import more_vert from '../assets/icons/chat/more_vert.svg?raw'
 import close from '../assets/icons/chat/close.svg?raw'
 import plus from '../assets/icons/chat/plus.svg?raw'
 import copy from '../assets/icons/chat/copy.svg?raw'
@@ -29,7 +25,6 @@ import text_fields from '../assets/icons/toolbar/text_fields.svg?raw'
 import code from '../assets/icons/toolbar/code.svg?raw'
 import horizontal_rule from '../assets/icons/toolbar/horizontal_rule.svg?raw'
 import grid_on from '../assets/icons/toolbar/grid_on.svg?raw'
-import undo from '../assets/icons/toolbar/undo.svg?raw'
 import redo from '../assets/icons/toolbar/redo.svg?raw'
 import content_copy from '../assets/icons/toolbar/content_copy.svg?raw'
 import select_all from '../assets/icons/toolbar/select_all.svg?raw'
@@ -61,14 +56,10 @@ const props = defineProps({
 
 const icons = {
   send,
-  microphone,
   stop,
-  retry,
   assistant,
   user,
-  attachment,
   settings,
-  more_vert,
   close,
   plus,
   copy,
@@ -79,7 +70,6 @@ const icons = {
   code,
   horizontal_rule,
   grid_on,
-  undo,
   redo,
   content_copy,
   select_all,
@@ -122,4 +112,3 @@ const ariaRole = computed(() => (props.decorative ? 'img' : 'img'))
   stroke: currentColor;
 }
 </style>
-

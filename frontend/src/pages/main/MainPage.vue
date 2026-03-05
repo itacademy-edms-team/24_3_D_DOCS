@@ -319,6 +319,7 @@
 		<ChatDock
 			v-model:open="showAIPanel"
 			scope="global"
+			@document-content-changed="handleAgentDocumentChanged"
 			@width-changed="handleChatDockWidthChanged"
 		/>
 	</div>
@@ -633,16 +634,6 @@ function handleDocumentAction(document: DocumentMeta, action: string) {
 	}
 }
 
-function handleCopy(item: Profile | DocumentMeta) {
-	console.log('Copy:', item);
-	// TODO: Implement copy functionality
-}
-
-function handleDownload(item: Profile | DocumentMeta) {
-	console.log('Download:', item);
-	// TODO: Implement download functionality
-}
-
 function downloadFile(blob: Blob, filename: string) {
 	const url = URL.createObjectURL(blob);
 	const link = window.document.createElement('a');
@@ -737,8 +728,12 @@ function handleSettings() {
 	router.push('/settings');
 }
 
-const handleChatDockWidthChanged = (width: number) => {
+const handleChatDockWidthChanged = (_width: number) => {
 	// Layout can react to panel width if needed
+};
+
+const handleAgentDocumentChanged = async () => {
+	await loadData();
 };
 
 async function handleLogout() {
@@ -773,13 +768,11 @@ onMounted(async () => {
 			// Если авторизация не удалась, роутер должен редиректить на /auth
 			// Но на всякий случай проверяем еще раз
 			if (!authStore.isAuth) {
-				console.log('User not authenticated, redirecting to /auth');
 				router.push('/auth');
 			}
 		}
 	} else {
 		// Если пользователь не авторизован, редиректим на страницу входа
-		console.log('User not authenticated, redirecting to /auth');
 		router.push('/auth');
 	}
 });

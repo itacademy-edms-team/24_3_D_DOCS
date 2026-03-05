@@ -16,6 +16,7 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<User> Users { get; set; }
     public DbSet<SchemaLink> SchemaLinks { get; set; }
     public DbSet<DocumentLink> DocumentLinks { get; set; }
+    public DbSet<DocumentAiChange> DocumentAiChanges { get; set; }
     public DbSet<DocumentVersion> DocumentVersions { get; set; }
     public DbSet<TitlePage> TitlePages { get; set; }
     public DbSet<ChatSession> ChatSessions { get; set; }
@@ -131,6 +132,28 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
                   .WithMany()
                   .HasForeignKey(d => d.TitlePageId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<DocumentAiChange>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.DocumentId)
+                  .HasDatabaseName("IX_document_ai_changes_document_id");
+
+            entity.HasIndex(e => e.ChangeId)
+                  .HasDatabaseName("IX_document_ai_changes_change_id");
+
+            entity.HasIndex(e => e.GroupId)
+                  .HasDatabaseName("IX_document_ai_changes_group_id");
+
+            entity.Property(e => e.CreatedAt)
+                  .HasDefaultValueSql("NOW()");
+
+            entity.HasOne(e => e.Document)
+                  .WithMany()
+                  .HasForeignKey(e => e.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure DocumentVersion entity

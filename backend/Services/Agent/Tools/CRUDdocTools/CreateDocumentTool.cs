@@ -1,101 +1,70 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RusalProject.Models.DTOs.Document;
+using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Agent.Tools.CRUDdocTools;
 
-/// <summary>
-/// Creates a new document with name, optional description and initialContent.
-/// </summary>
-public class CreateDocumentTool : ITool
+public sealed class CreateDocumentTool : AgentToolBase<CreateDocumentTool.Args>
 {
     private readonly IDocumentService _documentService;
-    private readonly ILogger<CreateDocumentTool> _logger;
 
-    public string Name => "create_document";
-    public string Description => "Создаёт новый документ. Параметры: name (обязательно), description, initialContent (опционально).";
-
-    public CreateDocumentTool(IDocumentService documentService, ILogger<CreateDocumentTool> logger)
+    public CreateDocumentTool(IDocumentService documentService)
     {
         _documentService = documentService;
-        _logger = logger;
     }
 
-    public Dictionary<string, object> GetParametersSchema()
+    public override string Name => "create_document";
+    public override string Description => "Создаёт новый документ.";
+
+    public override object ParametersSchema => new
     {
-        return new Dictionary<string, object>
+        type = "object",
+        properties = new
         {
-            ["type"] = "object",
-            ["properties"] = new Dictionary<string, object>
-            {
-                ["name"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "Название документа (обязательно)"
-                },
-                ["description"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "Описание документа (опционально)"
-                },
-                ["initialContent"] = new Dictionary<string, object>
-                {
-                    ["type"] = "string",
-                    ["description"] = "Начальный Markdown-контент документа (опционально)"
-                }
-            },
-            ["required"] = new[] { "name" }
-        };
-    }
+            name = new { type = "string", description = "Название нового документа" },
+            description = new { type = "string", description = "Описание документа" },
+            initial_content = new { type = "string", description = "Начальный markdown-текст документа" }
+        },
+        required = new[] { "name" }
+    };
 
-    public async Task<string> ExecuteAsync(Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
+    protected override async Task<AgentToolExecutionResult> ExecuteTypedAsync(
+        Args arguments,
+        AgentExecutionContext context,
+        CancellationToken cancellationToken)
     {
-        if (!arguments.TryGetValue("user_id", out var _))
-            return "Ошибка: user_id обязателен";
+        if (string.IsNullOrWhiteSpace(arguments.Name))
+            throw new InvalidOperationException("name обязателен для create_document.");
 
-        var userId = Guid.Parse(GetStringValue(arguments, "user_id"));
-        var name = GetStringValue(arguments, "name");
-
-        if (string.IsNullOrWhiteSpace(name))
-            return "Ошибка: name не должен быть пустым";
-
-        var dto = new CreateDocumentDTO
+        var document = await _documentService.CreateDocumentAsync(context.UserId, new CreateDocumentDTO
         {
-            Name = name.Trim(),
-            Description = GetStringValueOptional(arguments, "description"),
-            InitialContent = GetStringValueOptional(arguments, "initialContent")
-        };
-
-        var document = await _documentService.CreateDocumentAsync(userId, dto);
-        return System.Text.Json.JsonSerializer.Serialize(new
-        {
-            id = document.Id.ToString(),
-            name = document.Name,
-            created = true,
-            message = $"Документ «{document.Name}» создан"
+            Name = arguments.Name.Trim(),
+            Description = string.IsNullOrWhiteSpace(arguments.Description) ? null : arguments.Description.Trim(),
+            InitialContent = arguments.InitialContent
         });
-    }
 
-    private static string GetStringValue(Dictionary<string, object> arguments, string key)
-    {
-        if (!arguments.TryGetValue(key, out var value)) throw new ArgumentException($"Missing required argument: {key}");
-        return value switch
+        return new AgentToolExecutionResult
         {
-            string str => str,
-            JsonElement jsonElement => jsonElement.GetString() ?? throw new InvalidOperationException($"Cannot convert {key} to string"),
-            _ => value.ToString() ?? throw new InvalidOperationException($"Cannot convert {key} to string")
+            ResultMessage = JsonSerializer.Serialize(new
+            {
+                id = document.Id,
+                name = document.Name,
+                created = true
+            })
         };
     }
 
-    private static string? GetStringValueOptional(Dictionary<string, object> arguments, string key)
+    public sealed class Args
     {
-        if (!arguments.TryGetValue(key, out var value) || value == null) return null;
-        var s = value switch
-        {
-            string str => str,
-            JsonElement je => je.GetString(),
-            _ => value.ToString()
-        };
-        return string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        [JsonPropertyName("name")]
+        public string Name { get; init; } = string.Empty;
+
+        [JsonPropertyName("description")]
+        public string? Description { get; init; }
+
+        [JsonPropertyName("initial_content")]
+        public string? InitialContent { get; init; }
     }
 }

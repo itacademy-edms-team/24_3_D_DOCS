@@ -5,6 +5,7 @@ using System.Formats.Tar;
 using System.Threading;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Document;
 using RusalProject.Models.Entities;
 using RusalProject.Models.Exceptions;
@@ -171,6 +172,8 @@ public class DocumentService : IDocumentService
             withContent.StyleOverrides = new Dictionary<string, object>();
         }
 
+        withContent.AiChanges = await GetPendingDocumentChangesAsync(documentId, userId);
+
         return withContent;
     }
 
@@ -256,6 +259,141 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("UpdateDocumentContentAsync: Content saved successfully to MinIO");
+    }
+
+    public async Task AddPendingDocumentChangesAsync(Guid documentId, Guid userId, IReadOnlyCollection<DocumentEntityChangeDTO> changes)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        if (changes.Count == 0)
+            return;
+
+        var entities = changes.Select(change => new DocumentAiChange
+        {
+            DocumentId = documentId,
+            ChangeId = change.ChangeId,
+            ChangeType = change.ChangeType,
+            EntityType = change.EntityType,
+            StartLine = change.StartLine,
+            EndLine = change.EndLine,
+            Content = change.Content,
+            GroupId = change.GroupId,
+            Order = change.Order,
+            CreatedAt = DateTime.UtcNow
+        }).ToList();
+
+        _context.DocumentAiChanges.AddRange(entities);
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<DocumentEntityChangeDTO>> GetPendingDocumentChangesAsync(Guid documentId, Guid userId)
+    {
+        var documentExists = await _context.DocumentLinks
+            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (!documentExists)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        return await _context.DocumentAiChanges
+            .Where(c => c.DocumentId == documentId)
+            .OrderBy(c => c.CreatedAt)
+            .ThenBy(c => c.StartLine)
+            .ThenBy(c => c.Order ?? 0)
+            .Select(c => new DocumentEntityChangeDTO
+            {
+                ChangeId = c.ChangeId,
+                ChangeType = c.ChangeType,
+                EntityType = c.EntityType,
+                StartLine = c.StartLine,
+                EndLine = c.EndLine,
+                Content = c.Content,
+                GroupId = c.GroupId,
+                Order = c.Order
+            })
+            .ToListAsync();
+    }
+
+    public async Task AcceptPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var allPendingChanges = await _context.DocumentAiChanges
+            .Where(c => c.DocumentId == documentId)
+            .OrderBy(c => c.CreatedAt)
+            .ThenBy(c => c.StartLine)
+            .ThenBy(c => c.Order ?? 0)
+            .ToListAsync();
+
+        var targetChange = allPendingChanges.FirstOrDefault(c => c.ChangeId == changeId);
+        if (targetChange == null)
+        {
+            _logger.LogInformation("AcceptPendingDocumentChangeAsync: change {ChangeId} already removed, treating as no-op", changeId);
+            return;
+        }
+
+        var groupKey = targetChange.GroupId ?? targetChange.ChangeId;
+        var groupChanges = allPendingChanges
+            .Where(c => (c.GroupId ?? c.ChangeId) == groupKey)
+            .OrderBy(c => c.Order ?? 0)
+            .ThenBy(c => c.CreatedAt)
+            .ToList();
+
+        var currentDocument = await GetDocumentWithContentAsync(documentId, userId);
+        var currentContent = currentDocument?.Content ?? string.Empty;
+        var updatedContent = ApplyAcceptedChangeGroup(currentContent, groupChanges);
+
+        var bucket = GetUserBucket(userId);
+        var contentBytes = Encoding.UTF8.GetBytes(updatedContent);
+        using var contentStream = new MemoryStream(contentBytes);
+        await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStream, "text/markdown");
+
+        var remainingChanges = allPendingChanges
+            .Where(c => (c.GroupId ?? c.ChangeId) != groupKey)
+            .ToList();
+
+        RebasePendingChangesAfterAccept(remainingChanges, groupChanges);
+
+        _context.DocumentAiChanges.RemoveRange(groupChanges);
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task RejectPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId)
+    {
+        var document = await _context.DocumentLinks
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+
+        if (document == null)
+            throw new FileNotFoundException($"Document {documentId} not found");
+
+        var allPendingChanges = await _context.DocumentAiChanges
+            .Where(c => c.DocumentId == documentId)
+            .ToListAsync();
+
+        var targetChange = allPendingChanges.FirstOrDefault(c => c.ChangeId == changeId);
+        if (targetChange == null)
+        {
+            _logger.LogInformation("RejectPendingDocumentChangeAsync: change {ChangeId} already removed, treating as no-op", changeId);
+            return;
+        }
+
+        var groupKey = targetChange.GroupId ?? targetChange.ChangeId;
+        var groupChanges = allPendingChanges
+            .Where(c => (c.GroupId ?? c.ChangeId) == groupKey)
+            .ToList();
+
+        _context.DocumentAiChanges.RemoveRange(groupChanges);
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
     }
 
     public async Task UpdateDocumentOverridesAsync(Guid documentId, Guid userId, Dictionary<string, object> overrides)
@@ -437,6 +575,7 @@ public class DocumentService : IDocumentService
         await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStream, "text/markdown");
 
         document.UpdatedAt = DateTime.UtcNow;
+        await ClearPendingDocumentChangesAsync(documentId);
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Restored version {VersionId} for document {DocumentId}", versionId, documentId);
@@ -1211,5 +1350,172 @@ public class DocumentService : IDocumentService
             ".svg" => "image/svg+xml",
             _ => "application/octet-stream"
         };
+    }
+
+    private async Task ClearPendingDocumentChangesAsync(Guid documentId)
+    {
+        var pendingChanges = await _context.DocumentAiChanges
+            .Where(c => c.DocumentId == documentId)
+            .ToListAsync();
+
+        if (pendingChanges.Count > 0)
+            _context.DocumentAiChanges.RemoveRange(pendingChanges);
+    }
+
+    private static string ApplyAcceptedChangeGroup(string currentContent, IReadOnlyCollection<DocumentAiChange> groupChanges)
+    {
+        var normalizedContent = currentContent.Replace("\r\n", "\n");
+        var lines = normalizedContent.Length == 0 ? new List<string>() : normalizedContent.Split('\n').ToList();
+
+        var deletePart = groupChanges
+            .Where(c => string.Equals(c.ChangeType, "delete", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c.Order ?? 0)
+            .ThenBy(c => c.CreatedAt)
+            .ToList();
+
+        var insertPart = groupChanges
+            .Where(c => string.Equals(c.ChangeType, "insert", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c.Order ?? 0)
+            .ThenBy(c => c.CreatedAt)
+            .ToList();
+
+        if (deletePart.Count > 0)
+        {
+            var startLine = deletePart.Min(c => c.StartLine);
+            var endLine = deletePart.Max(c => c.EndLine ?? c.StartLine);
+            startLine = Math.Clamp(startLine, 1, Math.Max(lines.Count, 1));
+            endLine = Math.Clamp(endLine, startLine, lines.Count);
+
+            if (lines.Count > 0 && endLine >= startLine)
+                lines.RemoveRange(startLine - 1, endLine - startLine + 1);
+
+            if (insertPart.Count > 0)
+            {
+                var replacementLines = MergeGroupedContent(insertPart);
+                var insertIndex = Math.Clamp(startLine - 1, 0, lines.Count);
+                lines.InsertRange(insertIndex, replacementLines);
+            }
+
+            return string.Join("\n", lines);
+        }
+
+        if (insertPart.Count > 0)
+        {
+            var insertAfterLine = insertPart.Min(c => c.StartLine);
+            var insertIndex = Math.Clamp(insertAfterLine, 0, lines.Count);
+            lines.InsertRange(insertIndex, MergeGroupedContent(insertPart));
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static List<string> MergeGroupedContent(IReadOnlyCollection<DocumentAiChange> changes)
+    {
+        var content = string.Join(
+            "\n",
+            changes
+                .OrderBy(c => c.Order ?? 0)
+                .ThenBy(c => c.CreatedAt)
+                .Select(c => c.Content.Trim('\n'))
+        ).Trim('\n');
+
+        if (string.IsNullOrEmpty(content))
+            return new List<string>();
+
+        return content.Split('\n').ToList();
+    }
+
+    private void RebasePendingChangesAfterAccept(List<DocumentAiChange> remainingChanges, IReadOnlyCollection<DocumentAiChange> acceptedGroup)
+    {
+        if (remainingChanges.Count == 0 || acceptedGroup.Count == 0)
+            return;
+
+        var acceptedDelete = acceptedGroup
+            .Where(c => string.Equals(c.ChangeType, "delete", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var acceptedInsert = acceptedGroup
+            .Where(c => string.Equals(c.ChangeType, "insert", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (acceptedDelete.Count == 0 && acceptedInsert.Count > 0)
+        {
+            var anchorLine = acceptedInsert.Min(c => c.StartLine);
+            var delta = CountLines(acceptedInsert);
+            var conflicting = new List<DocumentAiChange>();
+
+            foreach (var change in remainingChanges)
+            {
+                var changeStart = change.StartLine;
+                var changeEnd = change.EndLine ?? change.StartLine;
+
+                // Pending change whose range spans the insertion anchor is conflicting
+                var overlaps = string.Equals(change.ChangeType, "insert", StringComparison.OrdinalIgnoreCase)
+                    ? changeStart == anchorLine
+                    : changeStart <= anchorLine && changeEnd > anchorLine;
+
+                if (overlaps)
+                {
+                    conflicting.Add(change);
+                    continue;
+                }
+
+                if (change.StartLine > anchorLine)
+                    change.StartLine += delta;
+                if (change.EndLine.HasValue && change.EndLine.Value > anchorLine)
+                    change.EndLine += delta;
+            }
+
+            if (conflicting.Count > 0)
+                _context.DocumentAiChanges.RemoveRange(conflicting);
+
+            return;
+        }
+
+        if (acceptedDelete.Count == 0)
+            return;
+
+        var deleteStart = acceptedDelete.Min(c => c.StartLine);
+        var deleteEnd = acceptedDelete.Max(c => c.EndLine ?? c.StartLine);
+        var deltaAfterDelete = CountLines(acceptedInsert) - (deleteEnd - deleteStart + 1);
+        var conflictingChanges = new List<DocumentAiChange>();
+
+        foreach (var change in remainingChanges)
+        {
+            var changeStart = change.StartLine;
+            var changeEnd = change.EndLine ?? change.StartLine;
+            var overlapsDeletedRange = string.Equals(change.ChangeType, "insert", StringComparison.OrdinalIgnoreCase)
+                ? changeStart >= deleteStart && changeStart <= deleteEnd
+                : changeStart <= deleteEnd && changeEnd >= deleteStart;
+
+            if (overlapsDeletedRange)
+            {
+                conflictingChanges.Add(change);
+                continue;
+            }
+
+            if (changeStart > deleteEnd)
+                change.StartLine += deltaAfterDelete;
+            if (change.EndLine.HasValue && change.EndLine.Value > deleteEnd)
+                change.EndLine += deltaAfterDelete;
+        }
+
+        if (conflictingChanges.Count > 0)
+            _context.DocumentAiChanges.RemoveRange(conflictingChanges);
+    }
+
+    private static int CountLines(IEnumerable<DocumentAiChange> changes)
+    {
+        var content = string.Join(
+            "\n",
+            changes
+                .OrderBy(c => c.Order ?? 0)
+                .ThenBy(c => c.CreatedAt)
+                .Select(c => c.Content.Trim('\n'))
+        ).Trim('\n');
+
+        if (string.IsNullOrEmpty(content))
+            return 0;
+
+        return content.Split('\n').Length;
     }
 }

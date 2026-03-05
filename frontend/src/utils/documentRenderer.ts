@@ -3,7 +3,6 @@ import markdownItMark from 'markdown-it-mark';
 import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
 import type { ProfileData, EntityStyle } from '@/entities/profile/types';
-import { renderLatex } from './renderers/formulaRenderer';
 import { renderParagraphs } from './renderers/paragraphRenderer';
 import { renderHeadings } from './renderers/headingRenderer';
 import { renderImages } from './renderers/imageRenderer';
@@ -85,7 +84,7 @@ export function renderDocument(options: RenderDocumentOptions): string {
 	// Custom tag won't be processed by markdown-it, allowing us to restore it later
 	preprocessedMarkdown = preprocessedMarkdown.replace(
 		/\[(IMAGE|TABLE|FORMULA)-CAPTION:\s*([^\]]+)\]/g,
-		(match, type, text) => {
+		(_match, type, text) => {
 			// Escape special characters in text to avoid issues with HTML attributes
 			const escapedText = text
 				.replace(/&/g, '&amp;')

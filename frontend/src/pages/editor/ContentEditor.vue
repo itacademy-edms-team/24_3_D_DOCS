@@ -284,12 +284,43 @@
 		>
 			<!-- Editor Panel -->
 			<div class="content-editor__editor-panel" v-show="showEditor">
+				<div
+					v-if="activeTab === 'editor' && aiPendingChanges.length > 0"
+					class="content-editor__ai-pending-banner"
+					role="status"
+				>
+					<div class="content-editor__ai-pending-row">
+						<div>
+							<strong class="content-editor__ai-pending-title">Есть предложения ИИ</strong>
+							<p class="content-editor__ai-pending-text">
+								Примите или отклоните правки у каждого фрагмента, либо используйте кнопки ниже.
+							</p>
+						</div>
+						<div class="content-editor__ai-pending-actions">
+							<button
+								class="content-editor__ai-btn content-editor__ai-btn--accept"
+								:disabled="isBulkProcessing"
+								@click="handleAcceptAllAiChanges"
+							>
+								Принять все
+							</button>
+							<button
+								class="content-editor__ai-btn content-editor__ai-btn--reject"
+								:disabled="isBulkProcessing"
+								@click="handleRejectAllAiChanges"
+							>
+								Отклонить все
+							</button>
+						</div>
+					</div>
+				</div>
 				<!-- Markdown Editor -->
 				<MarkdownEditor
 					v-if="activeTab === 'editor'"
 					ref="markdownEditorRef"
 					v-model="content"
 					:documentId="documentId"
+					:aiChanges="aiPendingChanges"
 					@update:modelValue="handleContentChange"
 					@accept-ai-change="handleAcceptAiChange"
 					@undo-ai-change="handleUndoAiChange"
@@ -433,7 +464,7 @@
 			:startLine="selectedStartLine"
 			:endLine="selectedEndLine"
 			@clearSelection="selectedStartLine = undefined; selectedEndLine = undefined"
-			@document-content-changed="handleDocumentContentChanged"
+			@document-content-changed="debouncedReloadDocumentFromServer"
 			@width-changed="handleChatDockWidthChanged"
 		/>
 	</div>
@@ -453,7 +484,7 @@ import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import { useDebounceFn } from '@vueuse/core';
-import type { Document, DocumentMetadata, TocItem, DocumentVersion } from '@/entities/document/types';
+import type { Document, DocumentAiChange, DocumentMetadata, TocItem, DocumentVersion } from '@/entities/document/types';
 import type { Profile } from '@/entities/profile/types';
 
 const route = useRoute();
@@ -554,7 +585,8 @@ const handleBack = () => {
 };
 
 const showAIPanel = ref(false);
-const aiPendingChanges = ref<unknown[]>([]);
+const aiPendingChanges = ref<DocumentAiChange[]>([]);
+const isBulkProcessing = ref(false);
 const selectedStartLine = ref<number | undefined>();
 const selectedEndLine = ref<number | undefined>();
 const chatDockWidth = ref(400);
@@ -567,16 +599,28 @@ const handleChatDockWidthChanged = (width: number) => {
 	chatDockWidth.value = width;
 };
 
-const handleDocumentContentChanged = async () => {
+async function reloadDocumentFromServer() {
 	try {
 		const doc = await DocumentAPI.getById(documentId.value);
-		if (doc && doc.content !== content.value) {
+		if (doc) {
 			content.value = doc.content || '';
+			aiPendingChanges.value = doc.aiChanges || [];
+			document.value = document.value
+				? {
+						...document.value,
+						content: doc.content,
+						aiChanges: doc.aiChanges,
+						updatedAt: doc.updatedAt,
+					}
+				: doc;
 		}
 	} catch (error) {
 		console.error('Failed to reload document content:', error);
 	}
-};
+}
+
+/** Несколько шагов агента подряд — один запрос к API вместо серии параллельных. */
+const debouncedReloadDocumentFromServer = useDebounceFn(reloadDocumentFromServer, 200);
 
 const handleSettings = () => {
 	// TODO: Открыть настройки документа
@@ -696,60 +740,95 @@ const handleNameChange = useDebounceFn(async () => {
 	}
 }, 1000);
 
-const handleContentChange = useDebounceFn(async (newContent: string) => {
-	if (document.value) {
+let contentSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelPendingContentSave() {
+	if (contentSaveTimer !== null) {
+		clearTimeout(contentSaveTimer);
+		contentSaveTimer = null;
+	}
+}
+
+const handleContentChange = (newContent: string) => {
+	if (!document.value) return;
+	document.value = { ...document.value, content: newContent };
+	cancelPendingContentSave();
+	contentSaveTimer = setTimeout(async () => {
+		contentSaveTimer = null;
 		try {
 			await DocumentAPI.updateContent(documentId.value, newContent);
 		} catch (error) {
 			console.error('Failed to save content:', error);
 		}
-	}
-}, 1000);
-
-const handleAcceptAiChange = (changeId: string, changeType: 'insert' | 'delete') => {
-	let updatedContent = content.value;
-	
-	if (changeType === 'insert') {
-		const insertRegex = new RegExp(
-			`<!-- AI:INSERT:${changeId} -->\\n?([\\s\\S]*?)\\n?<!-- /AI:INSERT:${changeId} -->\\n?`,
-			'g'
-		);
-		updatedContent = updatedContent.replace(insertRegex, '$1\n');
-	} else {
-		const deleteRegex = new RegExp(
-			`<!-- AI:DELETE:${changeId} -->[\\s\\S]*?<!-- /AI:DELETE:${changeId} -->\\n?`,
-			'g'
-		);
-		updatedContent = updatedContent.replace(deleteRegex, '');
-	}
-	
-	updatedContent = updatedContent.replace(/\n{3,}/g, '\n\n');
-	
-	content.value = updatedContent;
-	handleContentChange(updatedContent);
+	}, 1000);
 };
 
-const handleUndoAiChange = (changeId: string, changeType: 'insert' | 'delete') => {
-	let updatedContent = content.value;
-	
-	if (changeType === 'insert') {
-		const insertRegex = new RegExp(
-			`<!-- AI:INSERT:${changeId} -->[\\s\\S]*?<!-- /AI:INSERT:${changeId} -->\\n?`,
-			'g'
-		);
-		updatedContent = updatedContent.replace(insertRegex, '');
-	} else {
-		const deleteRegex = new RegExp(
-			`<!-- AI:DELETE:${changeId} -->\\n?([\\s\\S]*?)\\n?<!-- /AI:DELETE:${changeId} -->\\n?`,
-			'g'
-		);
-		updatedContent = updatedContent.replace(deleteRegex, '$1\n');
+const handleAcceptAiChange = async (changeId: string) => {
+	cancelPendingContentSave();
+	try {
+		await DocumentAPI.acceptAiChange(documentId.value, changeId);
+		await reloadDocumentFromServer();
+	} catch (error) {
+		console.error('Failed to accept AI change:', error);
 	}
-	
-	updatedContent = updatedContent.replace(/\n{3,}/g, '\n\n');
-	
-	content.value = updatedContent;
-	handleContentChange(updatedContent);
+};
+
+const handleUndoAiChange = async (changeId: string) => {
+	cancelPendingContentSave();
+	try {
+		await DocumentAPI.rejectAiChange(documentId.value, changeId);
+		await reloadDocumentFromServer();
+	} catch (error) {
+		console.error('Failed to reject AI change:', error);
+	}
+};
+
+function getUniqueChangeIds(): string[] {
+	const seen = new Set<string>();
+	const ids: string[] = [];
+	const sorted = [...aiPendingChanges.value].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+	for (const c of sorted) {
+		const key = c.groupId ?? c.changeId;
+		if (!seen.has(key)) {
+			seen.add(key);
+			ids.push(c.changeId);
+		}
+	}
+	return ids;
+}
+
+const handleAcceptAllAiChanges = async () => {
+	cancelPendingContentSave();
+	isBulkProcessing.value = true;
+	try {
+		for (const changeId of getUniqueChangeIds()) {
+			try {
+				await DocumentAPI.acceptAiChange(documentId.value, changeId);
+			} catch (err) {
+				console.error(`Failed to accept AI change ${changeId}:`, err);
+			}
+		}
+	} finally {
+		await reloadDocumentFromServer();
+		isBulkProcessing.value = false;
+	}
+};
+
+const handleRejectAllAiChanges = async () => {
+	cancelPendingContentSave();
+	isBulkProcessing.value = true;
+	try {
+		for (const changeId of getUniqueChangeIds()) {
+			try {
+				await DocumentAPI.rejectAiChange(documentId.value, changeId);
+			} catch (err) {
+				console.error(`Failed to reject AI change ${changeId}:`, err);
+			}
+		}
+	} finally {
+		await reloadDocumentFromServer();
+		isBulkProcessing.value = false;
+	}
 };
 
 const handleProfileChange = useDebounceFn(async (event: Event) => {
@@ -871,7 +950,7 @@ const loadDocument = async () => {
 		document.value = doc;
 		documentName.value = doc.name || 'Документ';
 		content.value = doc.content || '';
-		aiPendingChanges.value = [];
+		aiPendingChanges.value = doc.aiChanges || [];
 		selectedProfileId.value = doc.profileId || '';
 		selectedTitlePageId.value = doc.titlePageId || '';
 		const [tocResult, versionsResult] = await Promise.allSettled([
@@ -1018,6 +1097,7 @@ const handleLoadVersion = async (v: DocumentVersion) => {
 	try {
 		const versionContent = await DocumentAPI.getVersionContent(documentId.value, v.id);
 		content.value = versionContent;
+		aiPendingChanges.value = [];
 		showVersionsPanel.value = false;
 	} catch (error) {
 		console.error('Failed to load version:', error);
@@ -1538,6 +1618,85 @@ watch(
 	flex: 1;
 	overflow: hidden;
 	border-right: 1px solid var(--border-color);
+	display: flex;
+	flex-direction: column;
+}
+
+.content-editor__ai-pending-banner {
+	flex-shrink: 0;
+	margin: 0;
+	padding: 10px 14px;
+	border-bottom: 1px solid rgba(34, 197, 94, 0.3);
+	background: rgba(34, 197, 94, 0.06);
+	color: var(--text-primary);
+}
+
+.content-editor__ai-pending-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.content-editor__ai-pending-title {
+	display: block;
+	font-size: 13px;
+	margin-bottom: 2px;
+	color: #15803d;
+}
+
+.content-editor__ai-pending-text {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.35;
+	color: var(--text-secondary, #64748b);
+}
+
+.content-editor__ai-pending-actions {
+	display: flex;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+.content-editor__ai-btn {
+	padding: 5px 14px;
+	border-radius: 6px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	border: 1px solid transparent;
+	transition: opacity 0.15s;
+	white-space: nowrap;
+}
+
+.content-editor__ai-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.content-editor__ai-btn--accept {
+	background: rgba(34, 197, 94, 0.15);
+	color: #15803d;
+	border-color: rgba(34, 197, 94, 0.4);
+}
+
+.content-editor__ai-btn--accept:hover:not(:disabled) {
+	background: rgba(34, 197, 94, 0.25);
+}
+
+.content-editor__ai-btn--reject {
+	background: rgba(239, 68, 68, 0.1);
+	color: #b91c1c;
+	border-color: rgba(239, 68, 68, 0.35);
+}
+
+.content-editor__ai-btn--reject:hover:not(:disabled) {
+	background: rgba(239, 68, 68, 0.2);
+}
+
+.content-editor__editor-panel :deep(.markdown-editor) {
+	flex: 1;
+	min-height: 0;
 }
 
 .content-editor__preview-panel {

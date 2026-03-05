@@ -44,14 +44,6 @@ function readRawStorage(): AuthStorageWrapper | null {
 	}
 }
 
-function writeRawStorage(value: AuthStorageWrapper): void {
-	const storage = getLocalStorage();
-	if (!storage) {
-		return;
-	}
-	storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(value));
-}
-
 function extractState(wrapper: AuthStorageWrapper | null): AuthStorageState | null {
 	if (!wrapper) {
 		return null;

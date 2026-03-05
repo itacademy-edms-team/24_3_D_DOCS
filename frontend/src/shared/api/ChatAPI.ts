@@ -46,7 +46,7 @@ export interface ChatSessionWithMessages extends ChatSession {
 	messages: ChatMessage[];
 }
 
-export interface CreateChatSession {
+interface CreateChatSession {
 	scope: ChatScope;
 	documentId?: string | null;
 	title?: string;

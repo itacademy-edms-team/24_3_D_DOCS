@@ -17,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, h, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, h, nextTick, onMounted, onUnmounted } from 'vue';
 import { MdEditor } from 'md-editor-v3';
 import type { UploadImgEvent } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
@@ -26,22 +26,28 @@ import type { EditorView } from '@codemirror/view';
 import { useTheme } from '@/app/composables/useTheme';
 import { useMarkdownEditorShortcuts } from '@/app/composables/useMarkdownEditorShortcuts';
 import UploadAPI from '@/shared/api/UploadAPI';
+import type { DocumentAiChange } from '@/entities/document/types';
 import HighlightToolbarButton from './components/HighlightToolbarButton.vue';
 import CaptionToolbarButton from './components/CaptionToolbarButton.vue';
 import DownloadPdfToolbarButton from './components/DownloadPdfToolbarButton.vue';
-import { createAiChangeExtensions, aiChangeStyles } from './aiChangeDecorations';
+import {
+	createAiChangeExtensions,
+	aiChangeStyles,
+	refreshAiChangeDecorationsEffect,
+} from './aiChangeDecorations';
 
 interface Props {
 	modelValue: string;
 	documentId?: string;
+	aiChanges?: DocumentAiChange[];
 }
 
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
 	'update:modelValue': [value: string];
-	acceptAiChange: [changeId: string, changeType: 'insert' | 'delete'];
-	undoAiChange: [changeId: string, changeType: 'insert' | 'delete'];
+	acceptAiChange: [changeId: string];
+	undoAiChange: [changeId: string];
 }>();
 
 const { theme } = useTheme();
@@ -50,11 +56,13 @@ const editorContainerRef = ref<HTMLElement>();
 const mdEditorRef = ref<{ getEditorView?: () => EditorView | undefined } | null>(null);
 const localContent = ref(props.modelValue);
 const aiExtensionInstalled = ref(false);
+const currentAiChanges = ref<DocumentAiChange[]>(props.aiChanges ?? []);
 
 const aiChangeExtensions = [
 	createAiChangeExtensions(
-		(changeId, changeType) => emit('acceptAiChange', changeId, changeType),
-		(changeId, changeType) => emit('undoAiChange', changeId, changeType),
+		() => currentAiChanges.value,
+		(changeId) => emit('acceptAiChange', changeId),
+		(changeId) => emit('undoAiChange', changeId),
 	),
 	aiChangeStyles,
 ];
@@ -129,11 +137,27 @@ useMarkdownEditorShortcuts({
 
 watch(
 	() => props.modelValue,
-	(newValue) => {
+	async (newValue) => {
 		if (localContent.value !== newValue) {
 			localContent.value = newValue;
 		}
+		await nextTick();
+		ensureAiExtensionInstalled();
 	},
+);
+
+watch(
+	() => props.aiChanges,
+	async (newValue) => {
+		currentAiChanges.value = newValue ?? [];
+		await nextTick();
+		ensureAiExtensionInstalled();
+		const editorView = mdEditorRef.value?.getEditorView?.() ?? getEditorViewFromDOM() ?? undefined;
+		editorView?.dispatch({
+			effects: refreshAiChangeDecorationsEffect.of(null),
+		});
+	},
+	{ deep: true }
 );
 
 const handleChange = (value: string) => {
@@ -148,34 +172,35 @@ const getEditorViewFromDOM = (): EditorView | null => {
 	const cmElement = container.querySelector('.cm-editor');
 	if (!cmElement) return null;
 	
-	// CodeMirror 6 stores the view on the DOM element
 	const view = (cmElement as any).cmView?.view as EditorView | undefined;
 	return view ?? null;
 };
 
+const MAX_INSTALL_RETRIES = 15;
+let installRetryCount = 0;
+let installRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
 const ensureAiExtensionInstalled = () => {
-	if (aiExtensionInstalled.value) {
-		return;
-	}
+	if (aiExtensionInstalled.value) return;
 	
-	// Try both methods to get EditorView
 	let editorView = mdEditorRef.value?.getEditorView?.();
 	if (!editorView) {
 		editorView = getEditorViewFromDOM() ?? undefined;
 	}
 	
 	if (!editorView) {
-		console.log('[AI Extension] EditorView not available yet, retrying...');
-		setTimeout(ensureAiExtensionInstalled, 200);
+		if (installRetryCount < MAX_INSTALL_RETRIES) {
+			installRetryCount++;
+			installRetryTimer = setTimeout(ensureAiExtensionInstalled, 200);
+		}
 		return;
 	}
 
-	console.log('[AI Extension] Installing AI change decorations extension');
 	editorView.dispatch({
 		effects: StateEffect.appendConfig.of(aiChangeExtensions),
 	});
 	aiExtensionInstalled.value = true;
-	console.log('[AI Extension] Extension installed successfully');
+	installRetryCount = 0;
 };
 
 onMounted(async () => {
@@ -183,13 +208,12 @@ onMounted(async () => {
 	ensureAiExtensionInstalled();
 });
 
-watch(
-	() => props.modelValue,
-	async () => {
-		await nextTick();
-		ensureAiExtensionInstalled();
-	},
-);
+onUnmounted(() => {
+	if (installRetryTimer !== null) {
+		clearTimeout(installRetryTimer);
+		installRetryTimer = null;
+	}
+});
 
 </script>
 
@@ -219,78 +243,5 @@ watch(
 :deep(.md-editor-content) {
 	flex: 1;
 	overflow: auto;
-}
-
-/* AI Change Marker Styles */
-:deep(.cm-ai-marker) {
-	font-size: 0.7em;
-	color: #9ca3af;
-	font-family: monospace;
-	opacity: 0.6;
-	background: rgba(156, 163, 175, 0.1);
-	padding: 1px 3px;
-	border-radius: 2px;
-}
-
-:deep(.cm-ai-marker--insert) {
-	color: #16a34a;
-	background: rgba(34, 197, 94, 0.1);
-}
-
-:deep(.cm-ai-marker--delete) {
-	color: #dc2626;
-	background: rgba(239, 68, 68, 0.1);
-}
-
-:deep(.cm-ai-content--insert) {
-	background-color: rgba(34, 197, 94, 0.15);
-}
-
-:deep(.cm-ai-content--delete) {
-	background-color: rgba(239, 68, 68, 0.15);
-	text-decoration: line-through;
-	text-decoration-color: rgba(239, 68, 68, 0.5);
-}
-
-:deep(.cm-ai-actions) {
-	display: inline-flex;
-	gap: 4px;
-	margin-left: 8px;
-	vertical-align: middle;
-}
-
-:deep(.cm-ai-btn) {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 20px;
-	height: 20px;
-	border: 1px solid;
-	border-radius: 4px;
-	cursor: pointer;
-	font-size: 12px;
-	font-weight: bold;
-	line-height: 1;
-	padding: 0;
-}
-
-:deep(.cm-ai-btn--accept) {
-	background-color: rgba(34, 197, 94, 0.2);
-	border-color: rgba(34, 197, 94, 0.4);
-	color: #16a34a;
-}
-
-:deep(.cm-ai-btn--accept:hover) {
-	background-color: rgba(34, 197, 94, 0.3);
-}
-
-:deep(.cm-ai-btn--undo) {
-	background-color: rgba(239, 68, 68, 0.2);
-	border-color: rgba(239, 68, 68, 0.4);
-	color: #dc2626;
-}
-
-:deep(.cm-ai-btn--undo:hover) {
-	background-color: rgba(239, 68, 68, 0.3);
 }
 </style>

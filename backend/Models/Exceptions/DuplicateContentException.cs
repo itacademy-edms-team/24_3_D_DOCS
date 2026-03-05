@@ -5,6 +5,10 @@ namespace RusalProject.Models.Exceptions;
 /// </summary>
 public class DuplicateContentException : Exception
 {
+    public DuplicateContentException()
+    {
+    }
+
     public DuplicateContentException(string message) : base(message)
     {
     }

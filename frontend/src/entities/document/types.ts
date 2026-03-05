@@ -18,6 +18,18 @@ export interface Document extends DocumentMeta {
 	content?: string;
 	styleOverrides?: Record<string, any>;
 	metadata?: DocumentMetadata;
+	aiChanges?: DocumentAiChange[];
+}
+
+export interface DocumentAiChange {
+	changeId: string;
+	changeType: 'insert' | 'delete';
+	entityType: string;
+	startLine: number;
+	endLine?: number;
+	content: string;
+	groupId?: string;
+	order?: number;
 }
 
 export interface DocumentMetadata {

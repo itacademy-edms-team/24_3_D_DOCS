@@ -1,43 +1,79 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace RusalProject.Services.Ollama;
 
 public interface IOllamaChatService
 {
-    Task<OllamaChatResult> ChatAsync(
+    Task<OllamaChatResponse> CompleteAsync(
         Guid userId,
-        Guid chatId,
-        string userMessage,
-        Guid documentId,
-        Func<string, Task>? onChunk = null,
-        Func<string, Task>? onStatusCheck = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Chat with custom system prompt (e.g. for Main Agent). No document context.
-    /// </summary>
-    Task<OllamaChatResult> ChatWithPromptAsync(
-        Guid userId,
-        Guid chatId,
-        string userMessage,
+        IReadOnlyList<OllamaMessageInput> messages,
         string systemPrompt,
-        Func<string, Task>? onChunk = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Send messages to Ollama without DB. Used by Main Agent for tool-calling loop.
-    /// </summary>
-    Task<OllamaChatResult> SendMessagesAsync(
-        Guid userId,
-        List<OllamaMessageInput> messages,
-        string systemPrompt,
+        IReadOnlyList<OllamaToolDefinition> tools,
         Func<string, Task>? onChunk = null,
         CancellationToken cancellationToken = default);
 }
 
-public record OllamaMessageInput(string Role, string Content);
-
-public class OllamaChatResult
+public sealed class OllamaMessageInput
 {
-    public string FinalMessage { get; set; } = string.Empty;
-    public bool IsComplete { get; set; }
-    public bool IsIdempotentRetry { get; set; }
+    public string Role { get; init; } = string.Empty;
+    public string? Content { get; init; }
+    public string? Thinking { get; init; }
+    public string? ToolName { get; init; }
+    public List<OllamaToolCall>? ToolCalls { get; init; }
+}
+
+public sealed class OllamaToolDefinition
+{
+    public string Name { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+    public object Parameters { get; init; } = new();
+}
+
+public sealed class OllamaToolCall
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonPropertyName("function")]
+    public OllamaToolFunctionCall? Function { get; init; }
+
+    [JsonIgnore]
+    public string Name => Function?.Name ?? string.Empty;
+
+    [JsonIgnore]
+    public JsonElement Arguments => Function?.Arguments ?? default;
+}
+
+public sealed class OllamaToolFunctionCall
+{
+    [JsonPropertyName("index")]
+    public int? Index { get; init; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+
+    [JsonPropertyName("arguments")]
+    public JsonElement Arguments { get; init; }
+}
+
+public sealed class OllamaChatResponse
+{
+    public string Content { get; init; } = string.Empty;
+    public List<OllamaToolCall> ToolCalls { get; init; } = new();
+    public string? Thinking { get; init; }
+
+    public OllamaMessageInput ToAssistantMessage()
+    {
+        return new OllamaMessageInput
+        {
+            Role = "assistant",
+            Thinking = Thinking,
+            Content = Content,
+            ToolCalls = ToolCalls.Count > 0 ? ToolCalls : null
+        };
+    }
 }

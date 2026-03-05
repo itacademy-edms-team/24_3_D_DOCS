@@ -11,7 +11,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
 using RusalProject.Services.Agent;
-using RusalProject.Services.Agent.Tools;
+using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Agent.Tools.CRUDdocTools;
 using RusalProject.Services.Agent.Tools.DocumentTools;
 using RusalProject.Services.Auth;
@@ -135,28 +135,16 @@ builder.Services.AddScoped<IMarkdownParserService, MarkdownParserService>();
 // Agent Services
 builder.Services.AddScoped<IAgentLogService, AgentLogService>();
 builder.Services.AddScoped<ReadDocumentTool>();
-builder.Services.AddScoped<ProposeDocumentChangesTool>();
-builder.Services.AddScoped<DocumentAgentToolExecutor>(sp =>
-{
-    var readDocument = sp.GetRequiredService<ReadDocumentTool>();
-    var proposeChanges = sp.GetRequiredService<ProposeDocumentChangesTool>();
-    return new DocumentAgentToolExecutor(
-        new IDocumentAgentTool[] { readDocument, proposeChanges },
-        sp.GetRequiredService<ILogger<DocumentAgentToolExecutor>>());
-});
+builder.Services.AddScoped<ProposeInsertTool>();
+builder.Services.AddScoped<ProposeDeleteTool>();
+builder.Services.AddScoped<ProposeReplaceTool>();
+builder.Services.AddScoped<AgentLoopRunner>();
 builder.Services.AddScoped<IDocumentAgent, DocumentAgent>();
 builder.Services.AddScoped<ListDocumentTool>();
 builder.Services.AddScoped<CreateDocumentTool>();
 builder.Services.AddScoped<DeleteDocumentTool>();
 builder.Services.AddScoped<RenameDocumentTool>();
-builder.Services.AddScoped<MainAgentToolExecutor>(sp =>
-{
-    var list = sp.GetRequiredService<ListDocumentTool>();
-    var create = sp.GetRequiredService<CreateDocumentTool>();
-    var del = sp.GetRequiredService<DeleteDocumentTool>();
-    var rename = sp.GetRequiredService<RenameDocumentTool>();
-    return new MainAgentToolExecutor(new[] { (ITool)list, create, del, rename }, sp.GetRequiredService<ILogger<MainAgentToolExecutor>>());
-});
+builder.Services.AddScoped<DelegateToDocumentAgentTool>();
 builder.Services.AddScoped<IMainAgent, MainAgent>();
 builder.Services.AddScoped<IAgentService, AgentService>();
 

@@ -53,11 +53,11 @@ export interface DocumentEntityChangeDTO {
 	order?: number;
 }
 
-export interface OllamaKeyStatusDTO {
+interface OllamaKeyStatusDTO {
 	hasKey: boolean;
 }
 
-export interface OllamaKeyDTO {
+interface OllamaKeyDTO {
 	apiKey: string;
 }
 
@@ -135,8 +135,17 @@ class AIAPI extends HttpClient {
 			try {
 				const errorText = await response.text();
 				console.error('Response error, body:', errorText);
-				const errorData = JSON.parse(errorText).catch(() => ({ message: errorText }));
-				throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+				let errorData: { message?: string; details?: string } = {};
+				try {
+					errorData = JSON.parse(errorText);
+				} catch {
+					errorData = { message: errorText };
+				}
+				throw new Error(
+					errorData.details
+						? `${errorData.message || 'Ошибка запроса'}: ${errorData.details}`
+						: errorData.message || `HTTP error! status: ${response.status}`
+				);
 			} catch (e) {
 				if (e instanceof Error && e.message.includes('HTTP error')) {
 					throw e;
@@ -258,7 +267,11 @@ class AIAPI extends HttpClient {
 									console.log('COMPLETE EVENT:', finalResponse);
 								} else if (eventType === 'error' || data.message) {
 									console.error('ERROR EVENT:', data);
-									reject(new Error(data.message || 'Unknown error'));
+									const errorMessage =
+										data.details && data.message !== data.details
+											? `${data.message || 'Ошибка'}: ${data.details}`
+											: data.message || data.details || 'Unknown error';
+									reject(new Error(errorMessage));
 									return;
 								}
 							} catch (e) {

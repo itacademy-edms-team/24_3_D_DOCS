@@ -1,3 +1,4 @@
+using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Document;
 using RusalProject.Models.Types;
 
@@ -11,6 +12,10 @@ public interface IDocumentService
     Task<List<DocumentDTO>> GetDocumentsAsync(Guid userId, string? status = null, string? search = null);
     Task<DocumentDTO> UpdateDocumentAsync(Guid documentId, Guid userId, UpdateDocumentDTO dto);
     Task UpdateDocumentContentAsync(Guid documentId, Guid userId, string content);
+    Task AddPendingDocumentChangesAsync(Guid documentId, Guid userId, IReadOnlyCollection<DocumentEntityChangeDTO> changes);
+    Task<List<DocumentEntityChangeDTO>> GetPendingDocumentChangesAsync(Guid documentId, Guid userId);
+    Task AcceptPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId);
+    Task RejectPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId);
     Task UpdateDocumentOverridesAsync(Guid documentId, Guid userId, Dictionary<string, object> overrides);
     Task UpdateDocumentMetadataAsync(Guid documentId, Guid userId, DocumentMetadataDTO metadata);
     Task DeleteDocumentAsync(Guid documentId, Guid userId);

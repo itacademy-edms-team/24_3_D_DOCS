@@ -363,7 +363,12 @@ public class UploadController : ControllerBase
             _logger.LogInformation("GetAsset: downloading file from MinIO");
             
             // Download from MinIO and stream to client
-            var stream = await _minioService.DownloadFileAsync(bucket, objectPath);
+            var downloadedStream = await _minioService.DownloadFileAsync(bucket, objectPath);
+            if (downloadedStream == null)
+            {
+                return NotFound(new { message = "Файл не найден" });
+            }
+            var stream = downloadedStream;
             var contentType = GetContentType(fileName);
             
             _logger.LogInformation("GetAsset success: documentId={DocumentId}, fileName={FileName}, contentType={ContentType}, streamLength={StreamLength}", 
@@ -375,7 +380,7 @@ public class UploadController : ControllerBase
             // CORS headers are handled by global CORS policy in Program.cs
             // Don't set them manually here to avoid conflicts
             
-            return File(stream, contentType, fileName);
+            return File(stream!, contentType, fileName);
         }
         catch (UnauthorizedAccessException)
         {

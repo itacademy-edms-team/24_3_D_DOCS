@@ -42,6 +42,14 @@ class DocumentAPI extends HttpClient {
 		return this.put<void, UpdateDocumentContentDTO>(`/api/documents/${id}/content`, dto);
 	}
 
+	async acceptAiChange(id: string, changeId: string): Promise<void> {
+		return this.post<void>(`/api/documents/${id}/ai-changes/${changeId}/accept`, {});
+	}
+
+	async rejectAiChange(id: string, changeId: string): Promise<void> {
+		return this.post<void>(`/api/documents/${id}/ai-changes/${changeId}/reject`, {});
+	}
+
 	async updateOverrides(id: string, overrides: Record<string, any>): Promise<void> {
 		const dto: UpdateDocumentOverridesDTO = { overrides };
 		return this.put<void, UpdateDocumentOverridesDTO>(`/api/documents/${id}/overrides`, dto);

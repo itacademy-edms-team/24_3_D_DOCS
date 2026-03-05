@@ -1,6 +1,6 @@
 import { Canvas, Line, type FabricObject } from 'fabric';
 import { A4_WIDTH_PX, A4_HEIGHT_PX, SNAP_THRESHOLD_MM, MM_TO_PX, type AlignmentGuide, type ActiveSnapGuide } from '../constants';
-import { getElementBounds, type ElementBounds } from './elementUtils';
+import { getElementBounds } from './elementUtils';
 
 /**
  * Result of applying snap

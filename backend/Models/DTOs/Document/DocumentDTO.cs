@@ -1,3 +1,5 @@
+using RusalProject.Models.DTOs.Agent;
+
 namespace RusalProject.Models.DTOs.Document;
 
 public class DocumentDTO
@@ -22,6 +24,7 @@ public class DocumentWithContentDTO : DocumentDTO
 {
     public string? Content { get; set; } // Markdown контент
     public Dictionary<string, object>? StyleOverrides { get; set; } // Переопределения стилей
+    public List<DocumentEntityChangeDTO> AiChanges { get; set; } = new();
 }
 
 public class CreateDocumentDTO
