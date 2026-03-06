@@ -105,9 +105,6 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasIndex(e => e.IsArchived)
                   .HasDatabaseName("IX_DocumentLinks_IsArchived");
 
-            entity.HasIndex(e => e.DeletedAt)
-                  .HasDatabaseName("IX_DocumentLinks_DeletedAt");
-
             entity.Property(e => e.IsArchived)
                   .HasDefaultValue(false);
 
@@ -202,9 +199,6 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasIndex(e => e.DocumentId)
                   .HasDatabaseName("IX_Attachments_DocumentId");
 
-            entity.HasIndex(e => e.DeletedAt)
-                  .HasDatabaseName("IX_Attachments_DeletedAt");
-
             entity.Property(e => e.FileName)
                   .HasMaxLength(260);
 
@@ -225,7 +219,7 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasOne(a => a.Document)
                   .WithMany()
                   .HasForeignKey(a => a.DocumentId)
-                  .OnDelete(DeleteBehavior.SetNull);
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure ChatSession entity
@@ -244,9 +238,6 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             
             entity.HasIndex(e => e.IsArchived)
                   .HasDatabaseName("IX_ChatSessions_IsArchived");
-            
-            entity.HasIndex(e => e.DeletedAt)
-                  .HasDatabaseName("IX_ChatSessions_DeletedAt");
 
             entity.Property(e => e.IsArchived)
                   .HasDefaultValue(false);

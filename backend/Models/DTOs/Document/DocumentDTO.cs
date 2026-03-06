@@ -14,7 +14,6 @@ public class DocumentDTO
     public string? TitlePageName { get; set; }
     public DocumentMetadataDTO? Metadata { get; set; }
     public bool IsArchived { get; set; }
-    public DateTime? DeletedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public bool HasPdf { get; set; }

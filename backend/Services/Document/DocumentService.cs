@@ -102,7 +102,7 @@ public class DocumentService : IDocumentService
         var document = await _context.DocumentLinks
             .Include(d => d.Profile)
             .Include(d => d.TitlePage)
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null) return null;
 
@@ -114,7 +114,7 @@ public class DocumentService : IDocumentService
         var document = await _context.DocumentLinks
             .Include(d => d.Profile)
             .Include(d => d.TitlePage)
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null) return null;
 
@@ -131,7 +131,6 @@ public class DocumentService : IDocumentService
             TitlePageName = dto.TitlePageName,
             Metadata = dto.Metadata,
             IsArchived = dto.IsArchived,
-            DeletedAt = dto.DeletedAt,
             CreatedAt = dto.CreatedAt,
             UpdatedAt = dto.UpdatedAt,
             HasPdf = dto.HasPdf
@@ -182,20 +181,16 @@ public class DocumentService : IDocumentService
         var query = _context.DocumentLinks
             .Include(d => d.Profile)
             .Include(d => d.TitlePage)
-            .Where(d => d.CreatorId == userId && d.DeletedAt == null);
+            .Where(d => d.CreatorId == userId);
 
-        // Фильтр по статусу (all, archived, trash)
+        // Фильтр по статусу (all, archived)
         if (status == "archived")
         {
             query = query.Where(d => d.IsArchived);
         }
-        else if (status == "trash")
-        {
-            query = query.Where(d => d.DeletedAt != null);
-        }
         else if (status != "all")
         {
-            query = query.Where(d => !d.IsArchived && d.DeletedAt == null);
+            query = query.Where(d => !d.IsArchived);
         }
 
         // Поиск по названию
@@ -220,7 +215,7 @@ public class DocumentService : IDocumentService
     public async Task<DocumentDTO> UpdateDocumentAsync(Guid documentId, Guid userId, UpdateDocumentDTO dto)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -242,7 +237,7 @@ public class DocumentService : IDocumentService
     public async Task UpdateDocumentContentAsync(Guid documentId, Guid userId, string content)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -264,7 +259,7 @@ public class DocumentService : IDocumentService
     public async Task AddPendingDocumentChangesAsync(Guid documentId, Guid userId, IReadOnlyCollection<DocumentEntityChangeDTO> changes)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -294,7 +289,7 @@ public class DocumentService : IDocumentService
     public async Task<List<DocumentEntityChangeDTO>> GetPendingDocumentChangesAsync(Guid documentId, Guid userId)
     {
         var documentExists = await _context.DocumentLinks
-            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (!documentExists)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -321,7 +316,7 @@ public class DocumentService : IDocumentService
     public async Task AcceptPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -370,7 +365,7 @@ public class DocumentService : IDocumentService
     public async Task RejectPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -399,7 +394,7 @@ public class DocumentService : IDocumentService
     public async Task UpdateDocumentOverridesAsync(Guid documentId, Guid userId, Dictionary<string, object> overrides)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -424,7 +419,7 @@ public class DocumentService : IDocumentService
     public async Task UpdateDocumentMetadataAsync(Guid documentId, Guid userId, DocumentMetadataDTO metadata)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -436,7 +431,7 @@ public class DocumentService : IDocumentService
     public async Task<DocumentVersionDTO> SaveVersionAsync(Guid documentId, Guid userId, string name)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -512,7 +507,7 @@ public class DocumentService : IDocumentService
     public async Task<List<DocumentVersionDTO>> GetVersionsAsync(Guid documentId, Guid userId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             return new List<DocumentVersionDTO>();
@@ -534,7 +529,7 @@ public class DocumentService : IDocumentService
     public async Task<string> GetVersionContentAsync(Guid documentId, Guid versionId, Guid userId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -564,7 +559,7 @@ public class DocumentService : IDocumentService
         var content = await GetVersionContentAsync(documentId, versionId, userId);
 
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -584,7 +579,7 @@ public class DocumentService : IDocumentService
     public async Task DeleteVersionAsync(Guid documentId, Guid versionId, Guid userId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -615,7 +610,7 @@ public class DocumentService : IDocumentService
     public async Task<List<TocItem>?> GetTableOfContentsAsync(Guid documentId, Guid userId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null) return null;
 
@@ -651,7 +646,7 @@ public class DocumentService : IDocumentService
     public async Task UpdateTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -709,7 +704,7 @@ public class DocumentService : IDocumentService
     private async Task SaveTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -726,41 +721,63 @@ public class DocumentService : IDocumentService
     public async Task DeleteDocumentAsync(Guid documentId, Guid userId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
-
-        if (document == null)
-            throw new FileNotFoundException($"Document {documentId} not found");
-
-        document.DeletedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-    }
-
-    public async Task RestoreDocumentAsync(Guid documentId, Guid userId)
-    {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt != null);
-
-        if (document == null)
-            throw new FileNotFoundException($"Document {documentId} not found");
-
-        document.DeletedAt = null;
-        await _context.SaveChangesAsync();
-    }
-
-    public async Task DeleteDocumentPermanentlyAsync(Guid documentId, Guid userId)
-    {
-        var document = await _context.DocumentLinks
             .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        // Удаляем файлы из MinIO
         var bucket = GetUserBucket(userId);
-        var documentPrefix = document.MdMinioPath.Substring(0, document.MdMinioPath.LastIndexOf('/'));
-        await _minioService.DeleteDirectoryAsync(bucket, documentPrefix);
 
-        // Удаляем из БД
+        var attachments = await _context.Attachments
+            .Where(a => a.DocumentId == documentId && a.CreatorId == userId)
+            .ToListAsync();
+        foreach (var attachment in attachments)
+        {
+            try
+            {
+                await _minioService.DeleteFileAsync(bucket, attachment.StoragePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete attachment from MinIO {Path}", attachment.StoragePath);
+            }
+        }
+
+        var documentPrefix = document.MdMinioPath.Substring(0, document.MdMinioPath.LastIndexOf('/'));
+        try
+        {
+            await _minioService.DeleteDirectoryAsync(bucket, documentPrefix);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete document directory from MinIO {Prefix}", documentPrefix);
+        }
+
+        var byIdPrefix = $"documents/{documentId}";
+        if (!string.Equals(documentPrefix.TrimEnd('/'), byIdPrefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                await _minioService.DeleteDirectoryAsync(bucket, byIdPrefix);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete document id prefix from MinIO {Prefix}", byIdPrefix);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(document.PdfMinioPath))
+        {
+            try
+            {
+                await _minioService.DeleteFileAsync(bucket, document.PdfMinioPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete PDF from MinIO {Path}", document.PdfMinioPath);
+            }
+        }
+
         _context.DocumentLinks.Remove(document);
         await _context.SaveChangesAsync();
     }
@@ -768,7 +785,7 @@ public class DocumentService : IDocumentService
     public async Task ArchiveDocumentAsync(Guid documentId, Guid userId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -780,7 +797,7 @@ public class DocumentService : IDocumentService
     public async Task UnarchiveDocumentAsync(Guid documentId, Guid userId)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -792,13 +809,13 @@ public class DocumentService : IDocumentService
     public async Task<bool> DocumentExistsAsync(Guid documentId, Guid userId)
     {
         return await _context.DocumentLinks
-            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId);
     }
 
     public async Task UpdatePdfPathAsync(Guid documentId, Guid userId, string pdfPath)
     {
         var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -820,7 +837,6 @@ public class DocumentService : IDocumentService
             TitlePageId = document.TitlePageId,
             TitlePageName = document.TitlePage?.Name,
             IsArchived = document.IsArchived,
-            DeletedAt = document.DeletedAt,
             CreatedAt = document.CreatedAt,
             UpdatedAt = document.UpdatedAt,
             HasPdf = !string.IsNullOrEmpty(document.PdfMinioPath)
@@ -846,7 +862,7 @@ public class DocumentService : IDocumentService
         var document = await _context.DocumentLinks
             .Include(d => d.Profile)
             .Include(d => d.TitlePage)
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId && d.DeletedAt == null);
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");

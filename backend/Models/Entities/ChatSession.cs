@@ -29,9 +29,6 @@ public class ChatSession
     [Column("is_archived")]
     public bool IsArchived { get; set; } = false;
 
-    [Column("deleted_at")]
-    public DateTime? DeletedAt { get; set; }
-
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

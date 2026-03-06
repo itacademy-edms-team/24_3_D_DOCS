@@ -497,7 +497,7 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
-    /// Удалить документ (в корзину)
+    /// Удалить документ (БД и MinIO)
     /// </summary>
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -517,56 +517,6 @@ public class DocumentsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting document {DocumentId}", id);
-            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
-        }
-    }
-
-    /// <summary>
-    /// Восстановить документ из корзины
-    /// </summary>
-    [HttpPost("{id}/restore")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> RestoreDocument(Guid id)
-    {
-        try
-        {
-            var userId = GetUserId();
-            await _documentService.RestoreDocumentAsync(id, userId);
-            return NoContent();
-        }
-        catch (FileNotFoundException)
-        {
-            return NotFound(new { message = "Документ не найден" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error restoring document {DocumentId}", id);
-            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
-        }
-    }
-
-    /// <summary>
-    /// Удалить документ навсегда
-    /// </summary>
-    [HttpDelete("{id}/permanent")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DeleteDocumentPermanently(Guid id)
-    {
-        try
-        {
-            var userId = GetUserId();
-            await _documentService.DeleteDocumentPermanentlyAsync(id, userId);
-            return NoContent();
-        }
-        catch (FileNotFoundException)
-        {
-            return NotFound(new { message = "Документ не найден" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error permanently deleting document {DocumentId}", id);
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }

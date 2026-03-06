@@ -63,10 +63,6 @@ class DocumentAPI extends HttpClient {
 		return super.delete<void>(`/api/documents/${id}`);
 	}
 
-	async restore(id: string): Promise<void> {
-		return this.post<void>(`/api/documents/${id}/restore`);
-	}
-
 	async archive(id: string): Promise<void> {
 		return this.post<void>(`/api/documents/${id}/archive`);
 	}

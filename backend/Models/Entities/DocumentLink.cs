@@ -47,9 +47,6 @@ public class DocumentLink
     [Column("is_archived")]
     public bool IsArchived { get; set; } = false;
 
-    [Column("deleted_at")]
-    public DateTime? DeletedAt { get; set; } // Soft delete
-
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -44,9 +44,6 @@ public class Attachment
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    [Column("deleted_at")]
-    public DateTime? DeletedAt { get; set; }
-
     // Navigation properties
     [ForeignKey("CreatorId")]
     public virtual User? User { get; set; }

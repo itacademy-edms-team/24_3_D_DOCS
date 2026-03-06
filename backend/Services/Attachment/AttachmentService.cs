@@ -27,13 +27,13 @@ public class AttachmentService : IAttachmentService
     public async Task<AttachmentEntity?> GetAttachmentAsync(Guid id, Guid userId)
     {
         return await _context.Attachments
-            .FirstOrDefaultAsync(a => a.Id == id && a.CreatorId == userId && a.DeletedAt == null);
+            .FirstOrDefaultAsync(a => a.Id == id && a.CreatorId == userId);
     }
 
     public async Task<List<AttachmentEntity>> ListAttachmentsAsync(Guid userId, string? type = null, string sort = "modified_desc")
     {
         var query = _context.Attachments
-            .Where(a => a.CreatorId == userId && a.DeletedAt == null)
+            .Where(a => a.CreatorId == userId)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(type))
@@ -81,13 +81,22 @@ public class AttachmentService : IAttachmentService
     public async Task DeleteAttachmentAsync(Guid id, Guid userId)
     {
         var attachment = await _context.Attachments
-            .FirstOrDefaultAsync(a => a.Id == id && a.CreatorId == userId && a.DeletedAt == null);
+            .FirstOrDefaultAsync(a => a.Id == id && a.CreatorId == userId);
 
         if (attachment == null)
             throw new FileNotFoundException($"Attachment {id} not found");
 
-        // Soft delete
-        attachment.DeletedAt = DateTime.UtcNow;
+        var bucket = GetUserBucket(userId);
+        try
+        {
+            await _minioService.DeleteFileAsync(bucket, attachment.StoragePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete attachment file from MinIO {Path}", attachment.StoragePath);
+        }
+
+        _context.Attachments.Remove(attachment);
         await _context.SaveChangesAsync();
     }
 

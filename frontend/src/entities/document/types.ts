@@ -8,7 +8,6 @@ export interface DocumentMeta {
 	titlePageId?: string;
 	titlePageName?: string;
 	isArchived: boolean;
-	deletedAt?: string;
 	createdAt: string;
 	updatedAt: string;
 	hasPdf: boolean;

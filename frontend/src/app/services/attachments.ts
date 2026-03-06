@@ -11,7 +11,6 @@ type AttachmentItem = {
 	versionNumber: number;
 	createdAt: string;
 	updatedAt: string;
-	deletedAt?: string | null;
 };
 
 class AttachmentsAPI extends HttpClient {

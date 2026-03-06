@@ -26,7 +26,7 @@ public class ChatService : IChatService
                 documentId, userId, includeArchived);
 
             var query = _context.ChatSessions
-                .Where(c => c.Scope == ChatScope.Document && c.DocumentId == documentId && c.UserId == userId && c.DeletedAt == null);
+                .Where(c => c.Scope == ChatScope.Document && c.DocumentId == documentId && c.UserId == userId);
 
             if (!includeArchived)
             {
@@ -89,7 +89,7 @@ public class ChatService : IChatService
     {
         var chat = await _context.ChatSessions
             .Include(c => c.Messages)
-            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId && c.DeletedAt == null);
+            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId);
 
         if (chat == null)
         {
@@ -129,7 +129,7 @@ public class ChatService : IChatService
                 throw new ArgumentException("DocumentId обязателен при scope=Document");
 
             var documentExists = await _context.DocumentLinks
-                .AnyAsync(d => d.Id == dto.DocumentId && d.CreatorId == userId && d.DeletedAt == null);
+                .AnyAsync(d => d.Id == dto.DocumentId && d.CreatorId == userId);
             if (!documentExists)
                 throw new UnauthorizedAccessException("Document not found or access denied");
         }
@@ -145,13 +145,13 @@ public class ChatService : IChatService
             if (scope == ChatScope.Document)
             {
                 var chatCount = await _context.ChatSessions
-                    .CountAsync(c => c.Scope == ChatScope.Document && c.DocumentId == dto.DocumentId && c.UserId == userId && c.DeletedAt == null);
+                    .CountAsync(c => c.Scope == ChatScope.Document && c.DocumentId == dto.DocumentId && c.UserId == userId);
                 title = chatCount == 0 ? "Новый чат" : $"Chat {chatCount + 1}";
             }
             else
             {
                 var chatCount = await _context.ChatSessions
-                    .CountAsync(c => c.Scope == ChatScope.Global && c.UserId == userId && c.DeletedAt == null);
+                    .CountAsync(c => c.Scope == ChatScope.Global && c.UserId == userId);
                 title = chatCount == 0 ? "Главный чат" : $"Чат {chatCount + 1}";
             }
         }
@@ -187,7 +187,7 @@ public class ChatService : IChatService
     public async Task<ChatSessionDTO> UpdateChatAsync(Guid chatId, UpdateChatSessionDTO dto, Guid userId)
     {
         var chat = await _context.ChatSessions
-            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId && c.DeletedAt == null);
+            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId);
 
         if (chat == null)
         {
@@ -219,7 +219,7 @@ public class ChatService : IChatService
     public async Task<List<ChatSessionDTO>> GetChatsByScopeAsync(Guid userId, ChatScope scope, Guid? documentId, bool includeArchived = false)
     {
         var query = _context.ChatSessions
-            .Where(c => c.Scope == scope && c.UserId == userId && c.DeletedAt == null);
+            .Where(c => c.Scope == scope && c.UserId == userId);
 
         if (scope == ChatScope.Document && documentId.HasValue)
             query = query.Where(c => c.DocumentId == documentId);
@@ -263,7 +263,7 @@ public class ChatService : IChatService
     public async Task ArchiveChatAsync(Guid chatId, Guid userId)
     {
         var chat = await _context.ChatSessions
-            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId && c.DeletedAt == null);
+            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId);
 
         if (chat == null)
         {
@@ -279,7 +279,7 @@ public class ChatService : IChatService
     public async Task RestoreChatAsync(Guid chatId, Guid userId)
     {
         var chat = await _context.ChatSessions
-            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId && c.DeletedAt == null);
+            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId);
 
         if (chat == null)
         {
@@ -311,7 +311,7 @@ public class ChatService : IChatService
     public async Task AddMessageAsync(Guid chatId, ChatMessageDTO message, Guid userId)
     {
         var chat = await _context.ChatSessions
-            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId && c.DeletedAt == null);
+            .FirstOrDefaultAsync(c => c.Id == chatId && c.UserId == userId);
 
         if (chat == null)
         {
