@@ -278,4 +278,33 @@ public class MinioService : IMinioService
             throw;
         }
     }
+
+    public async Task RemoveBucketAndContentsAsync(string bucketName)
+    {
+        try
+        {
+            var existsArgs = new BucketExistsArgs().WithBucket(bucketName);
+            var exists = await _minioClient.BucketExistsAsync(existsArgs);
+            if (!exists)
+            {
+                _logger.LogDebug("Bucket already absent: {BucketName}", bucketName);
+                return;
+            }
+
+            await DeleteDirectoryAsync(bucketName, string.Empty);
+
+            var removeArgs = new RemoveBucketArgs().WithBucket(bucketName);
+            await _minioClient.RemoveBucketAsync(removeArgs);
+            _logger.LogInformation("Removed bucket: {BucketName}", bucketName);
+        }
+        catch (BucketNotFoundException)
+        {
+            _logger.LogDebug("Bucket not found during remove: {BucketName}", bucketName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error removing bucket {BucketName}", bucketName);
+            throw;
+        }
+    }
 }

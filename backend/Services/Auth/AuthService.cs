@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RusalProject.Models.DTOs;
@@ -6,6 +7,7 @@ using RusalProject.Models.Entities;
 using RusalProject.Provider.Database;
 using RusalProject.Provider.Redis;
 using RusalProject.Services.Email;
+using RusalProject.Services.Storage;
 
 namespace RusalProject.Services.Auth;
 
@@ -16,6 +18,7 @@ public class AuthService : IAuthService
     private readonly IJwtService _jwtService;
     private readonly IRedisService _redisService;
     private readonly IEmailService _emailService;
+    private readonly IMinioService _minioService;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -24,6 +27,7 @@ public class AuthService : IAuthService
         IJwtService jwtService,
         IRedisService redisService,
         IEmailService emailService,
+        IMinioService minioService,
         ILogger<AuthService> logger)
     {
         _context = context;
@@ -31,6 +35,7 @@ public class AuthService : IAuthService
         _jwtService = jwtService;
         _redisService = redisService;
         _emailService = emailService;
+        _minioService = minioService;
         _logger = logger;
     }
 
@@ -250,6 +255,32 @@ public class AuthService : IAuthService
         {
             await _redisService.DeleteRefreshTokenMappingAsync(token);
         }
+    }
+
+    public async Task DeleteCurrentUserAsync(Guid userId)
+    {
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null)
+        {
+            throw new KeyNotFoundException("User not found");
+        }
+
+        await LogoutAllAsync(userId);
+        await _redisService.DeleteVerificationCodeAsync(user.Email);
+        await _redisService.DeletePendingUserAsync(user.Email);
+
+        var bucketName = $"user-{userId}";
+        try
+        {
+            await _minioService.RemoveBucketAndContentsAsync(bucketName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to remove MinIO bucket {BucketName}", bucketName);
+        }
+
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
     }
 
     // Private helper methods

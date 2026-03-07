@@ -54,6 +54,10 @@ class AuthAPI extends HttpClient {
 	async me(): Promise<MeResponse> {
 		return this._get<MeResponse>('/api/auth/me');
 	}
+
+	async deleteAccount(): Promise<void> {
+		return this.delete<void>('/api/auth/me');
+	}
 }
 
 export default new AuthAPI();

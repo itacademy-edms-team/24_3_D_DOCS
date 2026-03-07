@@ -102,6 +102,21 @@ export const useAuthStore = defineStore(
 		}
 	}
 
+	async function deleteAccount() {
+		try {
+			isLoading.value = true;
+			error.value = null;
+			await AuthAPI.deleteAccount();
+			clearAuthData();
+			error.value = null;
+		} catch (err: any) {
+			error.value = err?.message || 'Не удалось удалить аккаунт';
+			throw err;
+		} finally {
+			isLoading.value = false;
+		}
+	}
+
 	async function checkAuth() {
 		try {
 			if (!accessToken.value) {
@@ -152,6 +167,7 @@ export const useAuthStore = defineStore(
 			sendVerification,
 			register,
 			logout,
+			deleteAccount,
 			checkAuth,
 			refreshAccessToken,
 			clearError,

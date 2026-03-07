@@ -10,4 +10,9 @@ public interface IMinioService
     Task DeleteDirectoryAsync(string bucketName, string prefix);
     Task<List<string>> ListFilesAsync(string bucketName, string prefix);
     Task<string> GetPresignedUrlAsync(string bucketName, string objectName, int expirySeconds = 3600);
+
+    /// <summary>
+    /// Удаляет все объекты в бакете и сам бакет. Идемпотентно, если бакета нет.
+    /// </summary>
+    Task RemoveBucketAndContentsAsync(string bucketName);
 }
