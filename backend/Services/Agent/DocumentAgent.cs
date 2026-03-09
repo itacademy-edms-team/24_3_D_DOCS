@@ -3,6 +3,7 @@ using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Chat;
 using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Agent.Tools.DocumentTools;
+using RusalProject.Services.AgentSources;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
 
@@ -13,25 +14,32 @@ public class DocumentAgent : IDocumentAgent
     private const int MaxToolIterations = 16;
 
     private readonly IChatService _chatService;
+    private readonly IAgentSourceService _agentSourceService;
     private readonly AgentLoopRunner _runner;
     private readonly IReadOnlyList<IAgentTool> _tools;
 
     public DocumentAgent(
         IChatService chatService,
+        IAgentSourceService agentSourceService,
         AgentLoopRunner runner,
         ReadDocumentTool readDocumentTool,
         ProposeInsertTool proposeInsertTool,
         ProposeDeleteTool proposeDeleteTool,
-        ProposeReplaceTool proposeReplaceTool)
+        ProposeReplaceTool proposeReplaceTool,
+        QueryAttachmentTextTool queryAttachmentTextTool,
+        QueryAttachmentImageTool queryAttachmentImageTool)
     {
         _chatService = chatService;
+        _agentSourceService = agentSourceService;
         _runner = runner;
         _tools = new IAgentTool[]
         {
             readDocumentTool,
             proposeInsertTool,
             proposeDeleteTool,
-            proposeReplaceTool
+            proposeReplaceTool,
+            queryAttachmentTextTool,
+            queryAttachmentImageTool
         };
     }
 
@@ -73,11 +81,42 @@ public class DocumentAgent : IDocumentAgent
             });
         }
 
+        Guid? sourceSessionIdForContext = null;
+        if (request.SourceSessionId.HasValue)
+        {
+            var sourceSession = await _agentSourceService.GetValidatedSessionAsync(
+                userId,
+                request.SourceSessionId.Value,
+                request.DocumentId.Value,
+                request.ChatId.Value,
+                cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "Сессия вложения недействительна, истекла или не относится к этому чату и документу.");
+
+            sourceSessionIdForContext = sourceSession.Id;
+            var catalog = _agentSourceService.BuildCatalog(sourceSession);
+            var lastUserIdx = history.FindLastIndex(m => m.Role == "user");
+            if (lastUserIdx >= 0)
+            {
+                history.Insert(lastUserIdx, new OllamaMessageInput
+                {
+                    Role = "user",
+                    Content = catalog
+                });
+            }
+            else
+            {
+                history.Add(new OllamaMessageInput { Role = "user", Content = catalog });
+            }
+        }
+
         var loopResult = await _runner.RunAsync(
             new AgentExecutionContext
             {
                 UserId = userId,
-                DocumentId = request.DocumentId.Value
+                DocumentId = request.DocumentId.Value,
+                ChatSessionId = request.ChatId.Value,
+                SourceSessionId = sourceSessionIdForContext
             },
             GetSystemPrompt(),
             _tools,
@@ -126,9 +165,11 @@ IMPORTANT: Отвечай пользователю на русском язык�
 - читать документ по диапазону строк;
 - предлагать вставку нового контента;
 - предлагать удаление диапазона строк;
-- предлагать замену диапазона строк.
+- предлагать замену диапазона строк;
+- при наличии вложения в чате: query_attachment_text (вопрос по текстовой части) и query_attachment_image (вопрос по картинке из вложения).
 
 Правила:
+- Если в сообщениях есть блок «[Контекст вложений…]», сначала ориентируйся на индексы частей; для вопросов к тексту вложения вызывай query_attachment_text(part_index, question), для изображений — query_attachment_image(part_index, question).
 - Ты работаешь только с содержимым текущего документа.
 - Не создавай и не удаляй документы.
 - Если контекст документа непонятен, сначала используй read_document.

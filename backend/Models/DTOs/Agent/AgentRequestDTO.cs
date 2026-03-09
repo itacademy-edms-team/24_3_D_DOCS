@@ -11,4 +11,5 @@ public class AgentRequestDTO
     public int? EndLine { get; set; }
     public Guid? ChatId { get; set; }
     public AgentMode? Mode { get; set; }
+    public Guid? SourceSessionId { get; set; }
 }

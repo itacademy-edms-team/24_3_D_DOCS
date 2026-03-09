@@ -20,6 +20,21 @@ export interface AgentRequestDTO {
 	endLine?: number;
 	chatId?: string;
 	mode?: AgentMode;
+	/** Сессия вложения после POST /api/ai/agent-sources/ingest */
+	sourceSessionId?: string;
+}
+
+export interface AgentSourcePartSummaryDTO {
+	index: number;
+	kind: string;
+	label: string;
+}
+
+export interface AgentSourceIngestResponseDTO {
+	sourceSessionId: string;
+	originalFileName: string;
+	parts: AgentSourcePartSummaryDTO[];
+	notes?: string | null;
 }
 
 export interface AgentResponseDTO {
@@ -84,6 +99,43 @@ class AIAPI extends HttpClient {
 
 	async deleteOllamaKey(): Promise<void> {
 		await this.delete('/api/ai/ollama-key');
+	}
+
+	async ingestAgentSource(
+		documentId: string,
+		chatId: string,
+		file: File
+	): Promise<AgentSourceIngestResponseDTO> {
+		const baseURL = this.instance.defaults.baseURL || 'http://localhost:5159';
+		const form = new FormData();
+		form.append('documentId', documentId);
+		form.append('chatId', chatId);
+		form.append('file', file);
+		const headers: HeadersInit = {};
+		const accessToken = getAccessToken();
+		if (accessToken) {
+			headers['Authorization'] = `Bearer ${accessToken}`;
+		}
+		const res = await fetch(`${baseURL}/api/ai/agent-sources/ingest`, {
+			method: 'POST',
+			headers,
+			body: form,
+		});
+		const text = await res.text();
+		let body: unknown;
+		try {
+			body = text ? JSON.parse(text) : {};
+		} catch {
+			body = {};
+		}
+		if (!res.ok) {
+			const msg =
+				typeof body === 'object' && body !== null && 'message' in body
+					? String((body as { message?: string }).message)
+					: `Ошибка загрузки (${res.status})`;
+			throw new Error(msg);
+		}
+		return body as AgentSourceIngestResponseDTO;
 	}
 
 	/**

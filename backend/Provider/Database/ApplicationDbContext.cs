@@ -25,6 +25,8 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<AgentLog> AgentLogs { get; set; }
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
     public DbSet<UserOllamaApiKey> UserOllamaApiKeys { get; set; }
+    public DbSet<AgentSourceSession> AgentSourceSessions { get; set; }
+    public DbSet<AgentSourcePart> AgentSourceParts { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -334,6 +336,42 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
                   .WithMany()
                   .HasForeignKey(a => a.ChatSessionId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<AgentSourceSession>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId).HasDatabaseName("IX_AgentSourceSessions_UserId");
+            entity.HasIndex(e => e.DocumentId).HasDatabaseName("IX_AgentSourceSessions_DocumentId");
+            entity.HasIndex(e => e.ChatSessionId).HasDatabaseName("IX_AgentSourceSessions_ChatSessionId");
+            entity.HasIndex(e => e.ExpiresAt).HasDatabaseName("IX_AgentSourceSessions_ExpiresAt");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Document)
+                .WithMany()
+                .HasForeignKey(e => e.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ChatSession)
+                .WithMany()
+                .HasForeignKey(e => e.ChatSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AgentSourcePart>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SessionId).HasDatabaseName("IX_AgentSourceParts_SessionId");
+            entity.HasIndex(e => new { e.SessionId, e.PartIndex })
+                .IsUnique()
+                .HasDatabaseName("IX_AgentSourceParts_Session_PartIndex");
+            entity.Property(e => e.InlineText).HasColumnType("text");
+            entity.HasOne(e => e.Session)
+                .WithMany(s => s.Parts)
+                .HasForeignKey(e => e.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

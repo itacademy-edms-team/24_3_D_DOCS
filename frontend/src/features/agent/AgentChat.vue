@@ -240,6 +240,27 @@
 
 		<!-- Input area -->
 		<div class="chat-input-area">
+			<input
+				ref="attachmentFileInputRef"
+				type="file"
+				class="agent-chat__file-input"
+				accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
+				@change="onAttachmentFileSelected"
+			/>
+			<div v-if="showAttachmentUi && (pendingAttachment || isUploadingAttachment)" style="margin-bottom: 8px;">
+				<div v-if="isUploadingAttachment" class="chat-selection-badge">Загрузка файла…</div>
+				<div v-else-if="pendingAttachment" class="chat-selection-badge">
+					<span :title="pendingAttachment.label">Вложение: {{ pendingAttachment.label }}</span>
+					<button
+						type="button"
+						@click="clearPendingAttachment"
+						class="chat-selection-remove"
+						title="Убрать вложение"
+					>
+						<Icon name="close" size="12" ariaLabel="Убрать вложение" />
+					</button>
+				</div>
+			</div>
 			<!-- Selection badges -->
 			<div v-if="hasSelection" style="margin-bottom: 8px;">
 				<div class="chat-selection-badge">
@@ -256,6 +277,17 @@
 				</div>
 			</div>
 			<div class="chat-input">
+				<button
+					v-if="showAttachmentUi"
+					type="button"
+					class="chat-attach-button"
+					:disabled="isProcessing || !activeChatId || isUploadingAttachment"
+					title="Прикрепить файл (PDF, текст, изображение)"
+					aria-label="Прикрепить файл"
+					@click="openAttachmentPicker"
+				>
+					<Icon name="folder_open" size="20" ariaLabel="Прикрепить файл" />
+				</button>
 				<input
 					v-model="userMessage"
 					:disabled="isProcessing || !activeChatId"
@@ -283,6 +315,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, watch, onMounted, nextTick } from 'vue';
 import { useAgent } from '@/app/composables/useAgent';
+import AIAPI from '@/shared/api/AIAPI';
 import { useGlobalChats } from '@/app/composables/useGlobalChats';
 import { useDocumentChats } from '@/app/composables/useDocumentChats';
 import Icon from '@/components/Icon.vue';
@@ -359,6 +392,9 @@ const chatsError = computed(() =>
 
 const userMessage = ref('');
 const pendingUserMessage = ref<string | null>(null);
+const attachmentFileInputRef = ref<HTMLInputElement | null>(null);
+const pendingAttachment = ref<{ sessionId: string; label: string } | null>(null);
+const isUploadingAttachment = ref(false);
 const showArchive = ref(false);
 const editingChatId = ref<string | null>(null);
 const editingTitle = ref('');
@@ -417,6 +453,8 @@ function getToolLabel(toolName: string): string {
 		propose_delete: 'Предложение удаления',
 		propose_replace: 'Предложение замены',
 		propose_document_changes: 'Предложение правок по сущностям',
+		query_attachment_text: 'Вопрос по тексту вложения',
+		query_attachment_image: 'Вопрос по изображению вложения',
 	};
 	return labels[toolName] ?? `Вызов ${toolName}`;
 }
@@ -450,6 +488,37 @@ const showFinalResponseBlock = computed(() => {
 const hasSelection = computed(() => {
 	return props.startLine !== undefined && props.endLine !== undefined;
 });
+
+const showAttachmentUi = computed(
+	() => props.scope === 'document' && !!props.documentId
+);
+
+function openAttachmentPicker() {
+	attachmentFileInputRef.value?.click();
+}
+
+function clearPendingAttachment() {
+	pendingAttachment.value = null;
+}
+
+async function onAttachmentFileSelected(ev: Event) {
+	const input = ev.target as HTMLInputElement;
+	const file = input.files?.[0];
+	input.value = '';
+	if (!file || !showAttachmentUi.value || !props.documentId || !activeChatId.value) return;
+	try {
+		isUploadingAttachment.value = true;
+		const res = await AIAPI.ingestAgentSource(props.documentId, activeChatId.value, file);
+		pendingAttachment.value = {
+			sessionId: res.sourceSessionId,
+			label: res.originalFileName || file.name,
+		};
+	} catch (e) {
+		console.error('ingestAgentSource failed', e);
+	} finally {
+		isUploadingAttachment.value = false;
+	}
+}
 
 const loadChatsForCurrentScope = async () => {
 	if (isGlobalScope.value) {
@@ -485,6 +554,7 @@ watch(
 		globalChatsStore.reset();
 		documentChatsStore.reset();
 		resetAgent();
+		pendingAttachment.value = null;
 		await loadChatsForCurrentScope();
 		await ensureGlobalChatExists();
 	}
@@ -545,6 +615,7 @@ const handleSwitchChat = async (chatId: string) => {
 		await documentChatsStore.switchChat(chatId);
 	}
 	resetAgent();
+	pendingAttachment.value = null;
 	processedDocumentChangeSteps.value = new Set();
 };
 
@@ -632,6 +703,9 @@ const handleSend = async () => {
 		startLine: props.startLine,
 		endLine: props.endLine,
 		chatId: activeChatId.value,
+		...(pendingAttachment.value?.sessionId
+			? { sourceSessionId: pendingAttachment.value.sessionId }
+			: {}),
 	};
 
 	try {
@@ -640,6 +714,7 @@ const handleSend = async () => {
 			scope: request.scope === 'global' ? 'Global' : 'Document',
 		} as unknown as AgentRequestDTO;
 		await sendMessage(payload);
+		pendingAttachment.value = null;
 
 		// Обновить историю чата с сервера (без этого видны только последнее сообщение до перезагрузки)
 		if (activeChatId.value) {
@@ -949,5 +1024,40 @@ watch(() => activeChat.value?.messages, () => {
 	gap: 20px;
 	scroll-behavior: smooth;
 	position: relative;
+}
+
+.agent-chat__file-input {
+	position: absolute;
+	width: 0;
+	height: 0;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.chat-attach-button {
+	flex-shrink: 0;
+	align-self: center;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border-radius: var(--chat-radius-sm, 8px);
+	border: 2px solid var(--chat-border);
+	background: var(--chat-bg);
+	color: var(--chat-foreground);
+	cursor: pointer;
+	transition: all var(--chat-transition, 0.2s ease);
+}
+
+.chat-attach-button:hover:not(:disabled) {
+	border-color: var(--chat-accent);
+	color: var(--chat-accent);
+}
+
+.chat-attach-button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 </style>

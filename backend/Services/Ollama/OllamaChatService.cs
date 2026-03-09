@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 
 namespace RusalProject.Services.Ollama;
 
-public class OllamaChatService : IOllamaChatService
+public class OllamaChatService : IOllamaChatService, IOllamaSimpleChatService
 {
     private readonly IUserOllamaApiKeyService _keyService;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -148,6 +148,94 @@ public class OllamaChatService : IOllamaChatService
             ToolCalls = toolCalls,
             Thinking = thinking
         };
+    }
+
+    public async Task<string> CompleteTextAsync(
+        Guid userId,
+        string model,
+        string systemPrompt,
+        string userContent,
+        CancellationToken cancellationToken = default)
+    {
+        var messages = new List<Dictionary<string, object?>>
+        {
+            new() { ["role"] = "system", ["content"] = systemPrompt },
+            new() { ["role"] = "user", ["content"] = userContent }
+        };
+        return await SendSimpleChatAsync(userId, model, messages, cancellationToken);
+    }
+
+    public async Task<string> CompleteVisionAsync(
+        Guid userId,
+        string model,
+        string systemPrompt,
+        string userTextPrompt,
+        byte[] imageBytes,
+        CancellationToken cancellationToken = default)
+    {
+        var b64 = Convert.ToBase64String(imageBytes);
+        var messages = new List<Dictionary<string, object?>>
+        {
+            new() { ["role"] = "system", ["content"] = systemPrompt },
+            new()
+            {
+                ["role"] = "user",
+                ["content"] = userTextPrompt,
+                ["images"] = new List<string> { b64 }
+            }
+        };
+        return await SendSimpleChatAsync(userId, model, messages, cancellationToken);
+    }
+
+    private async Task<string> SendSimpleChatAsync(
+        Guid userId,
+        string model,
+        List<Dictionary<string, object?>> messages,
+        CancellationToken cancellationToken)
+    {
+        if (!await _keyService.HasApiKeyAsync(userId, cancellationToken))
+            throw new InvalidOperationException("Настройте Ollama API ключ.");
+
+        var apiKey = await _keyService.GetDecryptedApiKeyAsync(userId, cancellationToken);
+        if (string.IsNullOrEmpty(apiKey))
+            throw new InvalidOperationException("Не удалось получить API ключ.");
+
+        var baseUrl = _configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
+        var url = $"{baseUrl.TrimEnd('/')}/api/chat";
+
+        var requestBody = new
+        {
+            model,
+            stream = false,
+            messages
+        };
+        var serializedRequestBody = JsonSerializer.Serialize(requestBody, JsonOptions);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = new StringContent(serializedRequestBody, Encoding.UTF8, "application/json");
+
+        var client = _httpClientFactory.CreateClient();
+        var response = await client.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("API ключ недействителен.");
+        if (response.StatusCode == (HttpStatusCode)429)
+            throw new InvalidOperationException("Провайдер временно ограничил запросы.");
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Ollama simple chat error {StatusCode}. Body: {Body}",
+                (int)response.StatusCode,
+                Truncate(errorBody, 2000));
+            throw new InvalidOperationException($"Ошибка при обращении к Ollama: {(int)response.StatusCode}.");
+        }
+
+        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        var parsed = JsonSerializer.Deserialize<OllamaStreamEvent>(payload, JsonOptions)
+            ?? throw new InvalidOperationException("Пустой ответ от Ollama.");
+        return (parsed.Message?.Content ?? string.Empty).Trim();
     }
 
     private static List<object> BuildMessages(string systemPrompt, IReadOnlyList<OllamaMessageInput> messages)

@@ -80,7 +80,8 @@ public class MainAgent : IMainAgent
                 ChatId = request.ChatId,
                 Scope = Models.Types.ChatScope.Document,
                 DocumentId = loopResult.Delegation.DocumentId,
-                UserMessage = BuildDocumentAgentTask(loopResult.Delegation.Task)
+                UserMessage = BuildDocumentAgentTask(loopResult.Delegation.Task),
+                SourceSessionId = request.SourceSessionId
             };
 
             var delegatedResponse = await _documentAgent.RunAsync(

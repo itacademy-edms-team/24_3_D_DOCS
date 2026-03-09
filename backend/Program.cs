@@ -25,6 +25,7 @@ using RusalProject.Services.Storage;
 using RusalProject.Services.TitlePage;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
+using RusalProject.Services.AgentSources;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -134,10 +135,14 @@ builder.Services.AddScoped<IMarkdownParserService, MarkdownParserService>();
 
 // Agent Services
 builder.Services.AddScoped<IAgentLogService, AgentLogService>();
+builder.Services.AddScoped<IAgentSourceService, AgentSourceService>();
+builder.Services.AddScoped<IOllamaAttachmentQueryService, OllamaAttachmentQueryService>();
 builder.Services.AddScoped<ReadDocumentTool>();
 builder.Services.AddScoped<ProposeInsertTool>();
 builder.Services.AddScoped<ProposeDeleteTool>();
 builder.Services.AddScoped<ProposeReplaceTool>();
+builder.Services.AddScoped<QueryAttachmentTextTool>();
+builder.Services.AddScoped<QueryAttachmentImageTool>();
 builder.Services.AddScoped<AgentLoopRunner>();
 builder.Services.AddScoped<IDocumentAgent, DocumentAgent>();
 builder.Services.AddScoped<ListDocumentTool>();
@@ -155,6 +160,7 @@ builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IUserOllamaApiKeyService, UserOllamaApiKeyService>();
 builder.Services.AddScoped<IOllamaChatService, OllamaChatService>();
+builder.Services.AddScoped<IOllamaSimpleChatService>(sp => (IOllamaSimpleChatService)sp.GetRequiredService<IOllamaChatService>());
 
 // JWT Authentication Configuration
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] 
