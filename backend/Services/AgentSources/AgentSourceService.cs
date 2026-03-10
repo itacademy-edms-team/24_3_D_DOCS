@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -118,12 +119,10 @@ public class AgentSourceService : IAgentSourceService
         if (string.Equals(ext, ".pdf", StringComparison.OrdinalIgnoreCase))
         {
             var text = ExtractPdfText(bytes);
-            if (string.IsNullOrWhiteSpace(text))
-                notes = "Текст из PDF не извлечён (возможно, скан без OCR). Изображения страниц из PDF не извлекаются.";
-            else
-                notes = "Изображения, встроенные в PDF, на этом этапе не извлекаются; доступен только извлечённый текст.";
-
             partIndex = await AddTextPartAsync(parts, sessionId, bucket, partIndex, text ?? string.Empty, "Текст PDF", "application/pdf", cancellationToken);
+            var embedded = await AddPdfEmbeddedImagesAsync(bytes, sessionId, bucket, parts, partIndex, cancellationToken);
+            partIndex = embedded.NextPartIndex;
+            notes = BuildPdfIngestNotes(text, embedded.AddedCount);
         }
         else if (IsTextExtension(ext))
         {
@@ -343,6 +342,122 @@ public class AgentSourceService : IAgentSourceService
         await s.CopyToAsync(ms, cancellationToken);
         return ms.ToArray();
     }
+
+    private sealed record PdfEmbeddedImagesResult(int NextPartIndex, int AddedCount);
+
+    private static string BuildPdfIngestNotes(string? text, int embeddedCount)
+    {
+        var hasText = !string.IsNullOrWhiteSpace(text);
+        var img = embeddedCount switch
+        {
+            0 => "Встроенных растровых изображений не найдено или они не декодированы (возможна только векторная графика).",
+            1 => "Добавлено 1 встроенное изображение; смотри каталог (Kind=Image) и query_attachment_image.",
+            _ => $"Добавлено {embeddedCount} встроенных изображений; смотри каталог (Kind=Image) и query_attachment_image."
+        };
+        if (!hasText)
+            return "Текст из PDF не извлечён (возможно, скан без OCR). " + img;
+        return "Текст извлечён. " + img;
+    }
+
+    private async Task<PdfEmbeddedImagesResult> AddPdfEmbeddedImagesAsync(
+        byte[] pdfBytes,
+        Guid sessionId,
+        string bucket,
+        List<AgentSourcePart> parts,
+        int partIndex,
+        CancellationToken cancellationToken)
+    {
+        var added = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            using var pdfMs = new MemoryStream(pdfBytes);
+            using var doc = PdfDocument.Open(pdfMs);
+            foreach (var page in doc.GetPages())
+            {
+                var onPage = 0;
+                foreach (var image in page.GetImages())
+                {
+                    if (added >= AgentSourceConstants.MaxPdfEmbeddedImages)
+                        return new PdfEmbeddedImagesResult(partIndex, added);
+
+                    if (image.WidthInSamples < AgentSourceConstants.MinPdfImageDimension
+                        || image.HeightInSamples < AgentSourceConstants.MinPdfImageDimension)
+                        continue;
+
+                    byte[]? payload = null;
+                    var ext = ".png";
+                    var mime = "image/png";
+                    if (image.TryGetPng(out var png))
+                    {
+                        payload = png;
+                    }
+                    else if (image.TryGetBytes(out var decoded))
+                    {
+                        payload = decoded.ToArray();
+                        if (IsLikelyJpeg(payload))
+                        {
+                            ext = ".jpg";
+                            mime = "image/jpeg";
+                        }
+                        else if (IsLikelyPng(payload))
+                        {
+                            ext = ".png";
+                            mime = "image/png";
+                        }
+                        else
+                            continue;
+                    }
+                    else if (image.RawBytes.Count > 0)
+                    {
+                        payload = image.RawBytes.ToArray();
+                        if (!IsLikelyJpeg(payload))
+                            continue;
+                        ext = ".jpg";
+                        mime = "image/jpeg";
+                    }
+
+                    if (payload == null || payload.Length == 0)
+                        continue;
+                    if (payload.Length > AgentSourceConstants.MaxImageBytes)
+                        continue;
+
+                    var hash = Convert.ToHexString(SHA256.HashData(payload));
+                    if (!seen.Add(hash))
+                        continue;
+
+                    onPage++;
+                    var storagePath = $"agent-sources/{sessionId}/{partIndex}{ext}";
+                    await using var upload = new MemoryStream(payload);
+                    await _minioService.UploadFileAsync(bucket, storagePath, upload, mime);
+
+                    parts.Add(new AgentSourcePart
+                    {
+                        SessionId = sessionId,
+                        PartIndex = partIndex++,
+                        Kind = nameof(AgentSourcePartKind.Image),
+                        MimeType = mime,
+                        Label = $"PDF, стр. {page.Number}, изображение {onPage} ({image.WidthInSamples}×{image.HeightInSamples})",
+                        StoragePath = storagePath
+                    });
+                    added++;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PdfPig: не удалось полностью извлечь встроенные изображения из PDF");
+        }
+
+        return new PdfEmbeddedImagesResult(partIndex, added);
+    }
+
+    private static bool IsLikelyJpeg(ReadOnlySpan<byte> data) =>
+        data.Length >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF;
+
+    private static bool IsLikelyPng(ReadOnlySpan<byte> data) =>
+        data.Length >= 8 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47
+                          && data[4] == 0x0D && data[5] == 0x0A && data[6] == 0x1A && data[7] == 0x0A;
 
     private string ExtractPdfText(byte[] bytes)
     {
