@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using RusalProject.Models.DTOs.Agent;
@@ -13,6 +14,11 @@ namespace RusalProject.Services.AgentSources;
 
 public class AgentSourceService : IAgentSourceService
 {
+    private static readonly JsonSerializerOptions AttachmentsJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private readonly ApplicationDbContext _context;
     private readonly IMinioService _minioService;
     private readonly IChatService _chatService;
@@ -34,7 +40,7 @@ public class AgentSourceService : IAgentSourceService
 
     public async Task<AgentSourceIngestResponseDTO> IngestAsync(
         Guid userId,
-        Guid documentId,
+        Guid? documentId,
         Guid chatSessionId,
         IFormFile file,
         CancellationToken cancellationToken = default)
@@ -48,8 +54,23 @@ public class AgentSourceService : IAgentSourceService
         var chat = await _chatService.GetChatByIdAsync(chatSessionId, userId)
             ?? throw new InvalidOperationException("Чат не найден.");
 
-        if (chat.DocumentId != documentId)
-            throw new InvalidOperationException("Чат не относится к указанному документу.");
+        Guid? sessionDocumentId;
+        if (chat.Scope == ChatScope.Document)
+        {
+            if (!documentId.HasValue || documentId.Value == Guid.Empty)
+                throw new InvalidOperationException("Для чата документа укажите documentId.");
+            if (chat.DocumentId != documentId.Value)
+                throw new InvalidOperationException("Чат не относится к указанному документу.");
+            sessionDocumentId = documentId.Value;
+        }
+        else
+        {
+            if (documentId.HasValue)
+                throw new InvalidOperationException("Для глобального чата не указывайте documentId.");
+            if (chat.DocumentId.HasValue)
+                throw new InvalidOperationException("Несогласованность чата: ожидался глобальный чат.");
+            sessionDocumentId = null;
+        }
 
         var ext = Path.GetExtension(file.FileName);
         if (string.IsNullOrEmpty(ext) || !AgentSourceConstants.AllowedExtensions.Contains(ext))
@@ -65,15 +86,29 @@ public class AgentSourceService : IAgentSourceService
         var bucket = UserBucket(userId);
         await _minioService.EnsureBucketExistsAsync(bucket);
 
+        var originalPath = $"agent-sources/{sessionId}/original{ext}";
+        await using (var origUpload = new MemoryStream(bytes))
+        {
+            var origMime = string.IsNullOrWhiteSpace(file.ContentType)
+                ? GuessMimeFromExtension(ext)
+                : file.ContentType;
+            await _minioService.UploadFileAsync(bucket, originalPath, origUpload, origMime);
+        }
+
         var session = new AgentSourceSession
         {
             Id = sessionId,
             UserId = userId,
-            DocumentId = documentId,
+            DocumentId = sessionDocumentId,
             ChatSessionId = chatSessionId,
             OriginalFileName = Path.GetFileName(file.FileName),
             CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow + AgentSourceConstants.SessionTtl
+            ExpiresAt = DateTime.UtcNow + AgentSourceConstants.SessionTtl,
+            OriginalStoragePath = originalPath,
+            OriginalContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                ? GuessMimeFromExtension(ext)
+                : file.ContentType,
+            OriginalSize = bytes.Length
         };
 
         var parts = new List<AgentSourcePart>();
@@ -103,7 +138,6 @@ public class AgentSourceService : IAgentSourceService
             var mime = GuessImageMime(ext);
             var storagePath = $"agent-sources/{sessionId}/{partIndex}{ext}";
             await using var upload = new MemoryStream(bytes);
-            upload.Position = 0;
             await _minioService.UploadFileAsync(bucket, storagePath, upload, mime);
 
             parts.Add(new AgentSourcePart
@@ -190,21 +224,80 @@ public class AgentSourceService : IAgentSourceService
     public async Task<AgentSourceSession?> GetValidatedSessionAsync(
         Guid userId,
         Guid sessionId,
-        Guid documentId,
         Guid chatSessionId,
+        Guid? documentIdForContext,
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        return await _context.AgentSourceSessions
+        var session = await _context.AgentSourceSessions
             .Include(s => s.Parts)
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 s => s.Id == sessionId
                      && s.UserId == userId
-                     && s.DocumentId == documentId
                      && s.ChatSessionId == chatSessionId
                      && s.ExpiresAt > now,
                 cancellationToken);
+
+        if (session == null)
+            return null;
+
+        if (documentIdForContext.HasValue)
+        {
+            if (session.DocumentId != documentIdForContext.Value)
+                return null;
+        }
+        else
+        {
+            if (session.DocumentId != null)
+                return null;
+        }
+
+        return session;
+    }
+
+    public async Task<string?> BuildAttachmentsJsonAsync(
+        Guid userId,
+        Guid chatSessionId,
+        Guid? requestDocumentId,
+        Guid sourceSessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await GetValidatedSessionAsync(userId, sourceSessionId, chatSessionId, requestDocumentId, cancellationToken);
+        if (session == null)
+            return null;
+
+        var items = new[]
+        {
+            new
+            {
+                sourceSessionId = session.Id.ToString(),
+                fileName = session.OriginalFileName,
+                contentType = session.OriginalContentType ?? "application/octet-stream"
+            }
+        };
+        return JsonSerializer.Serialize(items, AttachmentsJsonOptions);
+    }
+
+    public async Task<(Stream Stream, string FileName, string ContentType)?> GetOriginalFileAsync(
+        Guid userId,
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var session = await _context.AgentSourceSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                s => s.Id == sessionId && s.UserId == userId && s.ExpiresAt > now,
+                cancellationToken);
+
+        if (session == null || string.IsNullOrEmpty(session.OriginalStoragePath))
+            return null;
+
+        var stream = await _minioService.DownloadFileAsync(UserBucket(userId), session.OriginalStoragePath);
+        var fileName = string.IsNullOrEmpty(session.OriginalFileName) ? "download" : session.OriginalFileName;
+        var ct = string.IsNullOrEmpty(session.OriginalContentType) ? "application/octet-stream" : session.OriginalContentType;
+        return (stream, fileName, ct);
     }
 
     public string BuildCatalog(AgentSourceSession session, string? notes = null)
@@ -298,6 +391,17 @@ public class AgentSourceService : IAgentSourceService
 
     private static string GuessImageMime(string ext) => ext.ToLowerInvariant() switch
     {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        ".gif" => "image/gif",
+        _ => "application/octet-stream"
+    };
+
+    private static string GuessMimeFromExtension(string ext) => ext.ToLowerInvariant() switch
+    {
+        ".pdf" => "application/pdf",
+        ".txt" or ".md" => "text/plain; charset=utf-8",
         ".png" => "image/png",
         ".jpg" or ".jpeg" => "image/jpeg",
         ".webp" => "image/webp",

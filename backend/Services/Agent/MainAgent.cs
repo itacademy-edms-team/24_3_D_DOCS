@@ -3,6 +3,7 @@ using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Chat;
 using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Agent.Tools.CRUDdocTools;
+using RusalProject.Services.Agent.Tools.DocumentTools;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
 
@@ -11,6 +12,7 @@ namespace RusalProject.Services.Agent;
 public class MainAgent : IMainAgent
 {
     private readonly IChatService _chatService;
+    private readonly IAgentAttachmentContextService _attachmentContext;
     private readonly AgentLoopRunner _runner;
     private readonly IDocumentAgent _documentAgent;
     private readonly IReadOnlyList<IAgentTool> _tools;
@@ -19,15 +21,19 @@ public class MainAgent : IMainAgent
 
     public MainAgent(
         IChatService chatService,
+        IAgentAttachmentContextService attachmentContext,
         AgentLoopRunner runner,
         IDocumentAgent documentAgent,
         ListDocumentTool listDocumentsTool,
         CreateDocumentTool createDocumentTool,
         DeleteDocumentTool deleteDocumentTool,
         RenameDocumentTool renameDocumentTool,
-        DelegateToDocumentAgentTool delegateToDocumentAgentTool)
+        DelegateToDocumentAgentTool delegateToDocumentAgentTool,
+        QueryAttachmentTextTool queryAttachmentTextTool,
+        QueryAttachmentImageTool queryAttachmentImageTool)
     {
         _chatService = chatService;
+        _attachmentContext = attachmentContext;
         _runner = runner;
         _documentAgent = documentAgent;
         _tools = new IAgentTool[]
@@ -36,7 +42,9 @@ public class MainAgent : IMainAgent
             createDocumentTool,
             deleteDocumentTool,
             renameDocumentTool,
-            delegateToDocumentAgentTool
+            delegateToDocumentAgentTool,
+            queryAttachmentTextTool,
+            queryAttachmentImageTool
         };
     }
 
@@ -63,8 +71,25 @@ public class MainAgent : IMainAgent
             })
             .ToList();
 
+        var messages = chat.Messages.OrderBy(x => x.CreatedAt).ToList();
+        var sourceSessionIdForContext = await _attachmentContext.ResolveAndInjectCatalogAsync(
+            userId,
+            request.ChatId.Value,
+            AgentAttachmentContextScope.Global,
+            documentId: null,
+            request.SourceSessionId,
+            messages,
+            history,
+            cancellationToken);
+
         var loopResult = await _runner.RunAsync(
-            new AgentExecutionContext { UserId = userId },
+            new AgentExecutionContext
+            {
+                UserId = userId,
+                ChatSessionId = request.ChatId.Value,
+                SourceSessionId = sourceSessionIdForContext,
+                DocumentId = null
+            },
             GetSystemPrompt(),
             _tools,
             history,
@@ -81,7 +106,7 @@ public class MainAgent : IMainAgent
                 Scope = Models.Types.ChatScope.Document,
                 DocumentId = loopResult.Delegation.DocumentId,
                 UserMessage = BuildDocumentAgentTask(loopResult.Delegation.Task),
-                SourceSessionId = request.SourceSessionId
+                SourceSessionId = sourceSessionIdForContext
             };
 
             var delegatedResponse = await _documentAgent.RunAsync(
@@ -136,9 +161,11 @@ IMPORTANT: Отвечай пользователю на русском язык�
 - создавать документы;
 - переименовывать документы;
 - удалять документы;
-- передавать задачу агенту документа для работы с содержимым.
+- передавать задачу агенту документа для работы с содержимым;
+- при наличии вложения в чате: query_attachment_text и query_attachment_image (см. каталог в сообщениях).
 
 Правила:
+- Если в сообщениях есть блок «[Контекст вложений…]», используй индексы частей; для вопросов к тексту вложения — query_attachment_text(part_index, question), к изображению — query_attachment_image(part_index, question).
 - Никогда не редактируй содержимое документа сам.
 - Если пользователь просит изменить текст, раздел, абзац, таблицу, заголовок или другой контент документа, используй delegate_to_document_agent.
 - Если пользователь просит создать новый документ и сразу наполнить его содержимым, сначала создай документ через create_document, а затем в этом же ответе обязательно вызови delegate_to_document_agent для наполнения документа.

@@ -9,6 +9,7 @@ using RusalProject.Models.DTOs.AI;
 using RusalProject.Models.DTOs.Chat;
 using RusalProject.Models.Types;
 using RusalProject.Services.Agent;
+using RusalProject.Services.AgentSources;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
 
@@ -23,6 +24,7 @@ public class AIController : ControllerBase
     private readonly IChatService _chatService;
     private readonly IAgentLogService _logService;
     private readonly IUserOllamaApiKeyService _ollamaKeyService;
+    private readonly IAgentSourceService _agentSourceService;
     private readonly ILogger<AIController> _logger;
     private static readonly JsonSerializerOptions ToolCallsJsonOptions = new()
     {
@@ -34,12 +36,14 @@ public class AIController : ControllerBase
         IChatService chatService,
         IAgentLogService logService,
         IUserOllamaApiKeyService ollamaKeyService,
+        IAgentSourceService agentSourceService,
         ILogger<AIController> logger)
     {
         _agentService = agentService;
         _chatService = chatService;
         _logService = logService;
         _ollamaKeyService = ollamaKeyService;
+        _agentSourceService = agentSourceService;
         _logger = logger;
     }
 
@@ -59,32 +63,6 @@ public class AIController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task Agent([FromBody] AgentRequestDTO request, CancellationToken cancellationToken)
     {
-        // #region agent log
-        try {
-            var modelStateErrors = ModelState
-                .SelectMany(kvp => kvp.Value?.Errors ?? Enumerable.Empty<Microsoft.AspNetCore.Mvc.ModelBinding.ModelError>())
-                .Select(e => e.ErrorMessage)
-                .ToList();
-            var logEntry = JsonSerializer.Serialize(new {
-                sessionId = "debug-session",
-                runId = "run1",
-                hypothesisId = "A",
-                location = "AIController.cs:52",
-                message = "Agent endpoint entry",
-                data = new {
-                    documentId = request?.DocumentId.ToString(),
-                    userMessage = request?.UserMessage?.Substring(0, Math.Min(50, request?.UserMessage?.Length ?? 0)),
-                    startLine = request?.StartLine,
-                    endLine = request?.EndLine,
-                    modelStateIsValid = ModelState.IsValid,
-                    modelStateErrors = modelStateErrors
-                },
-                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            });
-            System.IO.File.AppendAllText("/app/.cursor/debug.log", logEntry + "\n");
-        } catch {}
-        // #endregion
-
         // Настройка SSE (делаем это в начале, чтобы можно было отправлять события в любом случае)
         Response.ContentType = "text/event-stream";
         Response.Headers.Append("Cache-Control", "no-cache");
@@ -107,25 +85,6 @@ public class AIController : ControllerBase
 
             if (!ModelState.IsValid)
             {
-                // #region agent log
-                try {
-                    var errors = ModelState
-                        .Where(kvp => kvp.Value?.Errors != null && kvp.Value.Errors.Count > 0)
-                        .SelectMany(kvp => kvp.Value!.Errors.Select(e => new { field = kvp.Key, message = e.ErrorMessage }))
-                        .ToList();
-                    var logEntry = JsonSerializer.Serialize(new {
-                        sessionId = "debug-session",
-                        runId = "run1",
-                        hypothesisId = "C",
-                        location = "AIController.cs:87",
-                        message = "ModelState validation failed",
-                        data = new { errors },
-                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    });
-                    System.IO.File.AppendAllText("/app/.cursor/debug.log", logEntry + "\n");
-                } catch {}
-                // #endregion
-                
                 await SendSSEEvent("error", new { message = "Ошибка валидации", errors = ModelState });
                 return;
             }
@@ -148,10 +107,23 @@ public class AIController : ControllerBase
             // Сохраняем сообщение пользователя в чат
             try
             {
+                string? attachmentsJson = null;
+                if (request.SourceSessionId.HasValue)
+                {
+                    var docForAttachment = scope == ChatScope.Document ? request.DocumentId : null;
+                    attachmentsJson = await _agentSourceService.BuildAttachmentsJsonAsync(
+                        userId,
+                        request.ChatId.Value,
+                        docForAttachment,
+                        request.SourceSessionId.Value,
+                        cancellationToken);
+                }
+
                 var userMessage = new ChatMessageDTO
                 {
                     Role = "user",
-                    Content = request.UserMessage
+                    Content = request.UserMessage,
+                    AttachmentsJson = attachmentsJson
                 };
                 await _chatService.AddMessageAsync(request.ChatId.Value, userMessage, userId);
             }
@@ -159,26 +131,6 @@ public class AIController : ControllerBase
             {
                 _logger.LogWarning(ex, "Failed to save user message to chat {ChatId}", request.ChatId);
             }
-
-            // #region agent log
-            try {
-                var logEntry = JsonSerializer.Serialize(new {
-                    sessionId = "debug-session",
-                    runId = "run1",
-                    hypothesisId = "D",
-                    location = "AIController.cs:106",
-                    message = "Before ProcessAsync call",
-                    data = new {
-                        userId = userId.ToString(),
-                        documentId = request.DocumentId?.ToString(),
-                        chatId = request.ChatId?.ToString(),
-                        scope = scope.ToString()
-                    },
-                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                });
-                System.IO.File.AppendAllText("/app/.cursor/debug.log", logEntry + "\n");
-            } catch {}
-            // #endregion
 
             var collectedSteps = new List<AgentStepDTO>();
 
@@ -235,25 +187,6 @@ public class AIController : ControllerBase
                 }
             }, null, onChunk, cancellationToken);
 
-            // #region agent log
-            try {
-                var logEntry = JsonSerializer.Serialize(new {
-                    sessionId = "debug-session",
-                    runId = "run1",
-                    hypothesisId = "D",
-                    location = "AIController.cs:128",
-                    message = "ProcessAsync completed successfully",
-                    data = new {
-                        isComplete = finalResponse.IsComplete,
-                        stepsCount = finalResponse.Steps?.Count ?? 0,
-                        finalMessageLength = finalResponse.FinalMessage?.Length ?? 0
-                    },
-                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                });
-                System.IO.File.AppendAllText("/app/.cursor/debug.log", logEntry + "\n");
-            } catch {}
-            // #endregion
-
             // Отправляем финальное событие
             await SendSSEEvent("complete", finalResponse);
         }
@@ -264,27 +197,6 @@ public class AIController : ControllerBase
         }
         catch (Exception ex)
         {
-            // #region agent log
-            try {
-                var stackTrace = ex.StackTrace?.Substring(0, Math.Min(500, ex.StackTrace.Length));
-                var logEntry = JsonSerializer.Serialize(new {
-                    sessionId = "debug-session",
-                    runId = "run1",
-                    hypothesisId = "E",
-                    location = "AIController.cs:149",
-                    message = "Agent endpoint error",
-                    data = new {
-                        exceptionType = ex.GetType().Name,
-                        exceptionMessage = ex.Message,
-                        innerException = ex.InnerException?.Message,
-                        stackTrace = stackTrace
-                    },
-                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                });
-                System.IO.File.AppendAllText("/app/.cursor/debug.log", logEntry + "\n");
-            } catch {}
-            // #endregion
-
             _logger.LogError(ex, "Error processing agent request");
             await SendSSEEvent("error", new { message = "Внутренняя ошибка сервера", details = ex.Message });
         }

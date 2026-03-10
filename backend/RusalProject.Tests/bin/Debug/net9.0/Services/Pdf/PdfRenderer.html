@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Renderer</title>
+    <!-- Load dependencies from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-sup@2.0.0/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-sub@2.0.0/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-mark@4.0.0/index.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.27/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.27/dist/katex.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Times New Roman', Times, serif;
+        }
+    </style>
+</head>
+<body>
+    <script src="PdfRenderer.js"></script>
+    <script>
+        // Wait for all scripts to load, then expose the function
+        window.addEventListener('load', function() {
+            console.log('PDF Renderer loaded and ready');
+        });
+    </script>
+</body>
+</html>

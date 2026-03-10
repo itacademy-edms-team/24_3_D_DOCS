@@ -276,6 +276,8 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
                   .WithMany(s => s.Messages)
                   .HasForeignKey(m => m.ChatSessionId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.AttachmentsJson).HasColumnType("text");
         });
 
         // Configure UserOllamaApiKey entity
@@ -353,7 +355,7 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasOne(e => e.Document)
                 .WithMany()
                 .HasForeignKey(e => e.DocumentId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(e => e.ChatSession)
                 .WithMany()
                 .HasForeignKey(e => e.ChatSessionId)

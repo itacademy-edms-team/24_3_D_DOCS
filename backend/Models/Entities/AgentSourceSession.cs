@@ -14,9 +14,8 @@ public class AgentSourceSession
     [Column("user_id")]
     public Guid UserId { get; set; }
 
-    [Required]
     [Column("document_id")]
-    public Guid DocumentId { get; set; }
+    public Guid? DocumentId { get; set; }
 
     [Required]
     [Column("chat_session_id")]
@@ -36,6 +35,17 @@ public class AgentSourceSession
     [Column("ingest_notes")]
     [MaxLength(2000)]
     public string? IngestNotes { get; set; }
+
+    [Column("original_storage_path")]
+    [MaxLength(512)]
+    public string? OriginalStoragePath { get; set; }
+
+    [Column("original_content_type")]
+    [MaxLength(100)]
+    public string? OriginalContentType { get; set; }
+
+    [Column("original_size")]
+    public long? OriginalSize { get; set; }
 
     [ForeignKey("UserId")]
     public virtual User? User { get; set; }

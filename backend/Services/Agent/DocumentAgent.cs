@@ -3,7 +3,6 @@ using RusalProject.Models.DTOs.Agent;
 using RusalProject.Models.DTOs.Chat;
 using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Agent.Tools.DocumentTools;
-using RusalProject.Services.AgentSources;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
 
@@ -14,13 +13,13 @@ public class DocumentAgent : IDocumentAgent
     private const int MaxToolIterations = 16;
 
     private readonly IChatService _chatService;
-    private readonly IAgentSourceService _agentSourceService;
+    private readonly IAgentAttachmentContextService _attachmentContext;
     private readonly AgentLoopRunner _runner;
     private readonly IReadOnlyList<IAgentTool> _tools;
 
     public DocumentAgent(
         IChatService chatService,
-        IAgentSourceService agentSourceService,
+        IAgentAttachmentContextService attachmentContext,
         AgentLoopRunner runner,
         ReadDocumentTool readDocumentTool,
         ProposeInsertTool proposeInsertTool,
@@ -30,7 +29,7 @@ public class DocumentAgent : IDocumentAgent
         QueryAttachmentImageTool queryAttachmentImageTool)
     {
         _chatService = chatService;
-        _agentSourceService = agentSourceService;
+        _attachmentContext = attachmentContext;
         _runner = runner;
         _tools = new IAgentTool[]
         {
@@ -59,8 +58,9 @@ public class DocumentAgent : IDocumentAgent
         var chat = await _chatService.GetChatByIdAsync(request.ChatId.Value, userId)
             ?? throw new InvalidOperationException("Чат не найден.");
 
-        var history = chat.Messages
-            .OrderBy(x => x.CreatedAt)
+        var messages = chat.Messages.OrderBy(x => x.CreatedAt).ToList();
+
+        var history = messages
             .Where(m => !m.StepNumber.HasValue && m.Role is "user" or "assistant" or "system")
             .Select(m => new OllamaMessageInput
             {
@@ -81,34 +81,15 @@ public class DocumentAgent : IDocumentAgent
             });
         }
 
-        Guid? sourceSessionIdForContext = null;
-        if (request.SourceSessionId.HasValue)
-        {
-            var sourceSession = await _agentSourceService.GetValidatedSessionAsync(
-                userId,
-                request.SourceSessionId.Value,
-                request.DocumentId.Value,
-                request.ChatId.Value,
-                cancellationToken)
-                ?? throw new InvalidOperationException(
-                    "Сессия вложения недействительна, истекла или не относится к этому чату и документу.");
-
-            sourceSessionIdForContext = sourceSession.Id;
-            var catalog = _agentSourceService.BuildCatalog(sourceSession);
-            var lastUserIdx = history.FindLastIndex(m => m.Role == "user");
-            if (lastUserIdx >= 0)
-            {
-                history.Insert(lastUserIdx, new OllamaMessageInput
-                {
-                    Role = "user",
-                    Content = catalog
-                });
-            }
-            else
-            {
-                history.Add(new OllamaMessageInput { Role = "user", Content = catalog });
-            }
-        }
+        var sourceSessionIdForContext = await _attachmentContext.ResolveAndInjectCatalogAsync(
+            userId,
+            request.ChatId.Value,
+            AgentAttachmentContextScope.Document,
+            request.DocumentId,
+            request.SourceSessionId,
+            messages,
+            history,
+            cancellationToken);
 
         var loopResult = await _runner.RunAsync(
             new AgentExecutionContext

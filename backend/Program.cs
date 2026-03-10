@@ -144,6 +144,7 @@ builder.Services.AddScoped<ProposeReplaceTool>();
 builder.Services.AddScoped<QueryAttachmentTextTool>();
 builder.Services.AddScoped<QueryAttachmentImageTool>();
 builder.Services.AddScoped<AgentLoopRunner>();
+builder.Services.AddScoped<IAgentAttachmentContextService, AgentAttachmentContextService>();
 builder.Services.AddScoped<IDocumentAgent, DocumentAgent>();
 builder.Services.AddScoped<ListDocumentTool>();
 builder.Services.AddScoped<CreateDocumentTool>();

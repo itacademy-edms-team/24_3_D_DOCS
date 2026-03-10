@@ -49,7 +49,7 @@
 					@keydown.enter="handleFinishRename"
 					@keydown.esc="handleCancelRename"
 					class="chat-tab-input"
-					ref="renameInputRef"
+					:ref="(el) => bindRenameInputRef(el, chat.id)"
 				/>
 				<button
 					@click.stop="handleArchiveChat(chat.id)"
@@ -61,142 +61,21 @@
 			</button>
 		</div>
 
-		<!-- Messages area -->
-		<div class="chat-messages-wrapper" v-if="activeChat">
-			<div class="chat-messages" ref="messagesContainerRef">
-				<!-- History messages -->
-				<div
-					v-for="message in visibleHistoryMessages"
-					:key="message.id"
-					class="chat-message"
-					:class="`chat-message--${message.role}`"
-					@mouseenter="hoveredMessageId = message.id"
-					@mouseleave="hoveredMessageId = null"
-				>
-					<div class="chat-message-container">
-						<div class="chat-avatar" :class="`chat-avatar--${message.role}`">
-							<div class="chat-avatar-icon">
-								<Icon :name="message.role === 'user' ? 'user' : 'assistant'" size="20" ariaLabel="avatar" />
-							</div>
-						</div>
-						<div class="chat-bubble" :class="message.role">
-							<div class="chat-message-header">
-								<span class="chat-message-role">
-									{{ message.role === 'user' ? 'Вы' : 'Агент' }}
-								</span>
-								<div
-									v-if="hoveredMessageId === message.id && !message.stepNumber"
-									class="chat-message-actions"
-								>
-									<button
-										@click="copyMessage(message.content)"
-										class="button-ghost"
-										title="Копировать"
-										style="padding: 4px;"
-									>
-										<Icon name="copy" size="16" ariaLabel="Копировать" />
-									</button>
-								</div>
-							</div>
-							<!-- Step (tool call) - инкапсулированный блок -->
-							<div v-if="message.stepNumber && message.toolCalls" class="agent-chat__tool-steps">
-								<div
-									v-for="(tc, idx) in parseToolCalls(message.toolCalls)"
-									:key="`${message.id}-${idx}`"
-									class="maf-tool"
-								>
-									<div class="maf-tool__summary">
-										<span>{{ getToolLabel(tc.toolName) }}</span>
-										<span class="maf-tool__status maf-tool__status--accepted">✓</span>
-									</div>
-									<div class="maf-tool__result">{{ formatToolResult(tc.result) }}</div>
-								</div>
-							</div>
-							<!-- Обычное сообщение -->
-							<div v-else class="chat-message-content" v-html="renderMarkdown(message.content)"></div>
-						</div>
-					</div>
-				</div>
-
-			<!-- Сообщение пользователя, отправленное только что (пока не подгрузили историю) -->
-			<div v-if="pendingUserMessage" class="chat-message chat-message--user">
-				<div class="chat-message-container">
-					<div class="chat-avatar chat-avatar--user">
-						<div class="chat-avatar-icon">
-							<Icon name="user" size="20" ariaLabel="Вы" />
-						</div>
-					</div>
-					<div class="chat-bubble user">
-						<div class="chat-message-header">
-							<span class="chat-message-role">Вы</span>
-						</div>
-						<div class="chat-message-content" v-html="renderMarkdown(pendingUserMessage)"></div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Live tool steps (during processing) + typing -->
-			<div v-if="isProcessing" class="chat-message chat-message--assistant">
-				<div class="chat-message-container">
-					<div class="chat-avatar chat-avatar--assistant">
-						<div class="chat-avatar-icon">
-							<Icon name="assistant" size="20" ariaLabel="Агент" />
-						</div>
-					</div>
-					<div class="chat-bubble assistant">
-						<div class="chat-message-header">
-							<span class="chat-message-role">Агент</span>
-						</div>
-						<div v-if="liveToolCalls.length > 0" class="agent-chat__tool-steps">
-							<div
-								v-for="(tc, idx) in liveToolCalls"
-								:key="`live-tc-${idx}`"
-								class="maf-tool"
-							>
-								<div class="maf-tool__summary">
-									<span>{{ getToolLabel(tc.toolName) }}</span>
-									<span class="maf-tool__status maf-tool__status--accepted">✓</span>
-								</div>
-								<div class="maf-tool__result">{{ formatToolResult(tc.result) }}</div>
-							</div>
-						</div>
-						<div v-if="!currentResponse?.finalMessage" class="dots" aria-hidden="true">
-							<span></span>
-							<span></span>
-							<span></span>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Final agent response (when streaming completes before chat reload) -->
-			<div v-if="showFinalResponseBlock" class="chat-message chat-message--assistant">
-				<div class="chat-message-container">
-					<div class="chat-avatar chat-avatar--assistant">
-						<div class="chat-avatar-icon">
-							<Icon name="assistant" size="20" ariaLabel="Агент" />
-						</div>
-					</div>
-					<div class="chat-bubble assistant">
-						<div class="chat-message-header">
-							<span class="chat-message-role">Агент</span>
-						</div>
-						<div class="chat-message-content" v-html="renderMarkdown(currentResponse.finalMessage)"></div>
-					</div>
-				</div>
-			</div>
-			
-			<!-- Scroll to bottom button -->
-			<button
-				v-if="showScrollDownButton"
-				class="agent-chat__scroll-down-btn"
-				@click="scrollToBottom"
-				title="Прокрутить вниз"
-			>
-				<Icon name="arrow_downward" size="18" ariaLabel="Вниз" />
-			</button>
-			</div>
-		</div>
+		<AgentChatMessages
+			v-if="activeChat"
+			:history-messages="visibleHistoryMessages"
+			:pending-user-message="pendingUserMessage"
+			:pending-attachments="pendingAttachmentCards"
+			v-model:hovered-message-id="hoveredMessageId"
+			:render-markdown="renderMarkdown"
+			:is-processing="isProcessing"
+			:live-tool-calls="liveToolCalls"
+			:show-final-response-block="showFinalResponseBlock"
+			:current-response-final-message="currentResponse?.finalMessage ?? ''"
+			:show-scroll-down-button="showScrollDownButton"
+			@copy-message="copyMessage"
+			@scroll-to-bottom="scrollToBottom"
+		/>
 
 		<div v-else class="chat-empty">
 			<p>{{ props.scope === 'global' ? 'Создайте чат для начала работы с главным агентом' : 'Выберите чат или создайте новый' }}</p>
@@ -238,87 +117,37 @@
 			</div>
 		</div>
 
-		<!-- Input area -->
-		<div class="chat-input-area">
-			<input
-				ref="attachmentFileInputRef"
-				type="file"
-				class="agent-chat__file-input"
-				accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
-				@change="onAttachmentFileSelected"
-			/>
-			<div v-if="showAttachmentUi && (pendingAttachment || isUploadingAttachment)" style="margin-bottom: 8px;">
-				<div v-if="isUploadingAttachment" class="chat-selection-badge">Загрузка файла…</div>
-				<div v-else-if="pendingAttachment" class="chat-selection-badge">
-					<span :title="pendingAttachment.label">Вложение: {{ pendingAttachment.label }}</span>
-					<button
-						type="button"
-						@click="clearPendingAttachment"
-						class="chat-selection-remove"
-						title="Убрать вложение"
-					>
-						<Icon name="close" size="12" ariaLabel="Убрать вложение" />
-					</button>
-				</div>
-			</div>
-			<!-- Selection badges -->
-			<div v-if="hasSelection" style="margin-bottom: 8px;">
-				<div class="chat-selection-badge">
-					<span>
-						Строки {{ props.startLine }}-{{ props.endLine }}
-					</span>
-					<button
-						@click="clearSelection"
-						class="chat-selection-remove"
-						title="Убрать выделение"
-					>
-						<Icon name="close" size="12" ariaLabel="Убрать выделение" />
-					</button>
-				</div>
-			</div>
-			<div class="chat-input">
-				<button
-					v-if="showAttachmentUi"
-					type="button"
-					class="chat-attach-button"
-					:disabled="isProcessing || !activeChatId || isUploadingAttachment"
-					title="Прикрепить файл (PDF, текст, изображение)"
-					aria-label="Прикрепить файл"
-					@click="openAttachmentPicker"
-				>
-					<Icon name="folder_open" size="20" ariaLabel="Прикрепить файл" />
-				</button>
-				<input
-					v-model="userMessage"
-					:disabled="isProcessing || !activeChatId"
-					:placeholder="hasSelection ? 'Введите запрос для выделенного фрагмента...' : (props.scope === 'global' ? 'Управление документами: создание, удаление, список...' : 'Введите запрос агенту...')"
-					class="chat-input-field"
-					type="text"
-					@keydown.enter="handleSend"
-				/>
-				<div class="chat-actions">
-					<button
-						@click="isProcessing ? handleStop() : handleSend()"
-						:disabled="!isProcessing && (!userMessage.trim() || !activeChatId)"
-						class="chat-send-button"
-						:aria-label="isProcessing ? 'Остановить' : 'Отправить сообщение'"
-					>
-						<Icon :name="isProcessing ? 'stop' : 'send'" size="20" :ariaLabel="isProcessing ? 'Остановить' : 'Отправить'" />
-					</button>
-				</div>
-			</div>
-		</div>
+		<AgentChatComposer
+			v-model:user-message="userMessage"
+			:active-chat-id="activeChatId"
+			:is-processing="isProcessing"
+			:show-attachment-ui="showAttachmentUi"
+			:is-uploading-attachment="isUploadingAttachment"
+			:pending-attachment="pendingAttachment"
+			:has-selection="hasSelection"
+			:start-line="props.startLine"
+			:end-line="props.endLine"
+			:input-placeholder="composerPlaceholder"
+			@send-or-stop="handleSendOrStop"
+			@attachment-selected="onAttachmentFileSelected"
+			@clear-attachment="clearPendingAttachment"
+			@clear-selection="clearSelection"
+		/>
 	</div>
 
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, shallowRef, computed, watch, onMounted, toRef } from 'vue';
 import { useAgent } from '@/app/composables/useAgent';
-import AIAPI from '@/shared/api/AIAPI';
 import { useGlobalChats } from '@/app/composables/useGlobalChats';
 import { useDocumentChats } from '@/app/composables/useDocumentChats';
 import Icon from '@/components/Icon.vue';
+import AgentChatMessages from './AgentChatMessages.vue';
+import AgentChatComposer from './AgentChatComposer.vue';
+import { useAgentChatAttachments } from './useAgentChatAttachments';
+import { useAgentChatScroll } from './useAgentChatScroll';
+import { useAgentChatTabs } from './useAgentChatTabs';
 import '@/styles/chat-ui.css';
 import 'katex/dist/katex.css';
 import MarkdownIt from 'markdown-it';
@@ -392,25 +221,69 @@ const chatsError = computed(() =>
 
 const userMessage = ref('');
 const pendingUserMessage = ref<string | null>(null);
-const attachmentFileInputRef = ref<HTMLInputElement | null>(null);
-const pendingAttachment = ref<{ sessionId: string; label: string } | null>(null);
-const isUploadingAttachment = ref(false);
-const showArchive = ref(false);
-const editingChatId = ref<string | null>(null);
-const editingTitle = ref('');
-const renameInputRef = ref<HTMLInputElement | null>(null);
 const hoveredMessageId = ref<string | null>(null);
 const processedDocumentChangeSteps = shallowRef<Set<number>>(new Set());
 
-// Auto-scroll state
-const messagesContainerRef = ref<HTMLElement | null>(null);
-const autoScrollEnabled = ref(true);
-const showScrollDownButton = ref(false);
+const scopeComputed = computed(() => props.scope);
+const documentIdComputed = computed(() => props.documentId);
 
-// Restore preference on mount
-onMounted(() => {
-	// Setup scroll listener
-	setupScrollListener();
+const {
+	pendingAttachment,
+	isUploadingAttachment,
+	showAttachmentUi,
+	pendingAttachmentCards,
+	clearPendingAttachment,
+	onAttachmentFileSelected,
+} = useAgentChatAttachments({
+	scope: scopeComputed,
+	documentId: documentIdComputed,
+	activeChatId,
+});
+
+const loadChatsForCurrentScope = async () => {
+	if (isGlobalScope.value) {
+		await globalChatsStore.loadChats();
+		return;
+	}
+	if (props.documentId) {
+		await documentChatsStore.loadChats(props.documentId);
+	}
+};
+
+const {
+	showArchive,
+	editingChatId,
+	editingTitle,
+	bindRenameInputRef,
+	handleCreateChat,
+	handleSwitchChat,
+	handleStartRename,
+	handleFinishRename,
+	handleCancelRename,
+	handleArchiveChat,
+	handleRestoreChat,
+	handleDeletePermanently,
+} = useAgentChatTabs({
+	isGlobalScope,
+	documentId: toRef(props, 'documentId'),
+	globalChatsStore,
+	documentChatsStore,
+	loadChatsForCurrentScope,
+	resetAgent,
+	clearPendingAttachment,
+	clearProcessedDocumentSteps: () => {
+		processedDocumentChangeSteps.value = new Set();
+	},
+});
+
+const visibleHistoryMessages = computed(() => {
+	return activeChat.value?.messages ?? [];
+});
+
+const { messagesContainerRef, showScrollDownButton, scrollToBottom } = useAgentChatScroll({
+	agentEvents,
+	visibleHistoryMessages,
+	getActiveChatMessages: () => activeChat.value?.messages,
 });
 
 const error = computed(() => agentError.value || chatsError.value);
@@ -426,57 +299,6 @@ const liveToolCalls = computed(() => {
 	return out;
 });
 
-function parseToolCalls(toolCallsJson: string | undefined): Array<{ toolName: string; result?: string }> {
-	if (!toolCallsJson) return [];
-	try {
-		const arr = JSON.parse(toolCallsJson);
-		return Array.isArray(arr)
-			? arr.map((tc: any) => ({
-					toolName: tc.toolName ?? tc.tool_name ?? tc.ToolName ?? '',
-					result: tc.result ?? tc.Result,
-			  }))
-			: [];
-	} catch {
-		return [];
-	}
-}
-
-function getToolLabel(toolName: string): string {
-	const labels: Record<string, string> = {
-		list_documents: 'Получение списка документов',
-		create_document: 'Создание документа',
-		delete_document: 'Удаление документа',
-		rename_document: 'Переименование документа',
-		delegate_to_document_agent: 'Передача задачи агенту документа',
-		read_document: 'Чтение документа',
-		propose_insert: 'Предложение вставки',
-		propose_delete: 'Предложение удаления',
-		propose_replace: 'Предложение замены',
-		propose_document_changes: 'Предложение правок по сущностям',
-		query_attachment_text: 'Вопрос по тексту вложения',
-		query_attachment_image: 'Вопрос по изображению вложения',
-	};
-	return labels[toolName] ?? `Вызов ${toolName}`;
-}
-
-function formatToolResult(result: string | undefined): string {
-	if (!result) return '—';
-	try {
-		const parsed = JSON.parse(result);
-		if (Array.isArray(parsed)) return `Найдено документов: ${parsed.length}`;
-		if (typeof parsed === 'object' && parsed !== null) {
-			if (parsed.message) return String(parsed.message);
-			if (parsed.deleted) return 'Документ удалён';
-			if (parsed.created) return String(parsed.message ?? 'Документ создан');
-		}
-	} catch { /* fallback */ }
-	return result.length > 200 ? result.slice(0, 200) + '…' : result;
-}
-
-const visibleHistoryMessages = computed(() => {
-	return activeChat.value?.messages ?? [];
-});
-
 // Показывать блок «финальный ответ» только если его ещё нет в истории (чтобы не дублировать после loadChatById)
 const showFinalResponseBlock = computed(() => {
 	if (!currentResponse.value?.finalMessage || isProcessing.value) return false;
@@ -489,57 +311,18 @@ const hasSelection = computed(() => {
 	return props.startLine !== undefined && props.endLine !== undefined;
 });
 
-const showAttachmentUi = computed(
-	() => props.scope === 'document' && !!props.documentId
-);
-
-function openAttachmentPicker() {
-	attachmentFileInputRef.value?.click();
-}
-
-function clearPendingAttachment() {
-	pendingAttachment.value = null;
-}
-
-async function onAttachmentFileSelected(ev: Event) {
-	const input = ev.target as HTMLInputElement;
-	const file = input.files?.[0];
-	input.value = '';
-	if (!file || !showAttachmentUi.value || !props.documentId || !activeChatId.value) return;
-	try {
-		isUploadingAttachment.value = true;
-		const res = await AIAPI.ingestAgentSource(props.documentId, activeChatId.value, file);
-		pendingAttachment.value = {
-			sessionId: res.sourceSessionId,
-			label: res.originalFileName || file.name,
-		};
-	} catch (e) {
-		console.error('ingestAgentSource failed', e);
-	} finally {
-		isUploadingAttachment.value = false;
-	}
-}
-
-const loadChatsForCurrentScope = async () => {
-	if (isGlobalScope.value) {
-		await globalChatsStore.loadChats();
-		return;
-	}
-	if (props.documentId) {
-		await documentChatsStore.loadChats(props.documentId);
-	}
-};
+const composerPlaceholder = computed(() => {
+	if (hasSelection.value) return 'Введите запрос для выделенного фрагмента...';
+	return props.scope === 'global'
+		? 'Управление документами: создание, удаление, список...'
+		: 'Введите запрос агенту...';
+});
 
 const ensureGlobalChatExists = async () => {
 	if (!isGlobalScope.value) return;
 	if (chats.value.length > 0) return;
 	await globalChatsStore.createChat();
 };
-
-// Accessibility helpers for keyboard interaction
-onMounted(() => {
-	// placeholder for potential focus management
-});
 
 // Load chats on mount
 onMounted(async () => {
@@ -592,99 +375,6 @@ watch(
 
 const clearSelection = () => {
 	emit('clearSelection');
-};
-
-const handleCreateChat = async () => {
-	try {
-		if (isGlobalScope.value) {
-			await globalChatsStore.createChat();
-		} else if (props.documentId) {
-			await documentChatsStore.createChat(props.documentId);
-		}
-		// Keep tabs list in sync with server ordering/metadata.
-		await loadChatsForCurrentScope();
-	} catch (err) {
-		console.error('Error creating chat:', err);
-	}
-};
-
-const handleSwitchChat = async (chatId: string) => {
-	if (isGlobalScope.value) {
-		await globalChatsStore.switchChat(chatId);
-	} else {
-		await documentChatsStore.switchChat(chatId);
-	}
-	resetAgent();
-	pendingAttachment.value = null;
-	processedDocumentChangeSteps.value = new Set();
-};
-
-const handleStartRename = (chatId: string, currentTitle: string) => {
-	editingChatId.value = chatId;
-	editingTitle.value = currentTitle;
-	nextTick(() => {
-		renameInputRef.value?.focus();
-		renameInputRef.value?.select();
-	});
-};
-
-const handleFinishRename = async () => {
-	if (editingChatId.value && editingTitle.value.trim()) {
-		try {
-			if (isGlobalScope.value) {
-				await globalChatsStore.updateChatTitle(editingChatId.value, editingTitle.value.trim());
-			} else {
-				await documentChatsStore.updateChatTitle(editingChatId.value, editingTitle.value.trim());
-			}
-		} catch (err) {
-			console.error('Error renaming chat:', err);
-		}
-	}
-	editingChatId.value = null;
-	editingTitle.value = '';
-};
-
-const handleCancelRename = () => {
-	editingChatId.value = null;
-	editingTitle.value = '';
-};
-
-const handleArchiveChat = async (chatId: string) => {
-	try {
-		if (isGlobalScope.value) {
-			await globalChatsStore.archiveChat(chatId);
-		} else {
-			await documentChatsStore.archiveChat(chatId);
-		}
-	} catch (err) {
-		console.error('Error archiving chat:', err);
-	}
-};
-
-const handleRestoreChat = async (chatId: string) => {
-	try {
-		if (isGlobalScope.value) {
-			await globalChatsStore.restoreChat(chatId);
-			await globalChatsStore.switchChat(chatId);
-		} else {
-			await documentChatsStore.restoreChat(chatId);
-			await documentChatsStore.switchChat(chatId);
-		}
-	} catch (err) {
-		console.error('Error restoring chat:', err);
-	}
-};
-
-const handleDeletePermanently = async (chatId: string) => {
-	try {
-		if (isGlobalScope.value) {
-			await globalChatsStore.deleteChatPermanently(chatId);
-		} else {
-			await documentChatsStore.deleteChatPermanently(chatId);
-		}
-	} catch (err) {
-		console.error('Error deleting chat permanently:', err);
-	}
 };
 
 const handleSend = async () => {
@@ -755,73 +445,10 @@ const handleStop = () => {
 	stopAgent();
 };
 
-// Auto-scroll functions
-const setupScrollListener = () => {
-	nextTick(() => {
-		const container = messagesContainerRef.value;
-		if (!container) return;
-		
-		container.addEventListener('scroll', () => {
-			checkScrollPosition();
-		});
-	});
-};
-
-const checkScrollPosition = () => {
-	const container = messagesContainerRef.value;
-	if (!container) return;
-	
-	const { scrollTop, scrollHeight, clientHeight } = container;
-	const isNearBottom = scrollHeight - scrollTop - clientHeight < 100; // 100px threshold
-	
-	if (isNearBottom) {
-		autoScrollEnabled.value = true;
-		showScrollDownButton.value = false;
-	} else {
-		autoScrollEnabled.value = false;
-		showScrollDownButton.value = true;
-	}
-};
-
-const scrollToBottom = () => {
-	const container = messagesContainerRef.value;
-	if (!container) return;
-	
-	container.scrollTo({
-		top: container.scrollHeight,
-		behavior: 'smooth'
-	});
-	
-	// Enable auto-scroll after smooth scroll completes
-	setTimeout(() => {
-		autoScrollEnabled.value = true;
-		showScrollDownButton.value = false;
-	}, 500);
-};
-
-// Auto-scroll when new events or messages arrive
-watch([agentEvents, visibleHistoryMessages], () => {
-	if (autoScrollEnabled.value) {
-		nextTick(() => {
-			const container = messagesContainerRef.value;
-			if (container) {
-				container.scrollTop = container.scrollHeight;
-			}
-		});
-	}
-}, { deep: true });
-
-// Auto-scroll when new messages are loaded
-watch(() => activeChat.value?.messages, () => {
-	if (autoScrollEnabled.value) {
-		nextTick(() => {
-			const container = messagesContainerRef.value;
-			if (container) {
-				container.scrollTop = container.scrollHeight;
-			}
-		});
-	}
-}, { deep: true });
+function handleSendOrStop() {
+	if (isProcessing.value) handleStop();
+	else void handleSend();
+}
 </script>
 
 <style scoped>

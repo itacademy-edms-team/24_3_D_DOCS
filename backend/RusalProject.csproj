@@ -33,6 +33,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="RusalProject.Tests" />
+  </ItemGroup>
+
+  <!-- Тестовый проект в подпапке — не компилировать его .cs в веб-сборке -->
+  <ItemGroup>
+    <Compile Remove="RusalProject.Tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Services\Pdf\PdfRenderer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

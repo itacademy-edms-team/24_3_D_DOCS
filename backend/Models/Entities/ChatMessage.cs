@@ -29,6 +29,9 @@ public class ChatMessage
     [Column("tool_calls")]
     public string? ToolCalls { get; set; } // JSON string
 
+    [Column("attachments_json")]
+    public string? AttachmentsJson { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -36,14 +36,14 @@ public sealed class QueryAttachmentTextTool : AgentToolBase<QueryAttachmentTextT
         AgentExecutionContext context,
         CancellationToken cancellationToken)
     {
-        if (!context.SourceSessionId.HasValue || !context.DocumentId.HasValue || !context.ChatSessionId.HasValue)
+        if (!context.SourceSessionId.HasValue || !context.ChatSessionId.HasValue)
             throw new InvalidOperationException("Нет активной сессии вложения для этого чата.");
 
         var session = await _agentSourceService.GetValidatedSessionAsync(
             context.UserId,
             context.SourceSessionId.Value,
-            context.DocumentId.Value,
             context.ChatSessionId.Value,
+            context.DocumentId,
             cancellationToken);
 
         if (session == null)

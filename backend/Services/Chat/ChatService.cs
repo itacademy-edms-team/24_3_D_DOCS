@@ -114,6 +114,7 @@ public class ChatService : IChatService
                     Content = m.Content,
                     StepNumber = m.StepNumber,
                     ToolCalls = m.ToolCalls,
+                    AttachmentsJson = m.AttachmentsJson,
                     CreatedAt = m.CreatedAt
                 }).ToList()
         };
@@ -324,7 +325,8 @@ public class ChatService : IChatService
             Role = message.Role,
             Content = message.Content,
             StepNumber = message.StepNumber,
-            ToolCalls = message.ToolCalls
+            ToolCalls = message.ToolCalls,
+            AttachmentsJson = message.AttachmentsJson
         };
 
         _context.ChatMessages.Add(chatMessage);

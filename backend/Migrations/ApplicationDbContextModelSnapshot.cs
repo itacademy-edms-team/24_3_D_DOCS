@@ -180,7 +180,7 @@ namespace RusalProject.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("NOW()");
 
-                    b.Property<Guid>("DocumentId")
+                    b.Property<Guid?>("DocumentId")
                         .HasColumnType("uuid")
                         .HasColumnName("document_id");
 
@@ -193,11 +193,25 @@ namespace RusalProject.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("ingest_notes");
 
+                    b.Property<string>("OriginalContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("original_content_type");
+
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(260)
                         .HasColumnType("character varying(260)")
                         .HasColumnName("original_file_name");
+
+                    b.Property<long?>("OriginalSize")
+                        .HasColumnType("bigint")
+                        .HasColumnName("original_size");
+
+                    b.Property<string>("OriginalStoragePath")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("original_storage_path");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
@@ -289,6 +303,10 @@ namespace RusalProject.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AttachmentsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("attachments_json");
 
                     b.Property<Guid>("ChatSessionId")
                         .HasColumnType("uuid")
@@ -831,8 +849,7 @@ namespace RusalProject.Migrations
                     b.HasOne("RusalProject.Models.Entities.DocumentLink", "Document")
                         .WithMany()
                         .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("RusalProject.Models.Entities.User", "User")
                         .WithMany()

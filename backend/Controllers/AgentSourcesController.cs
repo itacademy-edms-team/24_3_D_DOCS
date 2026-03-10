@@ -29,16 +29,16 @@ public class AgentSourcesController : ControllerBase
     }
 
     /// <summary>
-    /// Загрузка файла для контекста Document Agent (PDF, текст, изображение).
+    /// Загрузка файла для контекста агента (глобальный или чат документа). Для чата документа передайте documentId.
     /// </summary>
     [HttpPost("ingest")]
     [ProducesResponseType(typeof(AgentSourceIngestResponseDTO), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Ingest(
-        [FromForm] Guid documentId,
         [FromForm] Guid chatId,
         IFormFile file,
-        CancellationToken cancellationToken)
+        [FromForm] Guid? documentId = null,
+        CancellationToken cancellationToken = default)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "Файл не предоставлен." });
@@ -57,6 +57,30 @@ public class AgentSourcesController : ControllerBase
         {
             _logger.LogError(ex, "Agent source ingest failed");
             return StatusCode(500, new { message = "Не удалось обработать файл." });
+        }
+    }
+
+    /// <summary>
+    /// Скачать оригинальный загруженный файл.
+    /// </summary>
+    [HttpGet("{sessionId:guid}/original")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadOriginal(Guid sessionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var result = await _agentSourceService.GetOriginalFileAsync(userId, sessionId, cancellationToken);
+            if (result == null)
+                return NotFound(new { message = "Файл не найден или сессия истекла." });
+
+            return File(result.Value.Stream, result.Value.ContentType, result.Value.FileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Download original failed for session {SessionId}", sessionId);
+            return StatusCode(500, new { message = "Не удалось скачать файл." });
         }
     }
 }

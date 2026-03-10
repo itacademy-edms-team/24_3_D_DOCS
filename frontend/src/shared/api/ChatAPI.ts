@@ -33,12 +33,19 @@ export interface ChatSession {
 	messageCount: number;
 }
 
+export interface ChatMessageAttachment {
+	sourceSessionId: string;
+	fileName: string;
+	contentType: string;
+}
+
 export interface ChatMessage {
 	id: string;
 	role: string;
 	content: string;
 	stepNumber?: number;
 	toolCalls?: string;
+	attachmentsJson?: string | null;
 	createdAt: string;
 }
 
