@@ -1,5 +1,6 @@
 import HttpClient from './HttpClient';
 import { getAccessToken } from '@/shared/auth/tokenStorage';
+import { tryRefreshAccessToken } from '@/shared/auth/tryRefreshAccessToken';
 import { readAgentSseStream } from './sseAgentStream';
 
 export enum AgentMode {
@@ -82,6 +83,31 @@ class AIAPI extends HttpClient {
 		super();
 	}
 
+	private getApiBaseUrl(): string {
+		return this.instance.defaults.baseURL || 'http://localhost:5159';
+	}
+
+	/** fetch без axios: при 401 один раз пробуем refresh (как interceptors у HttpClient). */
+	private async fetchWithAuthRetry(
+		url: string,
+		init: RequestInit,
+		baseURL: string
+	): Promise<Response> {
+		const withAuth = (): Headers => {
+			const h = new Headers(init.headers);
+			const token = getAccessToken();
+			if (token) h.set('Authorization', `Bearer ${token}`);
+			else h.delete('Authorization');
+			return h;
+		};
+
+		let res = await fetch(url, { ...init, headers: withAuth() });
+		if (res.status === 401 && (await tryRefreshAccessToken(baseURL))) {
+			res = await fetch(url, { ...init, headers: withAuth() });
+		}
+		return res;
+	}
+
 	async getOllamaKeyStatus(): Promise<OllamaKeyStatusDTO> {
 		return this.get<OllamaKeyStatusDTO>('/api/ai/ollama-key/status');
 	}
@@ -107,23 +133,18 @@ class AIAPI extends HttpClient {
 		file: File,
 		documentId?: string | null
 	): Promise<AgentSourceIngestResponseDTO> {
-		const baseURL = this.instance.defaults.baseURL || 'http://localhost:5159';
+		const baseURL = this.getApiBaseUrl();
 		const form = new FormData();
 		form.append('chatId', chatId);
 		form.append('file', file);
 		if (documentId) {
 			form.append('documentId', documentId);
 		}
-		const headers: HeadersInit = {};
-		const accessToken = getAccessToken();
-		if (accessToken) {
-			headers['Authorization'] = `Bearer ${accessToken}`;
-		}
-		const res = await fetch(`${baseURL}/api/ai/agent-sources/ingest`, {
-			method: 'POST',
-			headers,
-			body: form,
-		});
+		let res = await this.fetchWithAuthRetry(
+			`${baseURL}/api/ai/agent-sources/ingest`,
+			{ method: 'POST', body: form },
+			baseURL
+		);
 		const text = await res.text();
 		let body: unknown;
 		try {
@@ -153,22 +174,18 @@ class AIAPI extends HttpClient {
 		onStep?: (step: AgentStepDTO) => void,
 		signal?: AbortSignal
 	): Promise<AgentResponseDTO> {
-		const baseURL = this.instance.defaults.baseURL || 'http://localhost:5159';
-		const accessToken = getAccessToken() || '';
+		const baseURL = this.getApiBaseUrl();
 		const url = `${baseURL}/api/ai/agent`;
-		const headers: HeadersInit = {
-			'Content-Type': 'application/json',
-		};
-		if (accessToken) {
-			headers['Authorization'] = `Bearer ${accessToken}`;
-		}
-
-		const response = await fetch(url, {
-			method: 'POST',
-			headers,
-			body: JSON.stringify(request),
-			signal,
-		});
+		const response = await this.fetchWithAuthRetry(
+			url,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(request),
+				signal,
+			},
+			baseURL
+		);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -194,11 +211,12 @@ class AIAPI extends HttpClient {
 	}
 
 	async downloadAgentSourceOriginal(sessionId: string, suggestedFileName: string): Promise<void> {
-		const baseURL = this.instance.defaults.baseURL || 'http://localhost:5159';
-		const accessToken = getAccessToken() || '';
-		const res = await fetch(`${baseURL}/api/ai/agent-sources/${sessionId}/original`, {
-			headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-		});
+		const baseURL = this.getApiBaseUrl();
+		let res = await this.fetchWithAuthRetry(
+			`${baseURL}/api/ai/agent-sources/${sessionId}/original`,
+			{ method: 'GET' },
+			baseURL
+		);
 		if (!res.ok) {
 			let msg = `Ошибка скачивания (${res.status})`;
 			try {
