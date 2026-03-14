@@ -332,7 +332,7 @@ public class FirstPageLayoutToTitlePageMapperTests
     }
 
     [Fact]
-    public void Map_SkipsVerticalLines()
+    public void Map_VerticalLine_ProducesVerticalElement()
     {
         var layout = new FirstPageLayoutResult
         {
@@ -344,10 +344,15 @@ public class FirstPageLayoutToTitlePageMapperTests
             [
                 new FirstPageLineSegment
                 {
+                    X1Pt = 50,
+                    Y1Pt = 50,
+                    X2Pt = 50,
+                    Y2Pt = 10,
                     X1PtFromLeft = 50,
-                    Y1PtFromTop = 10,
+                    Y1PtFromTop = 50,
                     X2PtFromLeft = 50,
-                    Y2PtFromTop = 50,
+                    Y2PtFromTop = 90,
+                    LineWidthPt = 1,
                     IsHorizontal = false,
                     IsVertical = true,
                 },
@@ -356,7 +361,12 @@ public class FirstPageLayoutToTitlePageMapperTests
 
         var data = FirstPageLayoutToTitlePageMapper.Map(layout);
 
-        Assert.Empty(data.Elements);
+        var line = Assert.Single(data.Elements);
+        Assert.Equal("line", line.Type);
+        Assert.True(line.Vertical);
+        const double PtToMm = 25.4 / 72.0;
+        Assert.Equal(40 * PtToMm, line.Length!.Value, 3);
+        Assert.Equal(50 * PtToMm, line.Y, 3);
     }
 
     [SkippableFact]

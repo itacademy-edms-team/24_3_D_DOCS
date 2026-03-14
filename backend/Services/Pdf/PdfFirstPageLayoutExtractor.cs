@@ -14,11 +14,19 @@ public static class PdfFirstPageLayoutExtractor
 {
     private const double PtToMm = 25.4 / 72.0;
 
-    private const double MinStrokeLineLengthPt = 8.0;
+    private const double MinStrokeLineLengthPt = 5.0;
 
     private const double AxisEpsPt = 0.75;
 
-    private const double ThinFilledRectMaxHeightPt = 3.0;
+    /// <summary>Меньшая сторона залитой полосы (толщина «линии»), pt.</summary>
+    private const double MaxFilledBarThinExtentPt = 14.0;
+
+    private const double MinFilledBarLongAxisPt = 20.0;
+
+    private const double MinBarAspectRatio = 4.0;
+
+    /// <summary>PDF line width 0 = hairline; подставляем типичный 1 pt для маппинга в мм.</summary>
+    private const double DefaultStrokedLineWidthPt = 1.0;
 
     private const double DedupEpsPt = 0.35;
 
@@ -58,7 +66,7 @@ public static class PdfFirstPageLayoutExtractor
                 if (sizes.Count > 0)
                     nominalFontSizePt = sizes.Max();
 
-                (isBold, isItalic) = VoteFontStyleFromLetters(word.Letters);
+                (isBold, isItalic) = VoteFontStyleFromLetters(word.Letters, word.FontName);
             }
 
             words.Add(new FirstPageTextItem
@@ -82,7 +90,7 @@ public static class PdfFirstPageLayoutExtractor
 
         var rawLines = new List<(double X1, double Y1, double X2, double Y2, double? Width, bool Horiz, bool Vert)>();
         CollectLinesFromPaths(page, rawLines);
-        TryAddThinFilledHorizontalBars(page, rawLines);
+        CollectAxisAlignedBarsFromPathBoundingBoxes(page, rawLines);
 
         var deduped = DedupeSegments(rawLines);
         var lines = deduped
@@ -99,14 +107,31 @@ public static class PdfFirstPageLayoutExtractor
         };
     }
 
-    /// <summary>Большинство букв со шрифтом жирным/курсивным (PdfPig <see cref="UglyToad.PdfPig.Content.Letter.Font"/>).</summary>
-    private static (bool Bold, bool Italic) VoteFontStyleFromLetters(IReadOnlyList<Letter> letters)
+    /// <summary>
+    /// Жирный/курсив: метаданные PdfPig + эвристика по имени шрифта (Word часто не выставляет флаги в embedded font).
+    /// </summary>
+    private static (bool Bold, bool Italic) VoteFontStyleFromLetters(IReadOnlyList<Letter> letters, string? wordFontName)
     {
         var n = 0;
         var boldVotes = 0;
         var italicVotes = 0;
+        var nameBoldVotes = 0;
+        var nameItalicVotes = 0;
+        var nameTotal = 0;
         foreach (var letter in letters)
         {
+            var nameSource = !string.IsNullOrEmpty(letter.FontName)
+                ? letter.FontName
+                : !string.IsNullOrEmpty(wordFontName)
+                    ? wordFontName
+                    : letter.Font?.Name;
+            var fromName = InferStyleFromFontName(nameSource);
+            if (fromName.Bold)
+                nameBoldVotes++;
+            if (fromName.Italic)
+                nameItalicVotes++;
+            nameTotal++;
+
             var font = letter.Font;
             if (font == null)
                 continue;
@@ -117,10 +142,37 @@ public static class PdfFirstPageLayoutExtractor
                 italicVotes++;
         }
 
-        if (n == 0)
+        var boldFromFlags = n > 0 && boldVotes * 2 > n;
+        var italicFromFlags = n > 0 && italicVotes * 2 > n;
+        var boldFromName = nameTotal > 0 && nameBoldVotes * 2 > nameTotal;
+        var italicFromName = nameTotal > 0 && nameItalicVotes * 2 > nameTotal;
+        return (boldFromFlags || boldFromName, italicFromFlags || italicFromName);
+    }
+
+    /// <summary>Подстроки в PostScript-имени встроенного шрифта (Bold, Italic, …).</summary>
+    private static (bool Bold, bool Italic) InferStyleFromFontName(string? fontName)
+    {
+        if (string.IsNullOrEmpty(fontName))
             return (false, false);
 
-        return (boldVotes * 2 > n, italicVotes * 2 > n);
+        var u = fontName.Replace(" ", "", StringComparison.Ordinal).ToUpperInvariant();
+
+        var italic = u.Contains("ITALIC", StringComparison.Ordinal)
+                     || u.Contains("OBLIQUE", StringComparison.Ordinal)
+                     || u.Contains("SLANT", StringComparison.Ordinal)
+                     || u.Contains("-IT", StringComparison.Ordinal)
+                     || u.Contains("_IT", StringComparison.Ordinal);
+
+        var bold = u.Contains("BOLD", StringComparison.Ordinal)
+                   || u.Contains("SEMIBOLD", StringComparison.Ordinal)
+                   || u.Contains("DEMIBOLD", StringComparison.Ordinal)
+                   || u.Contains("BLACK", StringComparison.Ordinal)
+                   || u.Contains("HEAVY", StringComparison.Ordinal)
+                   || u.Contains("BDIT", StringComparison.Ordinal)
+                   || u.Contains("-BD", StringComparison.Ordinal)
+                   || u.Contains("BDMT", StringComparison.Ordinal);
+
+        return (bold, italic);
     }
 
     private static void CollectLinesFromPaths(Page page, List<(double X1, double Y1, double X2, double Y2, double? Width, bool Horiz, bool Vert)> rawLines)
@@ -130,7 +182,7 @@ public static class PdfFirstPageLayoutExtractor
             if (!path.IsStroked)
                 continue;
 
-            double? lw = path.LineWidth > 0 ? (double)path.LineWidth : null;
+            var lw = path.LineWidth > 0 ? (double)path.LineWidth : DefaultStrokedLineWidthPt;
 
             foreach (var subpath in path)
             {
@@ -151,31 +203,48 @@ public static class PdfFirstPageLayoutExtractor
     }
 
     /// <summary>
-    /// Горизонтальные линии из Google Docs / Word часто рисуются залитым тонким прямоугольником, а не stroke.
+    /// Тонкие оси-выровненные полосы по bounding box подпути.
+    /// Word иногда даёт линии без IsStroked/IsFilled в PdfPig (флаги false, геометрия есть).
     /// </summary>
-    private static void TryAddThinFilledHorizontalBars(Page page, List<(double X1, double Y1, double X2, double Y2, double? Width, bool Horiz, bool Vert)> rawLines)
+    private static void CollectAxisAlignedBarsFromPathBoundingBoxes(Page page, List<(double X1, double Y1, double X2, double Y2, double? Width, bool Horiz, bool Vert)> rawLines)
     {
+        var pageArea = page.Width * page.Height;
         foreach (var path in page.ExperimentalAccess.Paths)
         {
-            if (!path.IsFilled || path.IsStroked)
-                continue;
-
             foreach (var subpath in path)
             {
-                if (!subpath.IsDrawnAsRectangle)
+                var bboxOpt = subpath.GetBoundingRectangle();
+                if (bboxOpt == null || bboxOpt.Value.Rotation != 0)
                     continue;
 
-                var rect = subpath.GetDrawnRectangle();
-                if (rect == null || rect.Value.Rotation != 0)
+                var b = bboxOpt.Value;
+                var w = b.Width;
+                var h = b.Height;
+                if (w <= 0 || h <= 0)
                     continue;
 
-                var r = rect.Value;
-                var h = r.Height;
-                if (h > ThinFilledRectMaxHeightPt || r.Width < MinStrokeLineLengthPt)
+                var area = w * h;
+                if (area > pageArea * 0.88)
                     continue;
 
-                var yMid = r.Bottom + h / 2.0;
-                AddIfAxisAligned(rawLines, r.Left, yMid, r.Right, yMid, null);
+                var thin = Math.Min(w, h);
+                var longAxis = Math.Max(w, h);
+                if (thin > MaxFilledBarThinExtentPt || longAxis < MinFilledBarLongAxisPt)
+                    continue;
+
+                if (longAxis < thin * MinBarAspectRatio)
+                    continue;
+
+                if (h <= w && h <= MaxFilledBarThinExtentPt)
+                {
+                    var yMid = b.Bottom + h / 2.0;
+                    rawLines.Add((b.Left, yMid, b.Right, yMid, h, true, false));
+                }
+                else if (w < h && w <= MaxFilledBarThinExtentPt)
+                {
+                    var xMid = b.Left + w / 2.0;
+                    rawLines.Add((xMid, b.Bottom, xMid, b.Top, w, false, true));
+                }
             }
         }
     }

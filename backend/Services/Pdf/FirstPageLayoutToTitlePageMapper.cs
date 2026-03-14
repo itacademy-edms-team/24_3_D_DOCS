@@ -42,30 +42,54 @@ public static class FirstPageLayoutToTitlePageMapper
 
         foreach (var seg in layout.Lines)
         {
-            if (!seg.IsHorizontal)
-                continue;
-
-            var leftPt = Math.Min(seg.X1PtFromLeft, seg.X2PtFromLeft);
-            var rightPt = Math.Max(seg.X1PtFromLeft, seg.X2PtFromLeft);
-            var lengthMm = (rightPt - leftPt) * PtToMm;
-            if (lengthMm <= 0.01)
-                continue;
-
-            var yTopPt = (seg.Y1PtFromTop + seg.Y2PtFromTop) / 2.0;
-            var thicknessMm = seg.LineWidthPt is > 0
-                ? seg.LineWidthPt.Value * PtToMm
-                : DefaultLineThicknessMm;
-
-            elements.Add(new TitlePageElement
+            if (seg.IsHorizontal)
             {
-                Type = "line",
-                X = leftPt * PtToMm,
-                Y = yTopPt * PtToMm,
-                Length = lengthMm,
-                Thickness = Math.Max(0.05, thicknessMm),
-                Stroke = "#000000",
-                LineStyle = "solid",
-            });
+                var leftPt = Math.Min(seg.X1PtFromLeft, seg.X2PtFromLeft);
+                var rightPt = Math.Max(seg.X1PtFromLeft, seg.X2PtFromLeft);
+                var lengthMm = (rightPt - leftPt) * PtToMm;
+                if (lengthMm <= 0.01)
+                    continue;
+
+                var yTopPt = (seg.Y1PtFromTop + seg.Y2PtFromTop) / 2.0;
+                var thicknessMm = seg.LineWidthPt is > 0
+                    ? seg.LineWidthPt.Value * PtToMm
+                    : DefaultLineThicknessMm;
+
+                elements.Add(new TitlePageElement
+                {
+                    Type = "line",
+                    X = leftPt * PtToMm,
+                    Y = yTopPt * PtToMm,
+                    Length = lengthMm,
+                    Vertical = false,
+                    Thickness = Math.Max(0.05, thicknessMm),
+                    Stroke = "#000000",
+                    LineStyle = "solid",
+                });
+            }
+            else if (seg.IsVertical)
+            {
+                var lengthMm = Math.Abs(seg.Y1Pt - seg.Y2Pt) * PtToMm;
+                if (lengthMm <= 0.01)
+                    continue;
+
+                var topFromTopPt = Math.Min(seg.Y1PtFromTop, seg.Y2PtFromTop);
+                var thicknessMm = seg.LineWidthPt is > 0
+                    ? seg.LineWidthPt.Value * PtToMm
+                    : DefaultLineThicknessMm;
+
+                elements.Add(new TitlePageElement
+                {
+                    Type = "line",
+                    X = seg.X1PtFromLeft * PtToMm,
+                    Y = topFromTopPt * PtToMm,
+                    Length = lengthMm,
+                    Vertical = true,
+                    Thickness = Math.Max(0.05, thicknessMm),
+                    Stroke = "#000000",
+                    LineStyle = "solid",
+                });
+            }
         }
 
         foreach (var cluster in GetBaselineClusters(layout.Words))

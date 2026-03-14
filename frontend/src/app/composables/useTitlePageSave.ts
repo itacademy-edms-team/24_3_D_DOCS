@@ -120,14 +120,14 @@ export function useTitlePageSave(
 								text.setCoords();
 							}
 						} else if (elementData.type === 'line') {
-							const length = elementData.length || 100;
+							const lengthMm = elementData.length || 100;
+							const x1 = elementData.x * MM_TO_PX;
+							const y1 = elementData.y * MM_TO_PX;
+							const vertical = elementData.vertical === true;
+							const x2 = vertical ? x1 : (elementData.x + lengthMm) * MM_TO_PX;
+							const y2 = vertical ? y1 + lengthMm * MM_TO_PX : y1;
 							const line = new Line(
-								[
-									elementData.x * MM_TO_PX,
-									elementData.y * MM_TO_PX,
-									(elementData.x + length) * MM_TO_PX,
-									elementData.y * MM_TO_PX,
-								],
+								[x1, y1, x2, y2],
 								{
 									stroke: elementData.stroke || elementData.color || '#000000',
 									strokeWidth: (elementData.thickness || 1) * MM_TO_PX,
@@ -182,13 +182,17 @@ export function useTitlePageSave(
 					const y1 = lineObj.y1! / MM_TO_PX;
 					const x2 = lineObj.x2! / MM_TO_PX;
 					const y2 = lineObj.y2! / MM_TO_PX;
-					const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+					const dx = Math.abs(x2 - x1);
+					const dy = Math.abs(y2 - y1);
+					const vertical = dx < 0.05 && dy >= 0.05;
+					const length = vertical ? dy : Math.sqrt(dx * dx + dy * dy);
 					return {
 						id: (obj as any).id || crypto.randomUUID(),
 						type: 'line',
 						x: x1,
-						y: y1,
+						y: vertical ? Math.min(y1, y2) : y1,
 						length: length,
+						vertical: vertical || undefined,
 						thickness: (lineObj.strokeWidth || 1) / MM_TO_PX,
 						stroke: (lineObj.stroke as string) || '#000000',
 						color: (lineObj.stroke as string) || '#000000',

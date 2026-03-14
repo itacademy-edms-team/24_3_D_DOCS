@@ -27,6 +27,7 @@ interface TitlePageElement {
 	
 	// Для линий
 	length?: number; // мм
+	vertical?: boolean;
 	thickness?: number; // мм или pt
 	lineStyle?: string; // solid, dashed
 	stretchToPageWidth?: boolean; // Растянуть по ширине страницы
@@ -65,14 +66,19 @@ function renderElement(element: TitlePageElement, variables: Record<string, stri
 	const positionStyle = `position: absolute; left: ${element.x}mm; top: ${element.y}mm;`;
 	
 	if (element.type === 'line') {
-		// Рендеринг линии
 		const lineColor = element.stroke || element.color || '#000';
-		let lineStyle = `border-bottom: ${element.thickness ?? 1}mm ${element.lineStyle ?? 'solid'} ${lineColor};`;
-		
-		if (element.stretchToPageWidth) {
-			lineStyle += ' width: 100%;';
-		} else if (element.length) {
-			lineStyle += ` width: ${element.length}mm;`;
+		const t = element.thickness ?? 1;
+		let lineStyle: string;
+		if (element.vertical) {
+			const h = element.length ?? t * 10;
+			lineStyle = `width: ${t}mm; height: ${h}mm; background-color: ${lineColor};`;
+		} else {
+			lineStyle = `border-bottom: ${t}mm ${element.lineStyle ?? 'solid'} ${lineColor};`;
+			if (element.stretchToPageWidth) {
+				lineStyle += ' width: 100%;';
+			} else if (element.length) {
+				lineStyle += ` width: ${element.length}mm;`;
+			}
 		}
 		
 		return `<div style="${positionStyle} ${lineStyle}"></div>`;

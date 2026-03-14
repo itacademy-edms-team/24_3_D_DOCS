@@ -15,8 +15,9 @@ Thumbs.db
 # ------------------------------------------------------------------------------
 # Backend (.NET)
 # ------------------------------------------------------------------------------
-backend/bin/
-backend/obj/
+# Сборка: основной проект, RusalProject.Tests и любые вложенные .csproj
+backend/**/bin/
+backend/**/obj/
 backend/.vs/
 backend/*.user
 backend/*.suo

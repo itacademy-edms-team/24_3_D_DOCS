@@ -1387,28 +1387,29 @@
                 // Build line styles - ensure proper isolation from layout flow
                 const lineStyles = [];
                 lineStyles.push(positionStyle); // position: absolute with coordinates
-                lineStyles.push(`border-bottom: ${lineThickness}mm ${element.lineStyle ?? 'solid'} ${lineColor};`);
-                
-                // Set explicit height to prevent layout issues (at least equal to border thickness)
-                lineStyles.push(`height: ${lineThickness}mm;`);
-                
-                // Calculate width properly - ensure it doesn't exceed page boundaries
-                if (element.stretchToPageWidth) {
-                    // Calculate width from element.x to right edge of page
-                    const widthToRight = Math.max(0, pageWidthMm - element.x);
-                    lineStyles.push(`width: ${widthToRight}mm;`);
-                    console.log(`Line with stretchToPageWidth: x=${element.x}mm, pageWidth=${pageWidthMm}mm, calculated width=${widthToRight}mm`);
-                } else if (element.length) {
-                    // Ensure length doesn't exceed page width
-                    const maxWidth = Math.max(0, pageWidthMm - element.x);
-                    const lineWidth = Math.min(element.length, maxWidth);
-                    lineStyles.push(`width: ${lineWidth}mm;`);
-                    console.log(`Line with length: x=${element.x}mm, requested length=${element.length}mm, maxWidth=${maxWidth}mm, final width=${lineWidth}mm`);
+
+                if (element.vertical) {
+                    const h = element.length ?? lineThickness * 10;
+                    lineStyles.push(`width: ${lineThickness}mm;`);
+                    lineStyles.push(`height: ${h}mm;`);
+                    lineStyles.push(`background-color: ${lineColor};`);
                 } else {
-                    // Default width if neither is set - use a small default, but don't exceed page
-                    const maxWidth = Math.max(0, pageWidthMm - element.x);
-                    const defaultWidth = Math.min(lineThickness * 10, maxWidth);
-                    lineStyles.push(`width: ${defaultWidth}mm;`);
+                    lineStyles.push(`border-bottom: ${lineThickness}mm ${element.lineStyle ?? 'solid'} ${lineColor};`);
+                    lineStyles.push(`height: ${lineThickness}mm;`);
+                    if (element.stretchToPageWidth) {
+                        const widthToRight = Math.max(0, pageWidthMm - element.x);
+                        lineStyles.push(`width: ${widthToRight}mm;`);
+                        console.log(`Line with stretchToPageWidth: x=${element.x}mm, pageWidth=${pageWidthMm}mm, calculated width=${widthToRight}mm`);
+                    } else if (element.length) {
+                        const maxWidth = Math.max(0, pageWidthMm - element.x);
+                        const lineWidth = Math.min(element.length, maxWidth);
+                        lineStyles.push(`width: ${lineWidth}mm;`);
+                        console.log(`Line with length: x=${element.x}mm, requested length=${element.length}mm, maxWidth=${maxWidth}mm, final width=${lineWidth}mm`);
+                    } else {
+                        const maxWidth = Math.max(0, pageWidthMm - element.x);
+                        const defaultWidth = Math.min(lineThickness * 10, maxWidth);
+                        lineStyles.push(`width: ${defaultWidth}mm;`);
+                    }
                 }
                 
                 // Add properties to isolate line from layout flow completely

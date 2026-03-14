@@ -1148,12 +1148,18 @@
         
         if (element.type === 'line') {
             const lineColor = element.stroke || element.color || '#000';
-            let lineStyle = `border-bottom: ${element.thickness ?? 1}mm ${element.lineStyle ?? 'solid'} ${lineColor};`;
-            
-            if (element.stretchToPageWidth) {
-                lineStyle += ' width: 100%;';
-            } else if (element.length) {
-                lineStyle += ` width: ${element.length}mm;`;
+            const t = element.thickness ?? 1;
+            let lineStyle;
+            if (element.vertical) {
+                const h = element.length ?? t * 10;
+                lineStyle = `width: ${t}mm; height: ${h}mm; background-color: ${lineColor};`;
+            } else {
+                lineStyle = `border-bottom: ${t}mm ${element.lineStyle ?? 'solid'} ${lineColor};`;
+                if (element.stretchToPageWidth) {
+                    lineStyle += ' width: 100%;';
+                } else if (element.length) {
+                    lineStyle += ` width: ${element.length}mm;`;
+                }
             }
             
             return `<div style="${positionStyle} ${lineStyle}"></div>`;
