@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 using RusalProject.Models.Types;
 
 namespace RusalProject.Models.DTOs.TitlePage;
@@ -35,4 +36,12 @@ public class UpdateTitlePageDTO
     public string? Name { get; set; }
     public string? Description { get; set; }
     public TitlePageData? Data { get; set; }
+}
+
+/// <summary>Multipart-форма: POST /api/title-pages/import-pdf</summary>
+public class ImportTitlePagePdfForm
+{
+    public string? Name { get; set; }
+
+    public IFormFile? File { get; set; }
 }

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "DWnFqUqeSx0=",
+  "dgSpecHash": "ICroHz2dgSs=",
   "success": true,
   "projectFilePath": "/home/maximally/AIT/24_3_D_DOCS/backend/RusalProject.Tests/RusalProject.Tests.csproj",
   "expectedPackageFiles": [
@@ -89,6 +89,7 @@
     "/home/maximally/.nuget/packages/uglytoad.pdfpig.fonts/1.7.0-custom-5/uglytoad.pdfpig.fonts.1.7.0-custom-5.nupkg.sha512",
     "/home/maximally/.nuget/packages/uglytoad.pdfpig.tokenization/1.7.0-custom-5/uglytoad.pdfpig.tokenization.1.7.0-custom-5.nupkg.sha512",
     "/home/maximally/.nuget/packages/uglytoad.pdfpig.tokens/1.7.0-custom-5/uglytoad.pdfpig.tokens.1.7.0-custom-5.nupkg.sha512",
+    "/home/maximally/.nuget/packages/validation/2.5.51/validation.2.5.51.nupkg.sha512",
     "/home/maximally/.nuget/packages/xunit/2.9.2/xunit.2.9.2.nupkg.sha512",
     "/home/maximally/.nuget/packages/xunit.abstractions/2.0.3/xunit.abstractions.2.0.3.nupkg.sha512",
     "/home/maximally/.nuget/packages/xunit.analyzers/1.16.0/xunit.analyzers.1.16.0.nupkg.sha512",
@@ -97,6 +98,7 @@
     "/home/maximally/.nuget/packages/xunit.extensibility.core/2.9.2/xunit.extensibility.core.2.9.2.nupkg.sha512",
     "/home/maximally/.nuget/packages/xunit.extensibility.execution/2.9.2/xunit.extensibility.execution.2.9.2.nupkg.sha512",
     "/home/maximally/.nuget/packages/xunit.runner.visualstudio/2.8.2/xunit.runner.visualstudio.2.8.2.nupkg.sha512",
+    "/home/maximally/.nuget/packages/xunit.skippablefact/1.5.23/xunit.skippablefact.1.5.23.nupkg.sha512",
     "/home/maximally/.nuget/packages/microsoft.aspnetcore.app.ref/9.0.14/microsoft.aspnetcore.app.ref.9.0.14.nupkg.sha512"
   ],
   "logs": []

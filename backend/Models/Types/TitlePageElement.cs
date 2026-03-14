@@ -31,6 +31,7 @@ public class TitlePageElement
     // Для линий
     public double? Length { get; set; } // мм
     public double? Thickness { get; set; } // мм или pt
+    public string? Stroke { get; set; } // цвет линии (#hex), дублирует color на фронте
     public string? LineStyle { get; set; } // solid, dashed
     public bool? StretchToPageWidth { get; set; } // Растянуть по ширине страницы
 }

@@ -85,6 +85,64 @@ public class TitlePagesController : ControllerBase
     }
 
     /// <summary>
+    /// Импорт титульной страницы с первой страницы PDF (текстовый слой и горизонтальные линии).
+    /// </summary>
+    [HttpPost("import-pdf")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(TitlePageDTO), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ImportTitlePageFromPdf([FromForm] ImportTitlePagePdfForm form)
+    {
+        if (form.File == null || form.File.Length == 0)
+            return BadRequest(new { message = "Выберите PDF-файл" });
+
+        var trimmedName = form.Name?.Trim() ?? string.Empty;
+        if (trimmedName.Length == 0)
+            return BadRequest(new { message = "Введите название титульника" });
+
+        if (trimmedName.Length > 255)
+            return BadRequest(new { message = "Название не должно превышать 255 символов" });
+
+        var ext = Path.GetExtension(form.File.FileName).ToLowerInvariant();
+        var contentType = form.File.ContentType?.ToLowerInvariant() ?? string.Empty;
+        if (ext != ".pdf" && !contentType.Contains("pdf"))
+            return BadRequest(new { message = "Допустимы только PDF-файлы" });
+
+        try
+        {
+            await using var ms = new MemoryStream();
+            await form.File.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var layout = PdfFirstPageLayoutExtractor.Extract(bytes);
+            var data = FirstPageLayoutToTitlePageMapper.Map(layout);
+
+            var userId = GetUserId();
+            var dto = new CreateTitlePageDTO
+            {
+                Name = trimmedName,
+                Data = data,
+            };
+
+            var titlePage = await _titlePageService.CreateTitlePageAsync(userId, dto);
+            return StatusCode(StatusCodes.Status201Created, titlePage);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing title page from PDF");
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера", details = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Создать новую титульную страницу
     /// </summary>
     [HttpPost]

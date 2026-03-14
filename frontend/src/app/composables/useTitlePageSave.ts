@@ -5,6 +5,21 @@ import { MM_TO_PX, PX_TO_PT, PT_TO_PX } from '@/entities/title-page/constants';
 import { validateAndFixElementBounds } from '@/entities/title-page/utils/elementUtils';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 
+/** Без заданной ширины блока — округляем px, чтобы снизить субпиксельное размытие (импорт PDF и «свободный» текст). */
+function textBoxPositionPx(
+	xMm: number,
+	yMm: number,
+	widthMm: number | null | undefined,
+): { left: number; top: number } {
+	let left = xMm * MM_TO_PX;
+	let top = yMm * MM_TO_PX;
+	if (widthMm == null || widthMm === undefined) {
+		left = Math.round(left);
+		top = Math.round(top);
+	}
+	return { left, top };
+}
+
 /**
  * Composable for saving and loading title page data
  */
@@ -37,12 +52,17 @@ export function useTitlePageSave(
 						if (elementData.type === 'variable') {
 							// Load as variable
 							const widthPx = elementData.width ? elementData.width * MM_TO_PX : undefined;
+							const { left, top } = textBoxPositionPx(
+								elementData.x,
+								elementData.y,
+								elementData.width,
+							);
 							// Convert fontSize from points (storage) to pixels (Fabric.js)
 							const fontSizePt = elementData.fontSize || 12;
 							const fontSizePx = fontSizePt * PT_TO_PX;
 							const text = new Text(elementData.text || '{Переменная}', {
-								left: elementData.x * MM_TO_PX,
-								top: elementData.y * MM_TO_PX,
+								left,
+								top,
 								fontSize: fontSizePx,
 								fontFamily: elementData.fontFamily || 'Arial',
 								fontWeight: elementData.fontWeight || 'normal',
@@ -67,12 +87,17 @@ export function useTitlePageSave(
 						} else if (elementData.type === 'text') {
 							// Load as regular text
 							const widthPx = elementData.width ? elementData.width * MM_TO_PX : undefined;
+							const { left, top } = textBoxPositionPx(
+								elementData.x,
+								elementData.y,
+								elementData.width,
+							);
 							// Convert fontSize from points (storage) to pixels (Fabric.js)
 							const fontSizePt = elementData.fontSize || 12;
 							const fontSizePx = fontSizePt * PT_TO_PX;
 							const text = new Text(elementData.text || '', {
-								left: elementData.x * MM_TO_PX,
-								top: elementData.y * MM_TO_PX,
+								left,
+								top,
 								fontSize: fontSizePx,
 								fontFamily: elementData.fontFamily || 'Arial',
 								fontWeight: elementData.fontWeight || 'normal',

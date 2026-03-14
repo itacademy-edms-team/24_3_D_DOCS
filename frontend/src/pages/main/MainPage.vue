@@ -315,6 +315,11 @@
 			@created="handleDocumentCreated"
 		/>
 
+		<CreateTitlePageModal
+			v-model="showCreateTitlePageModal"
+			@created="handleTitlePageCreatedFromModal"
+		/>
+
 		<!-- AI Panel (Chat Dock) -->
 		<ChatDock
 			v-model:open="showAIPanel"
@@ -335,6 +340,7 @@ import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import DocumentTable from '@/widgets/document-table/DocumentTable.vue';
 import CreateDocumentModal from '@/widgets/create-document/CreateDocumentModal.vue';
+import CreateTitlePageModal from '@/widgets/create-title-page/CreateTitlePageModal.vue';
 import InfoBanner from '@/widgets/info-banner/InfoBanner.vue';
 import ThemeToggle from '@/features/theme-toggle/ThemeToggle.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
@@ -365,6 +371,7 @@ const profiles = ref<Profile[]>([]);
 const documents = ref<DocumentMeta[]>([]);
 const titlePages = ref<any[]>([]);
 const showCreateModal = ref(false);
+const showCreateTitlePageModal = ref(false);
 const isCreating = ref(false);
 const showAIPanel = ref(false);
 
@@ -555,18 +562,18 @@ function handleTitlePageClick(item: any) {
 }
 
 async function handleCreateProfileOrTitlePage() {
+	if (activeTab.value === 'shared') {
+		showCreateTitlePageModal.value = true;
+		return;
+	}
+
 	isCreating.value = true;
 	try {
-		if (activeTab.value === 'profiles') {
-			const profile = await ProfileAPI.create({
-				name: 'Новый профиль стилей',
-				data: getDefaultProfileData(),
-			});
-			router.push(`/profile/${profile.id}`);
-		} else if (activeTab.value === 'shared') {
-			const titlePage = await TitlePageAPI.create({ name: 'Новый титульник' });
-			router.push(`/title-page/${titlePage.id}`);
-		}
+		const profile = await ProfileAPI.create({
+			name: 'Новый профиль стилей',
+			data: getDefaultProfileData(),
+		});
+		router.push(`/profile/${profile.id}`);
 		await loadData();
 	} catch (error: any) {
 		console.error('Failed to create:', error);
@@ -575,6 +582,11 @@ async function handleCreateProfileOrTitlePage() {
 	} finally {
 		isCreating.value = false;
 	}
+}
+
+function handleTitlePageCreatedFromModal(titlePageId: string) {
+	router.push(`/title-page/${titlePageId}`);
+	loadData();
 }
 
 async function handleTitlePageDelete(item: any) {

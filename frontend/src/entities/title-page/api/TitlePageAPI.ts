@@ -44,6 +44,13 @@ class TitlePageAPI extends HttpClient {
 		return this.post<TitlePage, CreateTitlePageDTO>('/api/title-pages', data);
 	}
 
+	async importFromPdf(name: string, file: File): Promise<TitlePage> {
+		const formData = new FormData();
+		formData.append('name', name);
+		formData.append('file', file);
+		return this.post<TitlePage, FormData>('/api/title-pages/import-pdf', formData);
+	}
+
 	async update(id: string, data: UpdateTitlePageDTO): Promise<TitlePage> {
 		return this.put<TitlePage, UpdateTitlePageDTO>(`/api/title-pages/${id}`, data);
 	}

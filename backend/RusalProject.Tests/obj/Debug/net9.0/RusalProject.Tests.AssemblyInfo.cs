@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RusalProject.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+238a0ffb7f670ea4d5385b4a6f764c7bcfe736d0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+65a6e2ff92c689bf5e421e0461aea6489493fddc")]
 [assembly: System.Reflection.AssemblyProductAttribute("RusalProject.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RusalProject.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
