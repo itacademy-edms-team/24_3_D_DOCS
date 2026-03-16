@@ -6,19 +6,19 @@ namespace RusalProject.Services.Agent;
 public class OllamaAttachmentQueryService : IOllamaAttachmentQueryService
 {
     private readonly IOllamaSimpleChatService _ollama;
-    private readonly IConfiguration _configuration;
+    private readonly IUserOllamaModelResolutionService _modelResolution;
 
-    public OllamaAttachmentQueryService(IOllamaSimpleChatService ollama, IConfiguration configuration)
+    public OllamaAttachmentQueryService(
+        IOllamaSimpleChatService ollama,
+        IUserOllamaModelResolutionService modelResolution)
     {
         _ollama = ollama;
-        _configuration = configuration;
+        _modelResolution = modelResolution;
     }
 
-    public Task<string> AnswerTextQuestionAsync(Guid userId, string text, string question, CancellationToken cancellationToken = default)
+    public async Task<string> AnswerTextQuestionAsync(Guid userId, string text, string question, CancellationToken cancellationToken = default)
     {
-        var model = _configuration["Ollama:AttachmentTextModel"];
-        if (string.IsNullOrWhiteSpace(model))
-            model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
+        var model = await _modelResolution.GetAttachmentTextModelAsync(userId, cancellationToken);
 
         var max = AgentSourceConstants.MaxTextCharsForAttachmentLlm;
         var body = text.Length > max
@@ -34,7 +34,7 @@ public class OllamaAttachmentQueryService : IOllamaAttachmentQueryService
 Вопрос: {question}
 """;
 
-        return _ollama.CompleteTextAsync(
+        return await _ollama.CompleteTextAsync(
             userId,
             model,
             "Отвечай только по приведённому тексту вложения. Если данных для ответа нет — скажи об этом кратко. Ответ на русском языке.",
@@ -42,13 +42,11 @@ public class OllamaAttachmentQueryService : IOllamaAttachmentQueryService
             cancellationToken);
     }
 
-    public Task<string> AnswerImageQuestionAsync(Guid userId, byte[] imageBytes, string question, CancellationToken cancellationToken = default)
+    public async Task<string> AnswerImageQuestionAsync(Guid userId, byte[] imageBytes, string question, CancellationToken cancellationToken = default)
     {
-        var model = _configuration["Ollama:VisionModel"];
-        if (string.IsNullOrWhiteSpace(model))
-            model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
+        var model = await _modelResolution.GetVisionModelAsync(userId, cancellationToken);
 
-        return _ollama.CompleteVisionAsync(
+        return await _ollama.CompleteVisionAsync(
             userId,
             model,
             "Ответь на вопрос пользователя по изображению. Будь точным и кратким. Ответ на русском языке.",

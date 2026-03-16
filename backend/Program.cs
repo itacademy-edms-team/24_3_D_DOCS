@@ -160,6 +160,8 @@ builder.Services.AddScoped<IChatService, ChatService>();
 // Ollama Services
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IUserOllamaApiKeyService, UserOllamaApiKeyService>();
+builder.Services.AddScoped<IUserOllamaModelResolutionService, UserOllamaModelResolutionService>();
+builder.Services.AddScoped<IUserOllamaModelSettingsService, UserOllamaModelSettingsService>();
 builder.Services.AddScoped<IOllamaChatService, OllamaChatService>();
 builder.Services.AddScoped<IOllamaSimpleChatService>(sp => (IOllamaSimpleChatService)sp.GetRequiredService<IOllamaChatService>());
 

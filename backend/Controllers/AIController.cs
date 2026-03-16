@@ -24,6 +24,7 @@ public class AIController : ControllerBase
     private readonly IChatService _chatService;
     private readonly IAgentLogService _logService;
     private readonly IUserOllamaApiKeyService _ollamaKeyService;
+    private readonly IUserOllamaModelSettingsService _ollamaModelSettingsService;
     private readonly IAgentSourceService _agentSourceService;
     private readonly ILogger<AIController> _logger;
     private static readonly JsonSerializerOptions ToolCallsJsonOptions = new()
@@ -36,6 +37,7 @@ public class AIController : ControllerBase
         IChatService chatService,
         IAgentLogService logService,
         IUserOllamaApiKeyService ollamaKeyService,
+        IUserOllamaModelSettingsService ollamaModelSettingsService,
         IAgentSourceService agentSourceService,
         ILogger<AIController> logger)
     {
@@ -43,6 +45,7 @@ public class AIController : ControllerBase
         _chatService = chatService;
         _logService = logService;
         _ollamaKeyService = ollamaKeyService;
+        _ollamaModelSettingsService = ollamaModelSettingsService;
         _agentSourceService = agentSourceService;
         _logger = logger;
     }
@@ -263,6 +266,57 @@ public class AIController : ControllerBase
         {
             _logger.LogError(ex, "Error getting agent logs");
             return StatusCode(500, new { message = "Ошибка при получении логов агента", details = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Справочник моделей LLM для настроек
+    /// </summary>
+    [HttpGet("ollama-models")]
+    [ProducesResponseType(typeof(IReadOnlyList<LlmModelOptionDTO>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetOllamaModels(CancellationToken cancellationToken)
+    {
+        var list = await _ollamaModelSettingsService.GetCatalogAsync(cancellationToken);
+        return Ok(list);
+    }
+
+    /// <summary>
+    /// Текущие сохранённые и эффективные модели пользователя
+    /// </summary>
+    [HttpGet("ollama-model-preferences")]
+    [ProducesResponseType(typeof(OllamaModelPreferencesResponseDTO), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetOllamaModelPreferences(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var dto = await _ollamaModelSettingsService.GetPreferencesAsync(userId, cancellationToken);
+        return Ok(dto);
+    }
+
+    /// <summary>
+    /// Сохранить выбор моделей (пустая строка/null сбрасывает переопределение для поля)
+    /// </summary>
+    [HttpPut("ollama-model-preferences")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PutOllamaModelPreferences(
+        [FromBody] SetOllamaModelPreferencesDTO? dto,
+        CancellationToken cancellationToken)
+    {
+        if (dto == null)
+            return BadRequest(new { message = "Тело запроса обязательно." });
+
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        try
+        {
+            var userId = GetUserId();
+            await _ollamaModelSettingsService.SavePreferencesAsync(userId, dto, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

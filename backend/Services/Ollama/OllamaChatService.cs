@@ -9,6 +9,7 @@ namespace RusalProject.Services.Ollama;
 public class OllamaChatService : IOllamaChatService, IOllamaSimpleChatService
 {
     private readonly IUserOllamaApiKeyService _keyService;
+    private readonly IUserOllamaModelResolutionService _modelResolution;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<OllamaChatService> _logger;
@@ -21,11 +22,13 @@ public class OllamaChatService : IOllamaChatService, IOllamaSimpleChatService
 
     public OllamaChatService(
         IUserOllamaApiKeyService keyService,
+        IUserOllamaModelResolutionService modelResolution,
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<OllamaChatService> logger)
     {
         _keyService = keyService;
+        _modelResolution = modelResolution;
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _logger = logger;
@@ -46,7 +49,7 @@ public class OllamaChatService : IOllamaChatService, IOllamaSimpleChatService
         if (string.IsNullOrEmpty(apiKey))
             throw new InvalidOperationException("Не удалось получить API ключ.");
 
-        var model = _configuration["Ollama:DefaultModel"] ?? "gpt-oss:120b";
+        var model = await _modelResolution.GetAgentModelAsync(userId, cancellationToken);
         var baseUrl = _configuration["Ollama:BaseUrl"] ?? "https://ollama.com";
         var url = $"{baseUrl.TrimEnd('/')}/api/chat";
 

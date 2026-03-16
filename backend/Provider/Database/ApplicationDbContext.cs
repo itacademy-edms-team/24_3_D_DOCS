@@ -25,6 +25,8 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<AgentLog> AgentLogs { get; set; }
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
     public DbSet<UserOllamaApiKey> UserOllamaApiKeys { get; set; }
+    public DbSet<LlmModel> LlmModels { get; set; }
+    public DbSet<UserOllamaModelPreferences> UserOllamaModelPreferences { get; set; }
     public DbSet<AgentSourceSession> AgentSourceSessions { get; set; }
     public DbSet<AgentSourcePart> AgentSourceParts { get; set; }
 
@@ -296,9 +298,28 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
                   .HasDefaultValueSql("NOW()");
 
             entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LlmModel>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ModelName)
+                .IsUnique()
+                .HasDatabaseName("IX_LlmModels_ModelName");
+        });
+
+        modelBuilder.Entity<UserOllamaModelPreferences>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure AgentLog entity
@@ -420,6 +441,10 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             else if (entry.Entity is UserOllamaApiKey userOllamaApiKey)
             {
                 userOllamaApiKey.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is UserOllamaModelPreferences prefs)
+            {
+                prefs.UpdatedAt = DateTime.UtcNow;
             }
         }
     }
