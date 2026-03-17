@@ -107,6 +107,45 @@ public class AgentAttachmentContextServiceTests
     }
 
     [Fact]
+    public async Task ResolveAndInjectCatalogAsync_ExplicitSessionWithoutDocument_AllowedForDocumentScope()
+    {
+        var userId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var docId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        var session = new AgentSourceSession
+        {
+            Id = sessionId,
+            ChatSessionId = chatId,
+            DocumentId = null,
+        };
+
+        var mockSources = new Mock<IAgentSourceService>();
+        mockSources
+            .Setup(s => s.GetValidatedSessionAsync(userId, sessionId, chatId, docId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        mockSources.Setup(s => s.BuildCatalog(session, null)).Returns("CATALOG");
+
+        var svc = new AgentAttachmentContextService(mockSources.Object);
+        var history = new List<OllamaMessageInput> { new() { Role = "user", Content = "x" } };
+
+        var resolved = await svc.ResolveAndInjectCatalogAsync(
+            userId,
+            chatId,
+            AgentAttachmentContextScope.Document,
+            docId,
+            sessionId,
+            Array.Empty<ChatMessageDTO>(),
+            history);
+
+        Assert.Equal(sessionId, resolved);
+        Assert.Equal(2, history.Count);
+        Assert.Equal("CATALOG", history[0].Content);
+        Assert.Equal("x", history[1].Content);
+    }
+
+    [Fact]
     public async Task ResolveAndInjectCatalogAsync_InvalidExplicitRequestId_Throws()
     {
         var userId = Guid.NewGuid();

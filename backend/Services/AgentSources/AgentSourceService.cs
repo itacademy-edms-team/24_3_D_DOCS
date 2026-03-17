@@ -243,7 +243,9 @@ public class AgentSourceService : IAgentSourceService
 
         if (documentIdForContext.HasValue)
         {
-            if (session.DocumentId != documentIdForContext.Value)
+            // Сессия из глобального чата (DocumentId null) допускается для документного контекста
+            // (например delegate_to_document_agent с вложением из главного чата).
+            if (session.DocumentId.HasValue && session.DocumentId.Value != documentIdForContext.Value)
                 return null;
         }
         else

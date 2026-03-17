@@ -78,6 +78,26 @@ interface OllamaKeyDTO {
 	apiKey: string;
 }
 
+export interface LlmModelOptionDTO {
+	modelName: string;
+	hasView: boolean;
+}
+
+export interface OllamaModelPreferencesResponseDTO {
+	agentModelName: string | null;
+	attachmentTextModelName: string | null;
+	visionModelName: string | null;
+	effectiveAgentModel: string;
+	effectiveAttachmentTextModel: string;
+	effectiveVisionModel: string;
+}
+
+export interface SetOllamaModelPreferencesDTO {
+	agentModelName: string | null;
+	attachmentTextModelName: string | null;
+	visionModelName: string | null;
+}
+
 class AIAPI extends HttpClient {
 	constructor() {
 		super();
@@ -126,6 +146,20 @@ class AIAPI extends HttpClient {
 
 	async deleteOllamaKey(): Promise<void> {
 		await this.delete('/api/ai/ollama-key');
+	}
+
+	async getOllamaModels(): Promise<LlmModelOptionDTO[]> {
+		return this.get<LlmModelOptionDTO[]>('/api/ai/ollama-models');
+	}
+
+	async getOllamaModelPreferences(): Promise<OllamaModelPreferencesResponseDTO> {
+		return this.get<OllamaModelPreferencesResponseDTO>('/api/ai/ollama-model-preferences');
+	}
+
+	async putOllamaModelPreferences(
+		body: SetOllamaModelPreferencesDTO,
+	): Promise<void> {
+		await this.put('/api/ai/ollama-model-preferences', body);
 	}
 
 	async ingestAgentSource(
