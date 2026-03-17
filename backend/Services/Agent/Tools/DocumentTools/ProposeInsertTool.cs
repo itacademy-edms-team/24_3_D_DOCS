@@ -15,7 +15,8 @@ public sealed class ProposeInsertTool : AgentToolBase<ProposeInsertTool.Args>
     }
 
     public override string Name => "propose_insert";
-    public override string Description => "Предлагает вставку нового markdown-контента в документ.";
+    public override string Description =>
+        "Предлагает вставку нового markdown-контента в документ. Соблюдай правила форматирования из системного промпта (заголовки, пустые строки, таблицы, KaTeX, код).";
 
     public override object ParametersSchema => new
     {
@@ -23,7 +24,12 @@ public sealed class ProposeInsertTool : AgentToolBase<ProposeInsertTool.Args>
         properties = new
         {
             start_line = new { type = "integer", description = "Строка, после которой вставляется контент. 0 = начало документа." },
-            content = new { type = "string", description = "Markdown-контент для вставки." }
+            content = new
+            {
+                type = "string",
+                description =
+                    "Готовый markdown для файла; формат — см. системный промпт агента документа (таблицы GFM, $ и $$ для KaTeX, fenced code с языком)."
+            }
         },
         required = new[] { "start_line", "content" }
     };

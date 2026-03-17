@@ -16,7 +16,8 @@ public sealed class ProposeReplaceTool : AgentToolBase<ProposeReplaceTool.Args>
     }
 
     public override string Name => "propose_replace";
-    public override string Description => "Предлагает замену диапазона строк новым markdown-контентом.";
+    public override string Description =>
+        "Предлагает замену диапазона строк новым markdown-контентом. Соблюдай правила форматирования из системного промпта (заголовки, пустые строки, таблицы, KaTeX, код).";
 
     public override object ParametersSchema => new
     {
@@ -25,7 +26,12 @@ public sealed class ProposeReplaceTool : AgentToolBase<ProposeReplaceTool.Args>
         {
             start_line = new { type = "integer", description = "Начальная строка диапазона (1-based)." },
             end_line = new { type = "integer", description = "Конечная строка диапазона (1-based)." },
-            content = new { type = "string", description = "Новый markdown-контент." }
+            content = new
+            {
+                type = "string",
+                description =
+                    "Новый markdown для файла; формат — см. системный промпт агента документа (таблицы GFM, $ и $$ для KaTeX, fenced code с языком)."
+            }
         },
         required = new[] { "start_line", "content" }
     };
