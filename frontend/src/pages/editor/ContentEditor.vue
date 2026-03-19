@@ -262,7 +262,7 @@
 						class="content-editor__header-btn ai-btn"
 						:class="{ 'ai-btn--active': showAIPanel }"
 						@click="handleAIClick"
-						title="AI Помощник"
+						title="DDOCS AI"
 					>
 						AI
 					</button>

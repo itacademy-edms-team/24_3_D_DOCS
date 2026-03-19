@@ -32,17 +32,12 @@
 					</div>
 				</div>
 				<div v-if="message.stepNumber && message.toolCalls" class="agent-chat__tool-steps">
-					<div
+					<AgentToolStepCard
 						v-for="(tc, idx) in parseToolCalls(message.toolCalls)"
 						:key="`${message.id}-${idx}`"
-						class="maf-tool"
-					>
-						<div class="maf-tool__summary">
-							<span>{{ getToolLabel(tc.toolName) }}</span>
-							<span class="maf-tool__status maf-tool__status--accepted">✓</span>
-						</div>
-						<div class="maf-tool__result">{{ formatToolResult(tc.result) }}</div>
-					</div>
+						:tool-name="tc.toolName"
+						:result="tc.result"
+					/>
 				</div>
 				<template v-else>
 					<AgentChatAttachmentStrip v-if="attachmentList.length" :attachments="attachmentList" />
@@ -57,13 +52,9 @@
 import { computed } from 'vue';
 import Icon from '@/components/Icon.vue';
 import type { ChatMessage } from '@/shared/api/ChatAPI';
-import {
-	parseMessageAttachments,
-	parseToolCalls,
-	getToolLabel,
-	formatToolResult,
-} from './agentChatUtils';
+import { parseMessageAttachments, parseToolCalls } from './agentChatUtils';
 import AgentChatAttachmentStrip from './AgentChatAttachmentStrip.vue';
+import AgentToolStepCard from './AgentToolStepCard.vue';
 
 const props = defineProps<{
 	message: ChatMessage;
@@ -86,40 +77,4 @@ const attachmentList = computed(() => parseMessageAttachments(props.message));
 	gap: 12px;
 }
 
-.maf-tool {
-	border: 1px solid var(--chat-border);
-	border-radius: 12px;
-	background: var(--chat-assistant-bubble-solid);
-	padding: 10px 12px;
-}
-
-.maf-tool__summary {
-	cursor: pointer;
-	font-weight: 600;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-.maf-tool__result {
-	margin-top: 8px;
-	color: var(--chat-foreground);
-}
-
-.maf-tool__status {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 20px;
-	height: 20px;
-	border-radius: 50%;
-	font-size: 12px;
-	font-weight: 700;
-}
-
-.maf-tool__status--accepted {
-	background: rgba(34, 197, 94, 0.2);
-	color: rgb(34, 197, 94);
-}
 </style>

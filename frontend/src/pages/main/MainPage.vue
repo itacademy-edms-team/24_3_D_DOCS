@@ -88,7 +88,7 @@
 						class="main-page__ai-btn"
 						:class="{ 'main-page__ai-btn--active': showAIPanel }"
 						@click="showAIPanel = !showAIPanel"
-						title="AI Помощник"
+						title="DDOCS AI"
 					>
 						AI
 					</button>

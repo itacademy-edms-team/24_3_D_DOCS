@@ -43,17 +43,12 @@
 							<span class="chat-message-role">Агент</span>
 						</div>
 						<div v-if="liveToolCalls.length > 0" class="agent-chat__tool-steps">
-							<div
+							<AgentToolStepCard
 								v-for="(tc, idx) in liveToolCalls"
 								:key="`live-tc-${idx}`"
-								class="maf-tool"
-							>
-								<div class="maf-tool__summary">
-									<span>{{ getToolLabel(tc.toolName) }}</span>
-									<span class="maf-tool__status maf-tool__status--accepted">✓</span>
-								</div>
-								<div class="maf-tool__result">{{ formatToolResult(tc.result) }}</div>
-							</div>
+								:tool-name="tc.toolName"
+								:result="tc.result"
+							/>
 						</div>
 						<div v-if="!currentResponseFinalMessage" class="dots" aria-hidden="true">
 							<span></span>
@@ -98,9 +93,9 @@ import { inject } from 'vue';
 import Icon from '@/components/Icon.vue';
 import type { ChatMessage, ChatMessageAttachment } from '@/shared/api/ChatAPI';
 import { agentChatScrollContainerKey } from './agentChatKeys';
-import { getToolLabel, formatToolResult } from './agentChatUtils';
 import AgentChatMessageRow from './AgentChatMessageRow.vue';
 import AgentChatAttachmentStrip from './AgentChatAttachmentStrip.vue';
+import AgentToolStepCard from './AgentToolStepCard.vue';
 
 defineProps<{
 	historyMessages: ChatMessage[];
@@ -148,43 +143,6 @@ const scrollContainerRef = inject(agentChatScrollContainerKey)!;
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-}
-
-.maf-tool {
-	border: 1px solid var(--chat-border);
-	border-radius: 12px;
-	background: var(--chat-assistant-bubble-solid);
-	padding: 10px 12px;
-}
-
-.maf-tool__summary {
-	cursor: pointer;
-	font-weight: 600;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-.maf-tool__result {
-	margin-top: 8px;
-	color: var(--chat-foreground);
-}
-
-.maf-tool__status {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 20px;
-	height: 20px;
-	border-radius: 50%;
-	font-size: 12px;
-	font-weight: 700;
-}
-
-.maf-tool__status--accepted {
-	background: rgba(34, 197, 94, 0.2);
-	color: rgb(34, 197, 94);
 }
 
 .agent-chat__scroll-down-btn {

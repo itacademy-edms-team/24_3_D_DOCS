@@ -58,19 +58,84 @@ export function getToolLabel(toolName: string): string {
 	return labels[toolName] ?? `Вызов ${toolName}`;
 }
 
-export function formatToolResult(result: string | undefined): string {
-	if (!result) return '—';
+function num(v: unknown): number | undefined {
+	return typeof v === 'number' && !Number.isNaN(v) ? v : undefined;
+}
+
+function lineRangePhrase(start: number, end: number): string {
+	return start === end ? `строка ${start}` : `строки ${start}–${end}`;
+}
+
+function truncateText(s: string, max: number): string {
+	const t = s.trim();
+	return t.length <= max ? t : t.slice(0, max).trimEnd() + '…';
+}
+
+/** Форматирует сырой result инструмента для отображения в чате (без сырого JSON). */
+export function formatToolResult(result: string | undefined, _toolName?: string): string {
+	if (!result?.trim()) return '—';
+
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(result);
-		if (Array.isArray(parsed)) return `Найдено документов: ${parsed.length}`;
-		if (typeof parsed === 'object' && parsed !== null) {
-			const o = parsed as Record<string, unknown>;
-			if (o.message) return String(o.message);
-			if (o.deleted) return 'Документ удалён';
-			if (o.created) return String(o.message ?? 'Документ создан');
-		}
+		parsed = JSON.parse(result);
 	} catch {
-		/* fallback */
+		return result.length > 200 ? result.slice(0, 200) + '…' : result;
 	}
-	return result.length > 200 ? result.slice(0, 200) + '…' : result;
+
+	if (Array.isArray(parsed)) {
+		return `Найдено документов: ${parsed.length}`;
+	}
+
+	if (typeof parsed !== 'object' || parsed === null) {
+		const s = String(parsed);
+		return s.length > 200 ? s.slice(0, 200) + '…' : s;
+	}
+
+	const o = parsed as Record<string, unknown>;
+
+	if (typeof o.message === 'string' && o.message.trim()) {
+		return truncateText(o.message, 400);
+	}
+
+	if (o.replaced === true) {
+		const start = num(o.startLine);
+		const end = num(o.endLine) ?? start;
+		if (start !== undefined && end !== undefined) {
+			return `Замена ${lineRangePhrase(start, end)} добавлена в предложения`;
+		}
+		return 'Замена добавлена в предложения';
+	}
+
+	if (o.inserted === true) {
+		const line = num(o.startLine);
+		if (line !== undefined) {
+			return `Вставка после строки ${line} добавлена в предложения`;
+		}
+		return 'Вставка добавлена в предложения';
+	}
+
+	if (o.renamed === true && typeof o.name === 'string' && o.name.trim()) {
+		return `Документ переименован: «${truncateText(o.name, 80)}»`;
+	}
+
+	if (o.created === true) {
+		const name = typeof o.name === 'string' ? o.name.trim() : '';
+		return name ? `Документ создан: «${truncateText(name, 80)}»` : 'Документ создан';
+	}
+
+	if (o.delegated === true) {
+		return 'Задача передана агенту документа';
+	}
+
+	if (o.deleted === true) {
+		const start = num(o.startLine);
+		const end = num(o.endLine) ?? start;
+		if (start !== undefined && end !== undefined) {
+			return `Удаление ${lineRangePhrase(start, end)} добавлено в предложения`;
+		}
+		return 'Документ удалён';
+	}
+
+	// Неизвестный объект — не показываем JSON целиком
+	return 'Готово';
 }
