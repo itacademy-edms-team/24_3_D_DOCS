@@ -242,6 +242,15 @@ export function getDefaultProfileData(): ProfileData {
 				lineHeight: defaultLineHeight,
 				lineHeightUseGlobal: true,
 			} as EntityStyle,
+
+			'code-inline': {
+				fontFamily: 'Courier New',
+				fontSize: defaultFontSize,
+				fontWeight: 'normal',
+				fontStyle: 'normal',
+				lineHeight: defaultLineHeight,
+				lineHeightUseGlobal: true,
+			} as EntityStyle,
 		},
 		headingNumbering: {
 			templates: {

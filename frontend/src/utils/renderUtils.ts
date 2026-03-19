@@ -18,6 +18,7 @@ export type EntityType =
 	| 'image'
 	| 'formula'
 	| 'code'
+	| 'code-inline'
 	| 'blockquote'
 	| 'link'
 	| 'horizontal-rule'
@@ -61,16 +62,52 @@ export function getFinalStyle(
 	profile: ProfileData | null,
 	overrides: Record<string, EntityStyle>
 ): EntityStyle {
-	// Get base style from profile
-	// For heading levels (heading-1, heading-2, etc.), try specific style first, then fallback to general 'heading'
-	let baseStyle = profile?.entityStyles[entityType] || profile?.entityStyles[entityType.replace('-', '_')];
-	
-	if (!baseStyle && entityType.startsWith('heading-')) {
-		baseStyle = profile?.entityStyles['heading'] || {};
-	}
-	
-	if (!baseStyle) {
-		baseStyle = {};
+	let baseStyle: EntityStyle;
+
+	if (entityType === 'code-inline') {
+		const para = profile?.entityStyles?.['paragraph'] || {};
+		const explicit = profile?.entityStyles?.['code-inline'] || {};
+		baseStyle = {
+			fontFamily: 'Courier New',
+			fontSize: para.fontSize ?? 14,
+			fontWeight: para.fontWeight ?? 'normal',
+			fontStyle: para.fontStyle ?? 'normal',
+			...(para.lineHeight !== undefined ? { lineHeight: para.lineHeight } : {}),
+			...(para.lineHeightUseGlobal !== undefined
+				? { lineHeightUseGlobal: para.lineHeightUseGlobal }
+				: {}),
+			...(para.color !== undefined ? { color: para.color } : {}),
+			...explicit,
+		};
+	} else if (entityType === 'code') {
+		// Renderer uses "code"; profile UI and defaults use "code-block"
+		const fromProfile =
+			profile?.entityStyles['code'] ||
+			profile?.entityStyles['code-block'] ||
+			{};
+		const blockFallback: EntityStyle = {
+			fontFamily: 'Courier New',
+			fontSize: 12,
+			lineHeight: 1.5,
+			lineHeightUseGlobal: true,
+			backgroundColor: '#f5f5f5',
+			marginTop: 6,
+			marginBottom: 6,
+		};
+		baseStyle = { ...blockFallback, ...fromProfile };
+	} else {
+		// Get base style from profile
+		// For heading levels (heading-1, heading-2, etc.), try specific style first, then fallback to general 'heading'
+		baseStyle =
+			profile?.entityStyles[entityType] || profile?.entityStyles[entityType.replace('-', '_')];
+
+		if (!baseStyle && entityType.startsWith('heading-')) {
+			baseStyle = profile?.entityStyles['heading'] || {};
+		}
+
+		if (!baseStyle) {
+			baseStyle = {};
+		}
 	}
 
 	// Get override for this specific element

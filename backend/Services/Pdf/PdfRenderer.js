@@ -31,14 +31,31 @@
     }
 
     function getFinalStyle(entityType, elementId, profile, overrides) {
-        let baseStyle = profile?.entityStyles?.[entityType] || profile?.entityStyles?.[entityType.replace('-', '_')] || {};
-        
-        if (!baseStyle && entityType.startsWith('heading-')) {
-            baseStyle = profile?.entityStyles?.heading || {};
-        }
-        
-        if (!baseStyle) {
-            baseStyle = {};
+        let baseStyle;
+
+        if (entityType === 'code-inline') {
+            const para = profile?.entityStyles?.paragraph || {};
+            const explicit = profile?.entityStyles?.['code-inline'] || {};
+            baseStyle = {
+                fontFamily: 'Courier New',
+                fontSize: para.fontSize ?? 14,
+                fontWeight: para.fontWeight ?? 'normal',
+                fontStyle: para.fontStyle ?? 'normal',
+                ...(para.lineHeight !== undefined ? { lineHeight: para.lineHeight } : {}),
+                ...(para.lineHeightUseGlobal !== undefined ? { lineHeightUseGlobal: para.lineHeightUseGlobal } : {}),
+                ...(para.color !== undefined ? { color: para.color } : {}),
+                ...explicit,
+            };
+        } else {
+            baseStyle = profile?.entityStyles?.[entityType] || profile?.entityStyles?.[entityType.replace('-', '_')] || {};
+
+            if (!baseStyle && entityType.startsWith('heading-')) {
+                baseStyle = profile?.entityStyles?.heading || {};
+            }
+
+            if (!baseStyle) {
+                baseStyle = {};
+            }
         }
 
         const override = overrides[elementId] || {};
@@ -616,14 +633,13 @@
             const content = codeElement.textContent || '';
             const elId = generateElementId('code-inline', content.slice(0, 50), usedIds);
 
-            codeElement.id = elId;
-            codeElement.setAttribute('data-type', 'code-inline');
+            applyStyles(codeElement, 'code-inline', elId, profile, overrides, selectable);
             codeElement.classList.add('code-inline');
-            if (selectable) codeElement.classList.add('element-selectable');
 
-            const style = profile?.entityStyles?.['code-inline'] || {};
-            if (style.backgroundColor) {
-                codeElement.setAttribute('style', `background-color: ${style.backgroundColor}; padding: 2px 4px; border-radius: 3px;`);
+            const merged = getFinalStyle('code-inline', elId, profile, overrides);
+            if (merged.backgroundColor) {
+                const cur = codeElement.getAttribute('style') || '';
+                codeElement.setAttribute('style', `${cur}; padding: 2px 4px; border-radius: 3px`);
             }
         });
     }

@@ -1,5 +1,5 @@
 import type { ProfileData, EntityStyle } from '@/entities/profile/types';
-import { applyStyles, generateElementId } from '../renderUtils';
+import { applyStyles, generateElementId, getFinalStyle } from '../renderUtils';
 import type { EntityType } from '../renderUtils';
 
 /**
@@ -40,7 +40,7 @@ export function renderInlineCode(
 	doc: Document,
 	usedIds: Set<string>,
 	profile: ProfileData | null,
-	_overrides: Record<string, EntityStyle>,
+	overrides: Record<string, EntityStyle>,
 	selectable: boolean
 ): void {
 	doc.querySelectorAll('code').forEach((codeElement) => {
@@ -50,18 +50,21 @@ export function renderInlineCode(
 		const content = codeElement.textContent || '';
 		const elId = generateElementId('code-inline', content.slice(0, 50), usedIds);
 
-		// For inline code, we can apply styles directly, but typically we keep default styling
-		// or apply minimal styles from profile
-		codeElement.id = elId;
-		codeElement.setAttribute('data-type', 'code-inline');
-		if (selectable) codeElement.classList.add('element-selectable');
+		applyStyles(
+			codeElement,
+			'code-inline',
+			elId,
+			profile,
+			overrides,
+			selectable
+		);
 
-		// Apply basic styles if defined in profile for inline code
-		const style = profile?.entityStyles['code-inline'] || {};
-		if (style.backgroundColor) {
+		const merged = getFinalStyle('code-inline', elId, profile, overrides);
+		if (merged.backgroundColor) {
+			const cur = codeElement.getAttribute('style') || '';
 			codeElement.setAttribute(
 				'style',
-				`background-color: ${style.backgroundColor}; padding: 2px 4px; border-radius: 3px;`
+				`${cur}; padding: 2px 4px; border-radius: 3px`
 			);
 		}
 	});

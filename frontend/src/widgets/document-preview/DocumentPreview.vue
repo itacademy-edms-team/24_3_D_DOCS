@@ -822,6 +822,27 @@ onMounted(async () => {
 	page-break-inside: avoid;
 }
 
+.document-preview__content :deep(code[data-type='code-inline']) {
+	overflow-wrap: break-word;
+	word-break: break-word;
+}
+
+.document-preview__content :deep(pre[data-type='code']) {
+	max-width: 100%;
+	box-sizing: border-box;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	word-break: break-word;
+}
+
+.document-preview__content :deep(pre[data-type='code'] code) {
+	font-size: inherit;
+	font-family: inherit;
+	line-height: inherit;
+	white-space: inherit;
+}
+
 .document-preview__content :deep(p),
 .document-preview__content :deep(h1),
 .document-preview__content :deep(h2),

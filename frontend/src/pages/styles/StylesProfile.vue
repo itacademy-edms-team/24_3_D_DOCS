@@ -98,6 +98,7 @@ const tabGroups = [
 	{ value: 'image', label: 'Изображения' },
 	{ value: 'formula', label: 'Формулы' },
 	{ value: 'code-block', label: 'Код' },
+	{ value: 'code-inline', label: 'Код в строке' },
 	{ value: 'highlight', label: 'Выделенный текст' },
 	{
 		type: 'group',
