@@ -35,14 +35,6 @@
 						<Icon name="assignment" size="18" class="nav-icon" />
 						Титульные листы
 					</button>
-					<button
-						class="nav-item"
-						:class="{ active: activeTab === 'archived' }"
-						@click="activeTab = 'archived'"
-					>
-						<Icon name="archive" size="18" class="nav-icon" />
-						Архив
-					</button>
 				</nav>
 
 				<!-- User Section -->
@@ -74,7 +66,7 @@
 			<!-- Header -->
 			<header class="content-header">
 				<h1 class="page-title">
-					{{ activeTab === 'docs' ? 'Все документы' : activeTab === 'profiles' ? 'Профили стилей' : activeTab === 'shared' ? 'Титульные листы' : 'Архив' }}
+					{{ activeTab === 'docs' ? 'Все документы' : activeTab === 'profiles' ? 'Профили стилей' : 'Титульные листы' }}
 				</h1>
 				<div class="header-actions">
 					<Button
@@ -113,57 +105,36 @@
 							v-model="searchQueryInput"
 							type="text"
 							class="search-input"
-							:placeholder="`Поиск в ${activeTab === 'docs' ? 'документах' : activeTab === 'profiles' ? 'профилях стилей' : activeTab === 'shared' ? 'титульных листах' : 'архиве'}...`"
+							:placeholder="`Поиск в ${activeTab === 'docs' ? 'документах' : activeTab === 'profiles' ? 'профилях стилей' : 'титульных листах'}...`"
 						/>
 					</div>
 				</div>
 
-				<!-- Table -->
-				<DocumentTable
-					v-if="activeTab === 'docs'"
-					:documents="documents"
-					:selectedIds="selectedItems"
-					:isLoading="isLoading"
-					:sortBy="sortBy"
-					:sortOrder="sortOrder"
-					:generatingStates="generatingStates"
-					@update:selectedIds="selectedItems = $event"
-					@update:sortBy="sortBy = $event"
-					@update:sortOrder="sortOrder = $event"
-					@row-click="handleItemClick"
-					@action="handleDocumentAction"
-				/>
+				<div class="content-body__main">
+					<!-- Table -->
+					<DocumentTable
+						v-if="activeTab === 'docs'"
+						:documents="docsTableRows"
+						:isLoading="isLoading"
+						:sortBy="sortBy"
+						:sortOrder="sortOrder"
+						:generatingStates="generatingStates"
+						@update:sortBy="sortBy = $event"
+						@update:sortOrder="sortOrder = $event"
+						@row-click="handleItemClick"
+						@action="handleDocumentAction"
+					/>
 
-				<!-- Profiles Table -->
-				<div v-if="activeTab === 'profiles'" class="items-table">
+					<!-- Profiles Table -->
+					<div v-if="activeTab === 'profiles'" class="items-table">
 					<table class="items-table__table">
 						<thead>
 							<tr>
-								<th class="items-table__col-checkbox">
-									<input
-										type="checkbox"
-										:checked="allSelected"
-										@change="toggleSelectAll"
-										class="items-table__checkbox"
-									/>
-								</th>
-								<th class="items-table__col-title">
+								<th
+									class="items-table__col-title items-table__col-title--sortable"
+									@click="toggleSort('name')"
+								>
 									Название
-									<button
-										class="items-table__sort-btn"
-										@click="toggleSort('name')"
-									>
-										<Icon :name="sortBy === 'name' && sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'" size="12" />
-									</button>
-								</th>
-								<th class="items-table__col-modified">
-									Изменён
-									<button
-										class="items-table__sort-btn"
-										@click="toggleSort('updatedAt')"
-									>
-										<Icon :name="sortBy === 'updatedAt' && sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'" size="12" />
-									</button>
 								</th>
 								<th class="items-table__col-actions">Действия</th>
 							</tr>
@@ -175,19 +146,8 @@
 								class="items-table__row"
 								@click="handleItemClick(item)"
 							>
-								<td class="items-table__col-checkbox" @click.stop>
-									<input
-										type="checkbox"
-										:checked="selectedItems.has(item.id)"
-										@change="toggleSelect(item.id)"
-										class="items-table__checkbox"
-									/>
-								</td>
 								<td class="items-table__col-title">
 									<span class="items-table__name">{{ item.name }}</span>
-								</td>
-								<td class="items-table__col-modified">
-									{{ formatDate(item.updatedAt) }}
 								</td>
 								<td class="items-table__col-actions" @click.stop>
 									<div class="items-table__actions">
@@ -209,44 +169,24 @@
 								</td>
 							</tr>
 							<tr v-if="filteredItems.length === 0" class="items-table__empty-row">
-								<td colspan="4" class="items-table__empty-message">
+								<td colspan="2" class="items-table__empty-message">
 									{{ isLoading ? 'Загрузка...' : 'Нет профилей' }}
 								</td>
 							</tr>
 						</tbody>
 					</table>
-				</div>
+					</div>
 
-				<!-- Title Pages Table -->
-				<div v-if="activeTab === 'shared'" class="items-table">
+					<!-- Title Pages Table -->
+					<div v-if="activeTab === 'shared'" class="items-table">
 					<table class="items-table__table">
 						<thead>
 							<tr>
-								<th class="items-table__col-checkbox">
-									<input
-										type="checkbox"
-										:checked="allSelected"
-										@change="toggleSelectAll"
-										class="items-table__checkbox"
-									/>
-								</th>
-								<th class="items-table__col-title">
+								<th
+									class="items-table__col-title items-table__col-title--sortable"
+									@click="toggleSort('name')"
+								>
 									Название
-									<button
-										class="items-table__sort-btn"
-										@click="toggleSort('name')"
-									>
-										<Icon :name="sortBy === 'name' && sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'" size="12" />
-									</button>
-								</th>
-								<th class="items-table__col-modified">
-									Изменён
-									<button
-										class="items-table__sort-btn"
-										@click="toggleSort('updatedAt')"
-									>
-										<Icon :name="sortBy === 'updatedAt' && sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'" size="12" />
-									</button>
 								</th>
 								<th class="items-table__col-actions">Действия</th>
 							</tr>
@@ -258,19 +198,8 @@
 								class="items-table__row"
 								@click="handleTitlePageClick(item)"
 							>
-								<td class="items-table__col-checkbox" @click.stop>
-									<input
-										type="checkbox"
-										:checked="selectedItems.has(item.id)"
-										@change="toggleSelect(item.id)"
-										class="items-table__checkbox"
-									/>
-								</td>
 								<td class="items-table__col-title">
 									<span class="items-table__name">{{ item.name }}</span>
-								</td>
-								<td class="items-table__col-modified">
-									{{ formatDate(item.updatedAt) }}
 								</td>
 								<td class="items-table__col-actions" @click.stop>
 									<div class="items-table__actions">
@@ -292,12 +221,13 @@
 								</td>
 							</tr>
 							<tr v-if="filteredTitlePages.length === 0" class="items-table__empty-row">
-								<td colspan="4" class="items-table__empty-message">
+								<td colspan="2" class="items-table__empty-message">
 									{{ isLoading ? 'Загрузка...' : 'Нет титульников' }}
 								</td>
 							</tr>
 						</tbody>
 					</table>
+					</div>
 				</div>
 
 				<!-- Footer -->
@@ -359,12 +289,11 @@ import type { DocumentMeta } from '@/entities/document/types';
 const router = useRouter();
 const authStore = useAuthStore();
 
-const activeTab = ref<'docs' | 'profiles' | 'shared' | 'archived'>('docs');
+const activeTab = ref<'docs' | 'profiles' | 'shared'>('docs');
 const searchQueryInput = ref('');
 const debouncedSearchQuery = useDebounce(searchQueryInput, 300);
 const sortBy = ref<'name' | 'updatedAt'>('updatedAt');
 const sortOrder = ref<'asc' | 'desc'>('desc');
-const selectedItems = ref<Set<string>>(new Set());
 const isLoading = ref(false);
 
 const profiles = ref<Profile[]>([]);
@@ -464,24 +393,20 @@ const filteredItems = computed(() => {
 
 const totalItems = computed(() => currentItems.value.length);
 
-const allSelected = computed(() => {
-	const items = activeTab.value === 'shared' ? filteredTitlePages.value : filteredItems.value;
-	return (
-		items.length > 0 &&
-		items.every((item) => selectedItems.value.has(item.id))
-	);
-});
+/** Строки таблицы документов совпадают с подсчётом в футере (поиск + сортировка на главной). */
+const docsTableRows = computed((): DocumentMeta[] =>
+	activeTab.value === 'docs' ? (filteredItems.value as DocumentMeta[]) : [],
+);
 
 async function loadData() {
 	isLoading.value = true;
 	try {
-		const status = activeTab.value === 'archived' ? 'archived' : undefined;
 		const [profilesData, documentsData, titlePagesData] = await Promise.all([
 			ProfileAPI.getAll().catch((err) => {
 				console.error('Failed to load profiles:', err);
 				return [];
 			}),
-			DocumentAPI.getAll(status, debouncedSearchQuery.value || undefined).catch((err) => {
+			DocumentAPI.getAll(undefined, debouncedSearchQuery.value || undefined).catch((err) => {
 				console.error('Failed to load documents:', err);
 				return [];
 			}),
@@ -511,42 +436,6 @@ function toggleSort(field: 'name' | 'updatedAt') {
 		sortBy.value = field;
 		sortOrder.value = 'desc';
 	}
-}
-
-function toggleSelect(id: string) {
-	if (selectedItems.value.has(id)) {
-		selectedItems.value.delete(id);
-	} else {
-		selectedItems.value.add(id);
-	}
-}
-
-function toggleSelectAll() {
-	const items = activeTab.value === 'shared' ? filteredTitlePages.value : filteredItems.value;
-	if (allSelected.value) {
-		selectedItems.value.clear();
-	} else {
-		items.forEach((item) => {
-			selectedItems.value.add(item.id);
-		});
-	}
-}
-
-function formatDate(dateString: string): string {
-	const date = new Date(dateString);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffMins = Math.floor(diffMs / 60000);
-	const diffHours = Math.floor(diffMs / 3600000);
-	const diffDays = Math.floor(diffMs / 86400000);
-	const diffMonths = Math.floor(diffDays / 30);
-
-	if (diffMins < 1) return 'только что';
-	if (diffMins < 60) return `${diffMins} мин. назад`;
-	if (diffHours < 24) return `${diffHours} ч. назад`;
-	if (diffDays < 30) return `${diffDays} дн. назад`;
-	if (diffMonths < 12) return `${diffMonths} мес. назад`;
-	return date.toLocaleDateString('ru-RU');
 }
 
 function handleItemClick(item: Profile | DocumentMeta) {
@@ -597,7 +486,6 @@ async function handleTitlePageDelete(item: any) {
 	try {
 		await TitlePageAPI.delete(item.id);
 		await loadData();
-		selectedItems.value.delete(item.id);
 	} catch (error) {
 		console.error('Failed to delete:', error);
 		alert('Ошибка при удалении');
@@ -729,7 +617,6 @@ async function handleDelete(item: Profile | DocumentMeta) {
 			await DocumentAPI.delete(item.id);
 		}
 		await loadData();
-		selectedItems.value.delete(item.id);
 	} catch (error) {
 		console.error('Failed to delete:', error);
 		alert('Ошибка при удалении');
@@ -1008,8 +895,16 @@ onMounted(async () => {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
+	min-height: 0;
 	overflow: hidden;
 	padding: 0 var(--spacing-xl);
+}
+
+.content-body__main {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	margin-top: 1rem;
 }
 
 .content-header {
@@ -1135,9 +1030,7 @@ onMounted(async () => {
 }
 
 .items-table {
-	flex: 1;
-	overflow-y: auto;
-	margin-top: 1rem;
+	width: 100%;
 }
 
 .items-table__table {
@@ -1169,48 +1062,22 @@ onMounted(async () => {
 	vertical-align: middle;
 }
 
-.items-table__col-checkbox {
-	width: 48px;
-}
-
-.items-table__checkbox {
-	width: 18px;
-	height: 18px;
-	cursor: pointer;
-	accent-color: var(--accent);
-}
-
 .items-table__name {
 	font-size: 14px;
 	font-weight: 500;
 	color: var(--text-primary);
 }
 
-.items-table__col-modified {
-	width: 200px;
-	font-size: 13px;
-	color: var(--text-secondary);
-}
-
 .items-table__col-actions {
 	width: 120px;
 }
 
-.items-table__sort-btn {
-	background: transparent;
-	border: none;
-	color: var(--text-tertiary);
+.items-table__col-title--sortable {
 	cursor: pointer;
-	font-size: 12px;
-	margin-left: var(--spacing-xs);
-	padding: 2px;
-	transition: color 0.2s ease;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
+	user-select: none;
 }
 
-.items-table__sort-btn:hover {
+.items-table__col-title--sortable:hover {
 	color: var(--accent);
 }
 
@@ -1228,6 +1095,8 @@ onMounted(async () => {
 }
 
 .table-footer {
+	flex-shrink: 0;
+	margin-top: auto;
 	padding: 1.5rem 0;
 	border-top: 1px solid var(--border-color);
 	color: var(--text-tertiary);

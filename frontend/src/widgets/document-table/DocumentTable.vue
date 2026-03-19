@@ -3,33 +3,8 @@
 		<table class="document-table__table">
 			<thead>
 				<tr>
-					<th class="document-table__col-checkbox">
-						<input
-							type="checkbox"
-							:checked="allSelected"
-							@change="toggleSelectAll"
-							class="document-table__checkbox"
-						/>
-					</th>
-					<th class="document-table__col-title">
-						Название
-						<button
-							class="document-table__sort-btn"
-							@click="toggleSort('name')"
-						>
-							<Icon :name="sortBy === 'name' && sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'" size="12" />
-						</button>
-					</th>
+					<th class="document-table__col-title">Название</th>
 					<th class="document-table__col-profile">Профиль стиля</th>
-					<th class="document-table__col-modified">
-						Изменён
-						<button
-							class="document-table__sort-btn"
-							@click="toggleSort('updatedAt')"
-						>
-							<Icon :name="sortBy === 'updatedAt' && sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'" size="12" />
-						</button>
-					</th>
 					<th class="document-table__col-actions">Действия</th>
 				</tr>
 			</thead>
@@ -40,14 +15,6 @@
 					class="document-table__row"
 					@click="handleRowClick(document)"
 				>
-					<td class="document-table__col-checkbox" @click.stop>
-						<input
-							type="checkbox"
-							:checked="selectedIds.has(document.id)"
-							@change="toggleSelect(document.id)"
-							class="document-table__checkbox"
-						/>
-					</td>
 					<td class="document-table__col-title">
 						<span class="document-table__name">{{ document.name }}</span>
 					</td>
@@ -59,9 +26,6 @@
 							{{ document.profileName }}
 						</span>
 						<span v-else class="document-table__empty">—</span>
-					</td>
-					<td class="document-table__col-modified">
-						{{ formatDate(document.updatedAt) }}
 					</td>
 					<td class="document-table__col-actions" @click.stop>
 						<div class="document-table__actions">
@@ -103,7 +67,7 @@
 					</td>
 				</tr>
 				<tr v-if="sortedDocuments.length === 0" class="document-table__empty-row">
-					<td colspan="5" class="document-table__empty-message">
+					<td colspan="3" class="document-table__empty-message">
 						{{ isLoading ? 'Загрузка...' : 'Нет документов' }}
 					</td>
 				</tr>
@@ -119,7 +83,6 @@ import type { DocumentMeta } from '@/entities/document/types';
 
 interface Props {
 	documents: DocumentMeta[];
-	selectedIds: Set<string>;
 	isLoading?: boolean;
 	sortBy?: 'name' | 'updatedAt';
 	sortOrder?: 'asc' | 'desc';
@@ -142,25 +105,17 @@ const isGeneratingDdoc = (documentId: string): boolean => {
 };
 
 const emit = defineEmits<{
-	'update:selectedIds': [ids: Set<string>];
 	'update:sortBy': [field: 'name' | 'updatedAt'];
 	'update:sortOrder': [order: 'asc' | 'desc'];
 	'row-click': [document: DocumentMeta];
 	action: [document: DocumentMeta, action: string];
 }>();
 
-const allSelected = computed(() => {
-	return (
-		props.documents.length > 0 &&
-		props.documents.every((doc) => props.selectedIds.has(doc.id))
-	);
-});
-
 const sortedDocuments = computed(() => {
 	const docs = [...props.documents];
 	docs.sort((a, b) => {
-		let aValue: any;
-		let bValue: any;
+		let aValue: string | number;
+		let bValue: string | number;
 
 		if (props.sortBy === 'name') {
 			aValue = (a.name || '').toLowerCase();
@@ -179,26 +134,6 @@ const sortedDocuments = computed(() => {
 	return docs;
 });
 
-const toggleSelectAll = () => {
-	const newSelected = new Set<string>();
-	if (!allSelected.value) {
-		sortedDocuments.value.forEach((doc) => {
-			newSelected.add(doc.id);
-		});
-	}
-	emit('update:selectedIds', newSelected);
-};
-
-const toggleSelect = (id: string) => {
-	const newSelected = new Set(props.selectedIds);
-	if (newSelected.has(id)) {
-		newSelected.delete(id);
-	} else {
-		newSelected.add(id);
-	}
-	emit('update:selectedIds', newSelected);
-};
-
 const toggleSort = (field: 'name' | 'updatedAt') => {
 	if (props.sortBy === field) {
 		emit('update:sortOrder', props.sortOrder === 'asc' ? 'desc' : 'asc');
@@ -214,21 +149,6 @@ const handleRowClick = (document: DocumentMeta) => {
 
 const handleAction = (document: DocumentMeta, action: string) => {
 	emit('action', document, action);
-};
-
-const formatDate = (dateString: string): string => {
-	const date = new Date(dateString);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffMins = Math.floor(diffMs / 60000);
-	const diffHours = Math.floor(diffMs / 3600000);
-	const diffDays = Math.floor(diffMs / 86400000);
-
-	if (diffMins < 1) return 'только что';
-	if (diffMins < 60) return `${diffMins} мин. назад`;
-	if (diffHours < 24) return `${diffHours} ч. назад`;
-	if (diffDays < 30) return `${diffDays} дн. назад`;
-	return date.toLocaleDateString('ru-RU');
 };
 </script>
 
@@ -279,19 +199,17 @@ const formatDate = (dateString: string): string => {
 	transform: scale(1);
 }
 
-.document-table__col-checkbox {
-	width: 40px;
-}
-
-.document-table__checkbox {
-	width: 18px;
-	height: 18px;
-	cursor: pointer;
-	accent-color: var(--accent);
-}
-
 .document-table__col-title {
 	min-width: 200px;
+}
+
+.document-table__col-title--sortable {
+	cursor: pointer;
+	user-select: none;
+}
+
+.document-table__col-title--sortable:hover {
+	color: var(--accent);
 }
 
 .document-table__name {
@@ -322,29 +240,8 @@ const formatDate = (dateString: string): string => {
 	font-size: 13px;
 }
 
-.document-table__col-modified {
-	width: 180px;
-	font-size: 13px;
-	color: var(--text-secondary);
-}
-
 .document-table__col-actions {
 	width: 160px;
-}
-
-.document-table__sort-btn {
-	background: transparent;
-	border: none;
-	color: var(--text-tertiary);
-	cursor: pointer;
-	font-size: 12px;
-	margin-left: var(--spacing-xs);
-	padding: 2px;
-	transition: color 0.2s ease;
-}
-
-.document-table__sort-btn:hover {
-	color: var(--accent);
 }
 
 .document-table__actions {
