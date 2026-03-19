@@ -5,10 +5,7 @@
 				v-for="message in historyMessages"
 				:key="message.id"
 				:message="message"
-				:hovered-message-id="hoveredMessageId"
 				:render-markdown="renderMarkdown"
-				@hover="(id) => (hoveredMessageId = id)"
-				@copy="emit('copyMessage', $event)"
 			/>
 
 			<div v-if="pendingUserMessage" class="chat-message chat-message--user">
@@ -22,11 +19,11 @@
 						<div class="chat-message-header">
 							<span class="chat-message-role">Вы</span>
 						</div>
+						<div class="chat-message-content" v-html="renderMarkdown(pendingUserMessage)"></div>
 						<AgentChatAttachmentStrip
 							v-if="pendingAttachments.length"
 							:attachments="pendingAttachments"
 						/>
-						<div class="chat-message-content" v-html="renderMarkdown(pendingUserMessage)"></div>
 					</div>
 				</div>
 			</div>
@@ -109,10 +106,7 @@ defineProps<{
 	showScrollDownButton: boolean;
 }>();
 
-const hoveredMessageId = defineModel<string | null>('hoveredMessageId', { required: true });
-
 const emit = defineEmits<{
-	copyMessage: [content: string];
 	scrollToBottom: [];
 }>();
 

@@ -9,12 +9,26 @@
 		/>
 		<div v-if="showAttachmentUi && (pendingAttachment || isUploadingAttachment)" style="margin-bottom: 8px;">
 			<div v-if="isUploadingAttachment" class="chat-selection-badge">Загрузка файла…</div>
-			<div v-else-if="pendingAttachment" class="chat-selection-badge">
-				<span :title="pendingAttachment.label">Вложение: {{ pendingAttachment.label }}</span>
+			<div v-else-if="pendingAttachment" class="chat-pending-attachment-chip">
+				<div class="chat-pending-attachment-chip__thumb">
+					<img
+						v-if="showImageThumb"
+						:src="pendingAttachment.previewObjectUrl!"
+						:alt="pendingAttachment.label"
+						class="chat-pending-attachment-chip__img"
+					/>
+					<div v-else class="chat-pending-attachment-chip__placeholder">
+						<Icon name="description" size="22" ariaLabel="" decorative />
+						<span class="chat-pending-attachment-chip__kind">{{ pendingKindLabel }}</span>
+					</div>
+				</div>
+				<span class="chat-pending-attachment-chip__name" :title="pendingAttachment.label">
+					{{ pendingAttachment.label }}
+				</span>
 				<button
 					type="button"
 					@click="emit('clearAttachment')"
-					class="chat-selection-remove"
+					class="chat-selection-remove chat-pending-attachment-chip__remove"
 					title="Убрать вложение"
 				>
 					<Icon name="close" size="12" ariaLabel="Убрать вложение" />
@@ -75,22 +89,42 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import Icon from '@/components/Icon.vue';
+import type { PendingAgentAttachment } from './useAgentChatAttachments';
+import {
+	isImageAttachment,
+	attachmentKindLabel,
+} from './agentAttachmentKind';
 
 const userMessage = defineModel<string>('userMessage', { required: true });
 
-defineProps<{
+const props = defineProps<{
 	activeChatId: string | null;
 	isProcessing: boolean;
 	showAttachmentUi: boolean;
 	isUploadingAttachment: boolean;
-	pendingAttachment: { label: string } | null;
+	pendingAttachment: PendingAgentAttachment | null;
 	hasSelection: boolean;
 	startLine?: number;
 	endLine?: number;
 	inputPlaceholder: string;
 }>();
+
+const showImageThumb = computed(
+	() =>
+		!!props.pendingAttachment?.previewObjectUrl &&
+		isImageAttachment(
+			props.pendingAttachment.label,
+			props.pendingAttachment.contentType
+		)
+);
+
+const pendingKindLabel = computed(() => {
+	const p = props.pendingAttachment;
+	if (!p) return '';
+	return attachmentKindLabel(p.label, p.contentType);
+});
 
 const emit = defineEmits<{
 	sendOrStop: [];
@@ -136,5 +170,62 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 .chat-attach-button:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+.chat-pending-attachment-chip {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	max-width: 100%;
+	padding: 6px 8px 6px 6px;
+	border-radius: var(--chat-radius-sm, 10px);
+	border: 1px solid var(--chat-border);
+	background: var(--chat-bg, var(--bg-secondary));
+}
+
+.chat-pending-attachment-chip__thumb {
+	flex-shrink: 0;
+	width: 48px;
+	height: 48px;
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--chat-assistant-bubble-solid, rgba(0, 0, 0, 0.06));
+}
+
+.chat-pending-attachment-chip__img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.chat-pending-attachment-chip__placeholder {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	color: var(--chat-accent, var(--accent));
+}
+
+.chat-pending-attachment-chip__kind {
+	font-size: 9px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.chat-pending-attachment-chip__name {
+	flex: 1;
+	min-width: 0;
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.chat-pending-attachment-chip__remove {
+	flex-shrink: 0;
 }
 </style>

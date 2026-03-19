@@ -37,6 +37,8 @@ export interface ChatMessageAttachment {
 	sourceSessionId: string;
 	fileName: string;
 	contentType: string;
+	/** Локальный object URL (например ожидающее вложение); не отзывать из дочерних компонентов */
+	previewObjectUrl?: string | null;
 }
 
 export interface ChatMessage {

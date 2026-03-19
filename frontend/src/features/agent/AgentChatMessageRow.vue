@@ -1,10 +1,5 @@
 <template>
-	<div
-		class="chat-message"
-		:class="`chat-message--${message.role}`"
-		@mouseenter="emit('hover', message.id)"
-		@mouseleave="emit('hover', null)"
-	>
+	<div class="chat-message" :class="`chat-message--${message.role}`">
 		<div class="chat-message-container">
 			<div class="chat-avatar" :class="`chat-avatar--${message.role}`">
 				<div class="chat-avatar-icon">
@@ -16,20 +11,6 @@
 					<span class="chat-message-role">
 						{{ message.role === 'user' ? 'Вы' : 'Агент' }}
 					</span>
-					<div
-						v-if="hoveredMessageId === message.id && !message.stepNumber"
-						class="chat-message-actions"
-					>
-						<button
-							type="button"
-							@click="emit('copy', message.content)"
-							class="button-ghost"
-							title="Копировать"
-							style="padding: 4px;"
-						>
-							<Icon name="copy" size="16" ariaLabel="Копировать" />
-						</button>
-					</div>
 				</div>
 				<div v-if="message.stepNumber && message.toolCalls" class="agent-chat__tool-steps">
 					<AgentToolStepCard
@@ -40,8 +21,8 @@
 					/>
 				</div>
 				<template v-else>
-					<AgentChatAttachmentStrip v-if="attachmentList.length" :attachments="attachmentList" />
 					<div class="chat-message-content" v-html="renderMarkdown(message.content)"></div>
+					<AgentChatAttachmentStrip v-if="attachmentList.length" :attachments="attachmentList" />
 				</template>
 			</div>
 		</div>
@@ -58,13 +39,7 @@ import AgentToolStepCard from './AgentToolStepCard.vue';
 
 const props = defineProps<{
 	message: ChatMessage;
-	hoveredMessageId: string | null;
 	renderMarkdown: (text: string) => string;
-}>();
-
-const emit = defineEmits<{
-	hover: [id: string | null];
-	copy: [content: string];
 }>();
 
 const attachmentList = computed(() => parseMessageAttachments(props.message));

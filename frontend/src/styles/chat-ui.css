@@ -413,21 +413,13 @@
   color: var(--chat-muted);
 }
 
+.chat-bubble.user .chat-message-header {
+  justify-content: flex-end;
+}
+
 .chat-message-role {
   font-weight: 600;
   color: var(--chat-foreground);
-}
-
-.chat-message-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity var(--chat-transition);
-}
-
-.chat-message:hover .chat-message-actions {
-  opacity: 1;
 }
 
 /* Input area */

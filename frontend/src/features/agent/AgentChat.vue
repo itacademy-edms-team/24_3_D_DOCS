@@ -66,14 +66,12 @@
 			:history-messages="visibleHistoryMessages"
 			:pending-user-message="pendingUserMessage"
 			:pending-attachments="pendingAttachmentCards"
-			v-model:hovered-message-id="hoveredMessageId"
 			:render-markdown="renderMarkdown"
 			:is-processing="isProcessing"
 			:live-tool-calls="liveToolCalls"
 			:show-final-response-block="showFinalResponseBlock"
 			:current-response-final-message="currentResponse?.finalMessage ?? ''"
 			:show-scroll-down-button="showScrollDownButton"
-			@copy-message="copyMessage"
 			@scroll-to-bottom="scrollToBottom"
 		/>
 
@@ -221,7 +219,6 @@ const chatsError = computed(() =>
 
 const userMessage = ref('');
 const pendingUserMessage = ref<string | null>(null);
-const hoveredMessageId = ref<string | null>(null);
 const processedDocumentChangeSteps = shallowRef<Set<number>>(new Set());
 
 const scopeComputed = computed(() => props.scope);
@@ -337,7 +334,7 @@ watch(
 		globalChatsStore.reset();
 		documentChatsStore.reset();
 		resetAgent();
-		pendingAttachment.value = null;
+		clearPendingAttachment();
 		await loadChatsForCurrentScope();
 		await ensureGlobalChatExists();
 	}
@@ -404,7 +401,7 @@ const handleSend = async () => {
 			scope: request.scope === 'global' ? 'Global' : 'Document',
 		} as unknown as AgentRequestDTO;
 		await sendMessage(payload);
-		pendingAttachment.value = null;
+		clearPendingAttachment();
 
 		// Обновить историю чата с сервера (без этого видны только последнее сообщение до перезагрузки)
 		if (activeChatId.value) {
@@ -420,23 +417,6 @@ const handleSend = async () => {
 		userMessage.value = text;
 	} finally {
 		pendingUserMessage.value = null;
-	}
-};
-
-// Copy message to clipboard
-const copyMessage = async (content: string) => {
-	try {
-		await navigator.clipboard.writeText(content);
-		// Could add a toast notification here
-	} catch (err) {
-		console.error('Failed to copy message:', err);
-		// Fallback for older browsers
-		const textArea = document.createElement('textarea');
-		textArea.value = content;
-		document.body.appendChild(textArea);
-		textArea.select();
-		document.execCommand('copy');
-		document.body.removeChild(textArea);
 	}
 };
 

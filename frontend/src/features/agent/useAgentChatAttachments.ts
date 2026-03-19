@@ -1,13 +1,36 @@
-import { ref, computed, type ComputedRef } from 'vue';
+import { ref, computed, onUnmounted, type ComputedRef } from 'vue';
 import AIAPI from '@/shared/api/AIAPI';
 import type { ChatMessageAttachment } from '@/shared/api/ChatAPI';
+
+export type PendingAgentAttachment = {
+	sessionId: string;
+	label: string;
+	contentType: string;
+	/** Локальный preview до/после ingest; отозвать через URL.revokeObjectURL */
+	previewObjectUrl: string | null;
+};
+
+function guessContentTypeFromName(fileName: string): string {
+	const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+	const map: Record<string, string> = {
+		pdf: 'application/pdf',
+		png: 'image/png',
+		jpg: 'image/jpeg',
+		jpeg: 'image/jpeg',
+		gif: 'image/gif',
+		webp: 'image/webp',
+		txt: 'text/plain',
+		md: 'text/markdown',
+	};
+	return map[ext] ?? 'application/octet-stream';
+}
 
 export function useAgentChatAttachments(opts: {
 	scope: ComputedRef<'global' | 'document'>;
 	documentId: ComputedRef<string | null | undefined>;
 	activeChatId: ComputedRef<string | null | undefined>;
 }) {
-	const pendingAttachment = ref<{ sessionId: string; label: string } | null>(null);
+	const pendingAttachment = ref<PendingAgentAttachment | null>(null);
 	const isUploadingAttachment = ref(false);
 
 	const showAttachmentUi = computed(
@@ -21,14 +44,22 @@ export function useAgentChatAttachments(opts: {
 			{
 				sourceSessionId: p.sessionId,
 				fileName: p.label,
-				contentType: 'application/octet-stream',
+				contentType: p.contentType,
+				previewObjectUrl: p.previewObjectUrl,
 			},
 		];
 	});
 
 	function clearPendingAttachment() {
+		const url = pendingAttachment.value?.previewObjectUrl;
+		if (url) URL.revokeObjectURL(url);
 		pendingAttachment.value = null;
 	}
+
+	onUnmounted(() => {
+		const url = pendingAttachment.value?.previewObjectUrl;
+		if (url) URL.revokeObjectURL(url);
+	});
 
 	async function onAttachmentFileSelected(ev: Event) {
 		const input = ev.target as HTMLInputElement;
@@ -36,6 +67,10 @@ export function useAgentChatAttachments(opts: {
 		input.value = '';
 		if (!file || !opts.activeChatId.value) return;
 		if (opts.scope.value === 'document' && !opts.documentId.value) return;
+
+		const contentType = file.type?.trim() || guessContentTypeFromName(file.name);
+		const previewObjectUrl = URL.createObjectURL(file);
+
 		try {
 			isUploadingAttachment.value = true;
 			const res = await AIAPI.ingestAgentSource(
@@ -46,8 +81,11 @@ export function useAgentChatAttachments(opts: {
 			pendingAttachment.value = {
 				sessionId: res.sourceSessionId,
 				label: res.originalFileName || file.name,
+				contentType,
+				previewObjectUrl,
 			};
 		} catch (e) {
+			URL.revokeObjectURL(previewObjectUrl);
 			console.error('ingestAgentSource failed', e);
 		} finally {
 			isUploadingAttachment.value = false;

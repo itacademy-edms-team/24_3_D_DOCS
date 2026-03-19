@@ -244,15 +244,15 @@ class AIAPI extends HttpClient {
 		return readAgentSseStream(reader, onStep);
 	}
 
-	async downloadAgentSourceOriginal(sessionId: string, suggestedFileName: string): Promise<void> {
+	async fetchAgentSourceOriginalBlob(sessionId: string): Promise<Blob> {
 		const baseURL = this.getApiBaseUrl();
-		let res = await this.fetchWithAuthRetry(
+		const res = await this.fetchWithAuthRetry(
 			`${baseURL}/api/ai/agent-sources/${sessionId}/original`,
 			{ method: 'GET' },
 			baseURL
 		);
 		if (!res.ok) {
-			let msg = `Ошибка скачивания (${res.status})`;
+			let msg = `Ошибка загрузки файла (${res.status})`;
 			try {
 				const j = await res.json();
 				if (j?.message) msg = String(j.message);
@@ -261,7 +261,11 @@ class AIAPI extends HttpClient {
 			}
 			throw new Error(msg);
 		}
-		const blob = await res.blob();
+		return res.blob();
+	}
+
+	async downloadAgentSourceOriginal(sessionId: string, suggestedFileName: string): Promise<void> {
+		const blob = await this.fetchAgentSourceOriginalBlob(sessionId);
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
