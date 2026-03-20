@@ -20,7 +20,7 @@
 						Настройки LLM
 					</Button>
 				</li>
-				<li class="settings-list__danger">
+				<li>
 					<Button
 						variant="danger"
 						fullWidth
@@ -47,8 +47,6 @@
 				<ul class="delete-account-modal__list">
 					<li>все документы и вложения;</li>
 					<li>профили стилей и титульные листы;</li>
-					<li>данные в облачном хранилище по этому аккаунту;</li>
-					<li>сессии и токены входа.</li>
 				</ul>
 				<p class="delete-account-modal__hint">
 					Чтобы подтвердить, введите слово <code class="delete-account-modal__code">{{ DELETE_CONFIRM_PHRASE }}</code> в поле ниже
@@ -197,12 +195,6 @@ async function executeDeleteAccount() {
 	font-size: 16px;
 	font-weight: 600;
 	justify-content: flex-start;
-}
-
-.settings-list__danger {
-	margin-top: var(--spacing-lg);
-	padding-top: var(--spacing-lg);
-	border-top: 1px solid var(--border-color);
 }
 
 .delete-account-modal__lead {
