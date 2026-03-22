@@ -21,11 +21,6 @@
 					@click="activeTool = tool.value"
 					:title="tool.label"
 				>
-					<Icon 
-						:name="tool.value === 'select' ? 'cursor' : tool.value === 'text' ? 'text_fields' : tool.value === 'variable' ? 'code' : 'horizontal_rule'" 
-						size="16" 
-						:ariaLabel="tool.label"
-					/>
 					<span class="title-page-editor__tool-label">{{ tool.label }}</span>
 				</button>
 			</div>
@@ -35,7 +30,6 @@
 					@click="saveTitlePage"
 					title="Сохранить (Ctrl+S)"
 				>
-					<Icon name="save" size="16" ariaLabel="Сохранить" />
 					<span class="title-page-editor__control-label">Сохранить</span>
 				</button>
 				<button 
@@ -43,7 +37,6 @@
 					@click="clipboard.copySelectedElements"
 					title="Копировать (Ctrl+C)"
 				>
-					<Icon name="copy" size="16" ariaLabel="Копировать" />
 					<span class="title-page-editor__control-label">Копировать</span>
 				</button>
 				<button 
@@ -51,7 +44,6 @@
 					@click="clipboard.pasteElements"
 					title="Вставить (Ctrl+V)"
 				>
-					<Icon name="paste" size="16" ariaLabel="Вставить" />
 					<span class="title-page-editor__control-label">Вставить</span>
 				</button>
 				<button 
@@ -59,7 +51,6 @@
 					@click="clipboard.cutSelectedElements"
 					title="Вырезать (Ctrl+X)"
 				>
-					<Icon name="cut" size="16" ariaLabel="Вырезать" />
 					<span class="title-page-editor__control-label">Вырезать</span>
 				</button>
 				<button 
@@ -67,7 +58,6 @@
 					@click="clipboard.duplicateSelectedElements"
 					title="Дублировать (Ctrl+D)"
 				>
-					<Icon name="content_copy" size="16" ariaLabel="Дублировать" />
 					<span class="title-page-editor__control-label">Дублировать</span>
 				</button>
 				<button 
@@ -75,7 +65,6 @@
 					@click="clipboard.selectAllElements"
 					title="Выделить все (Ctrl+A)"
 				>
-					<Icon name="select_all" size="16" ariaLabel="Выделить все" />
 					<span class="title-page-editor__control-label">Выделить все</span>
 				</button>
 				<ZoomDropdown
@@ -84,7 +73,6 @@
 				/>
 				<label class="title-page-editor__checkbox">
 					<input type="checkbox" v-model="showGrid" />
-					<Icon name="grid_on" size="16" ariaLabel="Сетка" />
 					<span class="title-page-editor__checkbox-label">Сетка</span>
 				</label>
 				<button 
@@ -93,7 +81,7 @@
 					:disabled="!history.canUndo"
 					title="Отменить (Ctrl+Z)"
 				>
-					<Icon name="redo" size="16" ariaLabel="Отменить" style="transform: scaleX(-1);" />
+					<span class="title-page-editor__control-label">Отменить</span>
 				</button>
 				<button 
 					class="title-page-editor__control-btn"
@@ -101,7 +89,7 @@
 					:disabled="!history.canRedo"
 					title="Повторить (Ctrl+Shift+Z)"
 				>
-					<Icon name="redo" size="16" ariaLabel="Повторить" />
+					<span class="title-page-editor__control-label">Повторить</span>
 				</button>
 			</div>
 		</div>
