@@ -185,6 +185,111 @@ public class TitlePageService : ITitlePageService
         await _context.SaveChangesAsync();
     }
 
+    private static readonly JsonSerializerOptions MinioJsonReadOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    private static readonly JsonSerializerOptions MinioJsonWriteOptions = new()
+    {
+        WriteIndented = true
+    };
+
+    public async Task<ConvertTitlePageElementToVariableResponse> ConvertTextElementToVariableAsync(
+        Guid titlePageId,
+        Guid userId,
+        string elementId,
+        ConvertTitlePageElementToVariableRequest? request)
+    {
+        var titlePage = await _context.TitlePages
+            .FirstOrDefaultAsync(t => t.Id == titlePageId && t.CreatorId == userId);
+
+        if (titlePage == null)
+            throw new FileNotFoundException("Титульная страница не найдена");
+
+        TitlePageData data;
+        try
+        {
+            var bucket = GetUserBucket(userId);
+            using var titlePageStream = await _minioService.DownloadFileAsync(bucket, titlePage.MinioPath);
+            using var reader = new StreamReader(titlePageStream, Encoding.UTF8);
+            var titlePageJson = await reader.ReadToEndAsync();
+            data = JsonSerializer.Deserialize<TitlePageData>(titlePageJson, MinioJsonReadOptions) ?? new TitlePageData();
+        }
+        catch (FileNotFoundException)
+        {
+            throw new FileNotFoundException("Данные титульной страницы не найдены в хранилище");
+        }
+
+        data.Elements ??= new List<TitlePageElement>();
+        var element = data.Elements.FirstOrDefault(e => e.Id == elementId);
+        if (element == null)
+            throw new KeyNotFoundException("Элемент не найден");
+
+        if (!string.Equals(element.Type, "text", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Можно преобразовать только текстовый элемент");
+
+        string innerKey;
+        var explicitKey = request?.VariableKey?.Trim();
+        if (!string.IsNullOrEmpty(explicitKey))
+        {
+            innerKey = NormalizeVariableKeyInner(explicitKey);
+        }
+        else
+        {
+            var line = FirstNonEmptyLine(element.Text);
+            innerKey = NormalizeVariableKeyInner(line);
+        }
+
+        if (string.IsNullOrEmpty(innerKey))
+            throw new InvalidOperationException("Укажите непустой ключ переменной или текст элемента");
+
+        element.Type = "variable";
+        element.Text = "{" + innerKey + "}";
+        element.Format = null;
+        element.VariableType = null;
+
+        var bucketWrite = GetUserBucket(userId);
+        var jsonOut = JsonSerializer.Serialize(data, MinioJsonWriteOptions);
+        var bytes = Encoding.UTF8.GetBytes(jsonOut);
+        await using var uploadStream = new MemoryStream(bytes);
+        await _minioService.UploadFileAsync(bucketWrite, titlePage.MinioPath, uploadStream, "application/json");
+
+        titlePage.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return new ConvertTitlePageElementToVariableResponse { Element = element };
+    }
+
+    private static string FirstNonEmptyLine(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+        foreach (var segment in text.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None))
+        {
+            var t = segment.Trim();
+            if (t.Length > 0)
+                return t;
+        }
+        return string.Empty;
+    }
+
+    private static string StripOuterBraces(string s)
+    {
+        var t = s.Trim();
+        while (t.Length >= 2 && t[0] == '{' && t[^1] == '}')
+            t = t.Substring(1, t.Length - 2).Trim();
+        return t;
+    }
+
+    private static string NormalizeVariableKeyInner(string raw)
+    {
+        var inner = StripOuterBraces(raw);
+        if (inner.Length > 256)
+            throw new InvalidOperationException("Ключ переменной не должен превышать 256 символов");
+        return inner;
+    }
+
     private TitlePageDTO MapToDTO(Models.Entities.TitlePage titlePage)
     {
         return new TitlePageDTO

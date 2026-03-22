@@ -27,6 +27,14 @@ interface UpdateTitlePageDTO {
 	data?: { elements: any[] };
 }
 
+export interface ConvertTitlePageElementToVariableBody {
+	variableKey?: string;
+}
+
+export interface ConvertTitlePageElementResponse {
+	element: Record<string, unknown> & { id?: string; type?: string; text?: string };
+}
+
 class TitlePageAPI extends HttpClient {
 	constructor() {
 		super();
@@ -63,6 +71,18 @@ class TitlePageAPI extends HttpClient {
 		return this.post<Blob>(`/api/title-pages/${id}/pdf`, variables || {}, {
 			responseType: 'blob',
 		});
+	}
+
+	async convertElementToVariable(
+		titlePageId: string,
+		elementId: string,
+		body?: ConvertTitlePageElementToVariableBody,
+	): Promise<ConvertTitlePageElementResponse> {
+		const encodedId = encodeURIComponent(elementId);
+		return this.post<
+			ConvertTitlePageElementResponse,
+			ConvertTitlePageElementToVariableBody
+		>(`/api/title-pages/${titlePageId}/elements/${encodedId}/convert-to-variable`, body ?? {});
 	}
 }
 

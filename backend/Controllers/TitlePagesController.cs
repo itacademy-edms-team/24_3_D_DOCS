@@ -194,6 +194,43 @@ public class TitlePagesController : ControllerBase
     }
 
     /// <summary>
+    /// Преобразовать текстовый элемент в переменную (тип в JSON, координаты и стили сохраняются).
+    /// </summary>
+    [HttpPost("{id:guid}/elements/{elementId}/convert-to-variable")]
+    [ProducesResponseType(typeof(ConvertTitlePageElementToVariableResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ConvertTextElementToVariable(
+        Guid id,
+        string elementId,
+        [FromBody] ConvertTitlePageElementToVariableRequest? request)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var result = await _titlePageService.ConvertTextElementToVariableAsync(id, userId, elementId, request);
+            return Ok(result);
+        }
+        catch (FileNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error converting title page element to variable {TitlePageId} {ElementId}", id, elementId);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
     /// Удалить титульную страницу
     /// </summary>
     [HttpDelete("{id}")]

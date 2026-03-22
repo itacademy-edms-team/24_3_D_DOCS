@@ -171,6 +171,8 @@
 						@mousedown="startResize('properties', $event)"
 					></div>
 					<TitlePagePropertiesPanel
+						:title-page-id="titlePageId"
+						:flush-save="saveTitlePage"
 						:selected-element="selectedElement as any"
 						:canvas="canvas as any"
 						:on-save="debouncedSaveTitlePage"

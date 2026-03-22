@@ -14,6 +14,26 @@
 					/>
 				</div>
 
+				<div class="title-page-properties__group" v-if="isTextOrVariable && !isVariable && titlePageId">
+					<label class="title-page-properties__label">Переменная</label>
+					<input
+						type="text"
+						class="title-page-properties__input"
+						v-model="variableKeyDraft"
+						placeholder="Ключ (необязательно — из текста)"
+						:disabled="convertingToVariable"
+					/>
+					<button
+						type="button"
+						class="title-page-properties__convert-button"
+						:disabled="convertingToVariable"
+						@click="handleConvertToVariable"
+					>
+						{{ convertingToVariable ? 'Сохранение…' : 'Сделать переменной' }}
+					</button>
+					<p v-if="convertToVariableError" class="title-page-properties__error">{{ convertToVariableError }}</p>
+				</div>
+
 				<div class="title-page-properties__group" v-if="isVariable">
 					<label class="title-page-properties__label">Ключ переменной</label>
 					<input
@@ -202,16 +222,31 @@
 
 <script setup lang="ts">
 import { ref, watch, type Ref } from 'vue';
-import { Canvas, type FabricObject } from 'fabric';
+import { Canvas, Text, type FabricObject } from 'fabric';
 import { useTitlePageElements } from '@/app/composables/useTitlePageElements';
+import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 
 interface Props {
+	titlePageId?: string;
+	flushSave?: () => Promise<void>;
 	selectedElement: FabricObject | null;
 	canvas: Canvas | null;
 	onSave?: () => void;
 }
 
 const props = defineProps<Props>();
+
+const variableKeyDraft = ref('');
+const convertingToVariable = ref(false);
+const convertToVariableError = ref('');
+
+watch(
+	() => props.selectedElement,
+	() => {
+		variableKeyDraft.value = '';
+		convertToVariableError.value = '';
+	},
+);
 
 defineEmits<{
 	delete: [];
@@ -260,6 +295,35 @@ const {
 	canvasRef,
 	props.onSave
 );
+
+async function handleConvertToVariable() {
+	convertToVariableError.value = '';
+	if (!props.titlePageId || !selectedElementRef.value || !canvasRef.value) return;
+	const fabricId = (selectedElementRef.value as { id?: string }).id;
+	if (!fabricId) {
+		convertToVariableError.value = 'У элемента нет идентификатора';
+		return;
+	}
+	convertingToVariable.value = true;
+	try {
+		if (props.flushSave) await props.flushSave();
+		const trimmed = variableKeyDraft.value.trim();
+		const body = trimmed ? { variableKey: trimmed } : {};
+		const res = await TitlePageAPI.convertElementToVariable(props.titlePageId, fabricId, body);
+		const el = res.element;
+		const obj = selectedElementRef.value as Text;
+		(obj as { isVariable?: boolean }).isVariable = true;
+		if (typeof el.text === 'string') obj.set('text', el.text);
+		obj.setCoords();
+		canvasRef.value.requestRenderAll();
+		variableKeyDraft.value = '';
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : String(e);
+		convertToVariableError.value = msg || 'Не удалось преобразовать';
+	} finally {
+		convertingToVariable.value = false;
+	}
+}
 </script>
 
 <style scoped>
@@ -377,5 +441,33 @@ const {
 
 .title-page-properties__delete-button:hover {
 	background: #c82333;
+}
+
+.title-page-properties__convert-button {
+	margin-top: var(--spacing-xs);
+	padding: var(--spacing-sm) var(--spacing-md);
+	background: var(--accent, #0d6efd);
+	color: #fff;
+	border: none;
+	border-radius: var(--radius-sm);
+	font-size: 14px;
+	cursor: pointer;
+	width: 100%;
+	transition: opacity 0.2s ease;
+}
+
+.title-page-properties__convert-button:hover:not(:disabled) {
+	opacity: 0.92;
+}
+
+.title-page-properties__convert-button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.title-page-properties__error {
+	font-size: 12px;
+	color: #dc3545;
+	margin: 0;
 }
 </style>
