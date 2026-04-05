@@ -102,7 +102,7 @@ public class AgentSourceService : IAgentSourceService
             UserId = userId,
             DocumentId = sessionDocumentId,
             ChatSessionId = chatSessionId,
-            OriginalFileName = Path.GetFileName(file.FileName),
+            OriginalFileName = SanitizeForPostgresText(Path.GetFileName(file.FileName)),
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow + AgentSourceConstants.SessionTtl,
             OriginalStoragePath = originalPath,
@@ -156,7 +156,7 @@ public class AgentSourceService : IAgentSourceService
             throw new InvalidOperationException("Не удалось подготовить содержимое файла.");
 
         session.Parts = parts;
-        session.IngestNotes = notes;
+        session.IngestNotes = notes is null ? null : SanitizeForPostgresText(notes);
         _context.AgentSourceSessions.Add(session);
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -187,7 +187,7 @@ public class AgentSourceService : IAgentSourceService
         string logicalMime,
         CancellationToken cancellationToken)
     {
-        var normalized = text.Replace("\r\n", "\n");
+        var normalized = SanitizeForPostgresText(text.Replace("\r\n", "\n"));
         if (normalized.Length <= AgentSourceConstants.MaxInlineTextChars)
         {
             parts.Add(new AgentSourcePart
@@ -196,7 +196,7 @@ public class AgentSourceService : IAgentSourceService
                 PartIndex = partIndex,
                 Kind = nameof(AgentSourcePartKind.Text),
                 MimeType = logicalMime,
-                Label = label,
+                Label = SanitizeForPostgresText(label),
                 InlineText = normalized
             });
             return partIndex + 1;
@@ -214,11 +214,14 @@ public class AgentSourceService : IAgentSourceService
             PartIndex = idx,
             Kind = nameof(AgentSourcePartKind.Text),
             MimeType = logicalMime,
-            Label = $"{label} (большой файл)",
+            Label = SanitizeForPostgresText($"{label} (большой файл)"),
             StoragePath = storagePath
         });
         return partIndex + 1;
     }
+
+    internal static string SanitizeForPostgresText(string value) =>
+        value.Replace("\0", string.Empty);
 
     public async Task<AgentSourceSession?> GetValidatedSessionAsync(
         Guid userId,
