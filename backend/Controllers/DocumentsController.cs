@@ -17,18 +17,18 @@ namespace RusalProject.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
-    private readonly IPdfGeneratorService _pdfGeneratorService;
+    private readonly IDomPdfService _domPdfService;
     private readonly IMinioService _minioService;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         IDocumentService documentService,
-        IPdfGeneratorService pdfGeneratorService,
+        IDomPdfService domPdfService,
         IMinioService minioService,
         ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
-        _pdfGeneratorService = pdfGeneratorService;
+        _domPdfService = domPdfService;
         _minioService = minioService;
         _logger = logger;
     }
@@ -44,6 +44,20 @@ public class DocumentsController : ControllerBase
         }
 
         return userId;
+    }
+
+    private string? GetAccessToken()
+    {
+        var authHeader = Request.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(authHeader))
+        {
+            return null;
+        }
+
+        const string bearerPrefix = "Bearer ";
+        return authHeader.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase)
+            ? authHeader[bearerPrefix.Length..].Trim()
+            : null;
     }
 
     /// <summary>
@@ -582,7 +596,8 @@ public class DocumentsController : ControllerBase
         try
         {
             var userId = GetUserId();
-            var pdfBytes = await _pdfGeneratorService.GeneratePdfAsync(id, userId, titlePageId);
+            var accessToken = GetAccessToken();
+            var pdfBytes = await _domPdfService.GenerateDocumentPdfAsync(id, userId, accessToken, titlePageId);
             
             // Сохраняем PDF в MinIO
             var document = await _documentService.GetDocumentByIdAsync(id, userId);

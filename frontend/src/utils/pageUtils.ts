@@ -64,6 +64,24 @@ interface SplitIntoPagesResult {
 	elementPageMap: Record<number, number>;
 }
 
+const PAGE_BREAK_EPSILON_PX = 2;
+
+async function ensureFontsReadyAsync(timeoutMs = 3000): Promise<'ready' | 'timeout' | 'unsupported'> {
+	try {
+		const fontsApi = (document as Document & { fonts?: FontFaceSet }).fonts;
+		if (!fontsApi || typeof fontsApi.ready === 'undefined') {
+			return 'unsupported';
+		}
+		const timeout = new Promise<'timeout'>((resolve) =>
+			setTimeout(() => resolve('timeout'), timeoutMs)
+		);
+		const ready = fontsApi.ready.then(() => 'ready' as const).catch(() => 'timeout' as const);
+		return await Promise.race([ready, timeout]);
+	} catch {
+		return 'unsupported';
+	}
+}
+
 /**
  * Async function to split HTML content into pages based on content height
  * Elements are never split - they are moved to next page if they don't fit
@@ -87,6 +105,7 @@ export async function splitIntoPages(
 	document.body.appendChild(measurementContainer);
 
 	try {
+		await ensureFontsReadyAsync();
 		// Wait once for images before doing all measurements.
 		await ensureImagesLoadedAsync(measurementContainer);
 
@@ -185,7 +204,7 @@ export async function splitIntoPages(
 				continue;
 			}
 
-			if (currentPageHeight > 0 && currentPageHeight + elementHeight > pageContentHeight) {
+			if (currentPageHeight > 0 && currentPageHeight + elementHeight > pageContentHeight + PAGE_BREAK_EPSILON_PX) {
 				flushCurrentPage();
 			}
 

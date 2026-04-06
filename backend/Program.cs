@@ -128,7 +128,9 @@ builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<ITitlePageService, TitlePageService>();
 
 // PDF Services
-builder.Services.AddScoped<IPdfGeneratorService, PdfGeneratorService>();
+builder.Services.Configure<PdfDomExportOptions>(builder.Configuration.GetSection("PdfDomExport"));
+builder.Services.AddScoped<IDomPdfService, DomPdfService>();
+builder.Services.AddScoped<ITitlePagePdfService, TitlePagePdfService>();
 
 // Markdown Services
 builder.Services.AddScoped<IMarkdownParserService, MarkdownParserService>();

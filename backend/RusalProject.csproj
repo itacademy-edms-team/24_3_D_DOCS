@@ -42,12 +42,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Services\Pdf\PdfRenderer.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Services\Pdf\PdfRenderer.html">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="Services\Pdf\PdfPreviewRenderer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

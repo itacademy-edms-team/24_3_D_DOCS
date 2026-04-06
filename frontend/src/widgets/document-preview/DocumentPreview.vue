@@ -1,5 +1,5 @@
 <template>
-	<div class="document-preview">
+	<div class="document-preview" :class="{ 'document-preview--print': props.printMode }">
 		<div v-if="isLoading" class="document-preview__loading">Загрузка...</div>
 		<div v-else ref="previewContainerRef" class="document-preview__container">
 			<!-- Title Page -->
@@ -83,6 +83,7 @@ interface Props {
 	titlePageVariables?: Record<string, string>;
 	documentId: string;
 	tableOfContents?: TocItem[] | null;
+	printMode?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -98,6 +99,8 @@ const tocPageCount = ref(0);
 const isLoading = ref(false);
 const isUpdatingPages = ref(false);
 const isLoadingTitlePage = ref(false);
+const isInitialPaginationReady = ref(false);
+const lastPaginationSignature = ref<string>('');
 
 // Calculate page dimensions reactively based on profile
 const dimensions = computed<PageDimensions>(() => {
@@ -214,6 +217,7 @@ const getPageNumber = (index: number): number => {
 
 // Calculate scale factor to fit container width
 const scaleFactor = computed(() => {
+	if (props.printMode) return 1;
 	if (!containerWidth.value || !dimensions.value.pageWidth) return 1;
 	// Account for padding on both sides (spacing-lg typically 16px each side = 32px total)
 	const padding = 32; 
@@ -241,14 +245,14 @@ function getTitlePageStyle() {
 		height: `${A4_HEIGHT_PX}px`,
 		margin: '0 auto',
 		background: 'white',
-		boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+		boxShadow: props.printMode ? 'none' : '0 2px 8px rgba(0,0,0,0.3)',
 		pageBreakAfter: 'always' as const,
 		pageBreakInside: 'avoid' as const,
 		position: 'relative' as const,
 		overflow: 'hidden' as const,
 		transform: `scale(${scale})`,
 		transformOrigin: 'top center',
-		marginBottom: `${20 * scale}px`, // Use scaled margin between pages
+		marginBottom: props.printMode ? '0' : `${20 * scale}px`,
 		maxWidth: `${scaledWidth}px`,
 		minWidth: `${scaledWidth}px`,
 	};
@@ -265,16 +269,16 @@ function getPageStyle(index: number, offset: number = 0) {
 	return {
 		width: `${dimensions.value.pageWidth}px`,
 		height: `${dimensions.value.pageHeight}px`,
-		margin: `${baseMarginTop}px auto 0`,
+		margin: props.printMode ? '0 auto 0' : `${baseMarginTop}px auto 0`,
 		background: 'white',
-		boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+		boxShadow: props.printMode ? 'none' : '0 2px 8px rgba(0,0,0,0.3)',
 		pageBreakAfter: 'always' as const,
 		pageBreakInside: 'avoid' as const,
 		position: 'relative' as const,
 		overflow: 'hidden' as const,
 		transform: `scale(${scale})`,
 		transformOrigin: 'top center',
-		marginBottom: `${20 * scale}px`, // Use scaled margin between pages
+		marginBottom: props.printMode ? '0' : `${20 * scale}px`,
 		maxWidth: `${scaledWidth}px`,
 		minWidth: `${scaledWidth}px`,
 	};
@@ -432,16 +436,8 @@ async function updatePages(requestId: number) {
 			return;
 		}
 
-		// Split into pages asynchronously using requestIdleCallback if available
-		const scheduleSplit = (callback: () => void) => {
-			if (typeof requestIdleCallback !== 'undefined') {
-				requestIdleCallback(callback, { timeout: 1000 });
-			} else {
-				setTimeout(callback, 0);
-			}
-		};
-
-		scheduleSplit(async () => {
+		// Apply pagination immediately (no idle deferral) to avoid visible two-stage jumps.
+		(async () => {
 			if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
 				return;
 			}
@@ -508,8 +504,16 @@ async function updatePages(requestId: number) {
 				if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
 					return;
 				}
+
+				const nextPages = [...tocPages, ...contentPages];
+				const nextSignature = `${tocPages.length}|${nextPages.length}|${nextPages.join('::@@::').length}|${nextPages[0]?.length ?? 0}|${nextPages[nextPages.length - 1]?.length ?? 0}`;
+				if (lastPaginationSignature.value === nextSignature) {
+					return;
+				}
+
+				lastPaginationSignature.value = nextSignature;
 				tocPageCount.value = tocPages.length;
-				pages.value = [...tocPages, ...contentPages];
+				pages.value = nextPages;
 				
 				// After pages are set, handle image loading in the DOM
 				nextTick(() => {
@@ -530,7 +534,7 @@ async function updatePages(requestId: number) {
 					isUpdatingPages.value = false;
 				}
 			}
-		});
+		})();
 	} catch (error) {
 		console.error('Failed to update pages:', error);
 		if (requestId === latestUpdateRequestId) {
@@ -738,9 +742,13 @@ onMounted(async () => {
 	// Load title page if needed
 	await loadTitlePage();
 	
-	// Then update pages
+	// Then run initial pagination twice to stabilize measurements before first visible render.
 	latestUpdateRequestId += 1;
 	await updatePages(latestUpdateRequestId);
+	await nextTick();
+	latestUpdateRequestId += 1;
+	await updatePages(latestUpdateRequestId);
+	isInitialPaginationReady.value = true;
 	
 	// Handle images after initial render
 	nextTick(() => {
@@ -756,6 +764,11 @@ onMounted(async () => {
 	flex-direction: column;
 	background: var(--bg-tertiary);
 	padding: var(--spacing-lg);
+}
+
+.document-preview--print {
+	padding: 0;
+	background: #fff;
 }
 
 .document-preview__loading {
@@ -777,6 +790,11 @@ onMounted(async () => {
 	min-width: 0;
 	width: 100%;
 	box-sizing: border-box;
+}
+
+.document-preview--print .document-preview__container {
+	padding: 0;
+	overflow: visible;
 }
 
 .document-preview__page-wrapper {
@@ -905,5 +923,27 @@ onMounted(async () => {
 	display: inline-block;
 	vertical-align: baseline;
 	margin-bottom: 0.1em;
+}
+
+.document-preview--print :deep(*) {
+	-webkit-print-color-adjust: exact;
+	print-color-adjust: exact;
+}
+
+/* Print pagination: keep exactly one page break between wrappers. */
+.document-preview--print .document-preview__page {
+	page-break-after: auto !important;
+	break-after: auto !important;
+}
+
+.document-preview--print .document-preview__page-wrapper {
+	display: block;
+	page-break-after: always;
+	break-after: page;
+}
+
+.document-preview--print .document-preview__page-wrapper:last-child {
+	page-break-after: auto;
+	break-after: auto;
 }
 </style>

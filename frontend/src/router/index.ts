@@ -28,6 +28,11 @@ const router = createRouter({
 			meta: { requiresAuth: true },
 		},
 		{
+			path: '/print/document/:id',
+			name: 'document-print',
+			component: () => import('@/pages/print/DocumentPrintPage.vue'),
+		},
+		{
 			path: '/profile/:id',
 			name: 'profile-editor',
 			component: () => import('@/pages/styles/StylesProfile.vue'),

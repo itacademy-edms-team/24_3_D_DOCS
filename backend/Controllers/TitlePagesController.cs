@@ -13,16 +13,16 @@ namespace RusalProject.Controllers;
 public class TitlePagesController : ControllerBase
 {
     private readonly ITitlePageService _titlePageService;
-    private readonly IPdfGeneratorService _pdfGeneratorService;
+    private readonly ITitlePagePdfService _titlePagePdfService;
     private readonly ILogger<TitlePagesController> _logger;
 
     public TitlePagesController(
         ITitlePageService titlePageService,
-        IPdfGeneratorService pdfGeneratorService,
+        ITitlePagePdfService titlePagePdfService,
         ILogger<TitlePagesController> logger)
     {
         _titlePageService = titlePageService;
-        _pdfGeneratorService = pdfGeneratorService;
+        _titlePagePdfService = titlePagePdfService;
         _logger = logger;
     }
 
@@ -266,7 +266,7 @@ public class TitlePagesController : ControllerBase
         try
         {
             var userId = GetUserId();
-            var pdfBytes = await _pdfGeneratorService.GenerateTitlePagePdfAsync(id, userId, variables);
+            var pdfBytes = await _titlePagePdfService.GenerateTitlePagePdfAsync(id, userId, variables);
             
             var titlePage = await _titlePageService.GetTitlePageByIdAsync(id, userId);
             var fileName = titlePage?.Name ?? "title-page";
