@@ -54,30 +54,56 @@
 		</div>
 
 		<div v-else class="export-pdf-modal__doc">
-			<div class="export-pdf-modal__field">
-				<label class="export-pdf-modal__label">Титульная страница в PDF</label>
-				<select v-model="exportTitlePageId" class="export-pdf-modal__select" :disabled="isLoadingTitlePages">
-					<option value="">Без титульника (только визуал PDF)</option>
-					<option v-for="tp in titlePages" :key="tp.id" :value="tp.id">
-						{{ tp.name }}
-					</option>
-				</select>
-			</div>
-			<div class="export-pdf-modal__checks">
-				<label class="export-pdf-modal__check">
-					<input v-model="includeDocument" type="checkbox" />
-					Документ (текст и вложения)
-				</label>
+			<p class="export-pdf-modal__lead">
+				Текст и вложения документа всегда попадают в PDF и в архив .ddoc внутри файла. Ниже — что
+				дополнительно включить в пакет и как оформить страницы.
+			</p>
+
+			<div class="export-pdf-modal__option">
 				<label class="export-pdf-modal__check">
 					<input v-model="includeStyleProfile" type="checkbox" />
-					Профиль стиля
+					<span class="export-pdf-modal__check-title">Профиль стиля</span>
 				</label>
+				<p class="export-pdf-modal__help">
+					Влияет на вёрстку PDF (поля, шрифты, оглавление) и добавляет в .ddoc файл
+					<code>profile.json</code> выбранного профиля, а не только привязанного к документу.
+				</p>
+				<div v-if="includeStyleProfile" class="export-pdf-modal__subfield">
+					<select
+						v-model="exportProfileId"
+						class="export-pdf-modal__select"
+						:disabled="isLoadingProfiles"
+					>
+						<option value="" disabled>Выберите профиль</option>
+						<option v-for="p in profilesList" :key="p.id" :value="p.id">
+							{{ p.name }}
+						</option>
+					</select>
+				</div>
+			</div>
+
+			<div class="export-pdf-modal__option">
 				<label class="export-pdf-modal__check">
 					<input v-model="includeTitlePage" type="checkbox" />
-					Титульный лист (данные)
+					<span class="export-pdf-modal__check-title">Титульный лист</span>
 				</label>
+				<p class="export-pdf-modal__help">
+					Первая страница PDF по шаблону титульника и данные <code>titlepage.json</code> в .ddoc.
+					Если выключить — в PDF не будет титульной страницы, в архив не попадут данные титульника.
+				</p>
+				<div v-if="includeTitlePage" class="export-pdf-modal__subfield">
+					<select
+						v-model="exportTitlePageId"
+						class="export-pdf-modal__select"
+						:disabled="isLoadingTitlePages"
+					>
+						<option value="" disabled>Выберите титульный лист</option>
+						<option v-for="tp in titlePages" :key="tp.id" :value="tp.id">
+							{{ tp.name }}
+						</option>
+					</select>
+				</div>
 			</div>
-			<p v-if="!anyBundlePart" class="export-pdf-modal__warn">В PDF не будет вложен .ddoc</p>
 		</div>
 
 		<template #footer>
@@ -137,6 +163,7 @@ interface Props {
 	documentId?: string;
 	documentName?: string;
 	initialTitlePageId?: string;
+	initialProfileId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -162,18 +189,16 @@ const documents = ref<DocumentMeta[]>([]);
 const profiles = ref<Profile[]>([]);
 const titlePageList = ref<TitlePageRow[]>([]);
 const titlePages = ref<TitlePageRow[]>([]);
+const profilesList = ref<Profile[]>([]);
 const isLoadingTitlePages = ref(false);
+const isLoadingProfiles = ref(false);
 const picked = ref<Picked | null>(null);
 
+const exportProfileId = ref('');
 const exportTitlePageId = ref('');
-const includeDocument = ref(true);
 const includeStyleProfile = ref(true);
 const includeTitlePage = ref(true);
 const isWorking = ref(false);
-
-const anyBundlePart = computed(
-	() => includeDocument.value || includeStyleProfile.value || includeTitlePage.value,
-);
 
 const effectiveDocumentId = computed(() => {
 	if (props.withEntityPicker) {
@@ -241,14 +266,30 @@ async function loadPickerData() {
 	titlePageList.value = t;
 }
 
-async function loadTitlePagesForDocument() {
+async function loadExportLists() {
 	isLoadingTitlePages.value = true;
+	isLoadingProfiles.value = true;
 	try {
-		titlePages.value = await TitlePageAPI.getAll();
-	} catch {
-		titlePages.value = [];
+		const [tp, pr] = await Promise.all([
+			TitlePageAPI.getAll().catch(() => [] as TitlePageRow[]),
+			ProfileAPI.getAll().catch(() => [] as Profile[]),
+		]);
+		titlePages.value = tp;
+		profilesList.value = pr;
 	} finally {
 		isLoadingTitlePages.value = false;
+		isLoadingProfiles.value = false;
+	}
+}
+
+async function applyExportDefaultsFromDocument(docId: string) {
+	try {
+		const doc = await DocumentAPI.getById(docId);
+		exportProfileId.value = props.initialProfileId ?? '';
+		exportTitlePageId.value = props.initialTitlePageId ?? doc.titlePageId ?? '';
+	} catch {
+		exportProfileId.value = props.initialProfileId ?? '';
+		exportTitlePageId.value = props.initialTitlePageId ?? '';
 	}
 }
 
@@ -256,25 +297,27 @@ watch(
 	() => props.modelValue,
 	async (open) => {
 		if (!open) return;
-		includeDocument.value = true;
 		includeStyleProfile.value = true;
 		includeTitlePage.value = true;
 		picked.value = null;
 		pickerSearch.value = '';
+		exportProfileId.value = '';
+		exportTitlePageId.value = '';
 		if (props.withEntityPicker) {
 			await loadPickerData();
 		}
-		await loadTitlePagesForDocument();
-		exportTitlePageId.value = props.initialTitlePageId || '';
+		await loadExportLists();
+		const docId = props.withEntityPicker ? '' : (props.documentId ?? '');
+		if (docId) {
+			await applyExportDefaultsFromDocument(docId);
+		}
 	},
 );
 
-watch(
-	() => props.initialTitlePageId,
-	(v) => {
-		if (props.modelValue && v) exportTitlePageId.value = v;
-	},
-);
+watch(picked, async (p) => {
+	if (!props.modelValue || !p || p.kind !== 'doc') return;
+	await applyExportDefaultsFromDocument(p.id);
+});
 
 function downloadFile(blob: Blob, filename: string) {
 	const url = URL.createObjectURL(blob);
@@ -290,11 +333,20 @@ function downloadFile(blob: Blob, filename: string) {
 async function downloadPdf() {
 	const id = effectiveDocumentId.value;
 	if (!id) return;
+	if (includeStyleProfile.value && !exportProfileId.value) {
+		alert('Выберите профиль стиля или отключите опцию');
+		return;
+	}
+	if (includeTitlePage.value && !exportTitlePageId.value) {
+		alert('Выберите титульный лист или отключите опцию');
+		return;
+	}
 	isWorking.value = true;
 	try {
 		const blob = await DocumentAPI.generatePdf(id, {
-			titlePageId: exportTitlePageId.value || undefined,
-			includeDocument: includeDocument.value,
+			titlePageId: includeTitlePage.value ? exportTitlePageId.value : undefined,
+			profileId: includeStyleProfile.value ? exportProfileId.value : undefined,
+			includeDocument: true,
 			includeStyleProfile: includeStyleProfile.value,
 			includeTitlePage: includeTitlePage.value,
 		});
@@ -415,22 +467,46 @@ async function downloadTitleDdoc() {
 	background: var(--bg-primary);
 	color: inherit;
 }
-.export-pdf-modal__checks {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
+.export-pdf-modal__lead {
+	margin: 0 0 var(--spacing-md, 12px);
+	font-size: 13px;
+	line-height: 1.45;
+	color: var(--text-secondary, #b0b0b0);
+}
+.export-pdf-modal__option {
+	margin-bottom: var(--spacing-md, 14px);
+}
+.export-pdf-modal__option:last-child {
+	margin-bottom: 0;
 }
 .export-pdf-modal__check {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	gap: 8px;
 	cursor: pointer;
 	font-size: 14px;
 }
-.export-pdf-modal__warn {
-	color: #f59e0b;
-	font-size: 13px;
-	margin: 8px 0 0;
+.export-pdf-modal__check input {
+	margin-top: 2px;
+	flex-shrink: 0;
+}
+.export-pdf-modal__check-title {
+	font-weight: 600;
+}
+.export-pdf-modal__help {
+	margin: 6px 0 0 28px;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--text-muted, #999);
+}
+.export-pdf-modal__help code {
+	font-size: 11px;
+	padding: 1px 4px;
+	border-radius: 4px;
+	background: var(--bg-tertiary, #2a2a2a);
+}
+.export-pdf-modal__subfield {
+	margin: 10px 0 0 28px;
 }
 .export-pdf-modal__hint,
 .export-pdf-modal__ddoc-only {

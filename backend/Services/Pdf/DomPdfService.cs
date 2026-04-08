@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
@@ -23,14 +24,16 @@ public class DomPdfService : IDomPdfService
         Guid documentId,
         Guid userId,
         string? accessToken,
-        Guid? titlePageId = null)
+        Guid? titlePageId = null,
+        Guid? profileId = null,
+        bool omitTitlePageInPrint = false)
     {
         if (!_options.Enabled)
         {
             throw new InvalidOperationException("DOM PDF export is disabled by configuration.");
         }
 
-        var printUrl = BuildPrintUrl(documentId, titlePageId);
+        var printUrl = BuildPrintUrl(documentId, titlePageId, profileId, omitTitlePageInPrint);
         var launchOptions = CreateLaunchOptions();
 
         using var browser = await LaunchBrowserAsync(launchOptions);
@@ -75,17 +78,34 @@ public class DomPdfService : IDomPdfService
         });
     }
 
-    private string BuildPrintUrl(Guid documentId, Guid? titlePageId)
+    private string BuildPrintUrl(Guid documentId, Guid? titlePageId, Guid? profileId, bool omitTitlePageInPrint)
     {
-        var trimmedBase = _options.FrontendPrintBaseUrl.TrimEnd('/');
-        var path = $"{trimmedBase}/print/document/{documentId}";
-        if (!titlePageId.HasValue)
-        {
-            return path;
-        }
+        return BuildPrintUrlCore(
+            documentId,
+            titlePageId,
+            profileId,
+            omitTitlePageInPrint,
+            _options.FrontendPrintBaseUrl.TrimEnd('/'));
+    }
 
-        var encodedTitlePageId = UrlEncoder.Default.Encode(titlePageId.Value.ToString());
-        return $"{path}?titlePageId={encodedTitlePageId}";
+    private static string BuildPrintUrlCore(
+        Guid documentId,
+        Guid? titlePageId,
+        Guid? profileId,
+        bool omitTitlePageInPrint,
+        string trimmedBase)
+    {
+        var path = $"{trimmedBase}/print/document/{documentId}";
+        var parts = new List<string>();
+        if (omitTitlePageInPrint)
+            parts.Add("noTitlePage=1");
+        else if (titlePageId.HasValue)
+            parts.Add($"titlePageId={UrlEncoder.Default.Encode(titlePageId.Value.ToString())}");
+
+        if (profileId.HasValue)
+            parts.Add($"profileId={UrlEncoder.Default.Encode(profileId.Value.ToString())}");
+
+        return parts.Count > 0 ? $"{path}?{string.Join("&", parts)}" : path;
     }
 
     private static LaunchOptions CreateLaunchOptions()

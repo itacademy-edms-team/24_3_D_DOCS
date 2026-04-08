@@ -1,5 +1,11 @@
 <template>
-	<div class="document-preview" :class="{ 'document-preview--print': props.printMode }">
+	<div
+		class="document-preview"
+		:class="{
+			'document-preview--print': props.printMode,
+			'document-preview--paginating': isUpdatingPages || isLoadingTitlePage,
+		}"
+	>
 		<div v-if="isLoading" class="document-preview__loading">Загрузка...</div>
 		<div v-else ref="previewContainerRef" class="document-preview__container">
 			<!-- Title Page -->
@@ -433,108 +439,106 @@ async function updatePages(requestId: number) {
 
 		if (!renderedHtml) {
 			pages.value = [];
+			if (requestId === latestUpdateRequestId) {
+				isUpdatingPages.value = false;
+			}
 			return;
 		}
 
 		// Apply pagination immediately (no idle deferral) to avoid visible two-stage jumps.
-		(async () => {
+		try {
+			const hasToc =
+				props.tableOfContents &&
+				Array.isArray(props.tableOfContents) &&
+				props.tableOfContents.length > 0;
+			let contentPages: string[];
+			let tocPages: string[] = [];
+
+			if (hasToc && props.tableOfContents) {
+				const splitResult = (await splitIntoPages(
+					renderedHtml,
+					contentHeight.value,
+					contentWidth.value,
+					{ returnElementPageMap: true }
+				)) as { pages: string[]; elementPageMap: Record<number, number> };
+				contentPages = splitResult.pages;
+				const elementPageMap = splitResult.elementPageMap || {};
+				const parser = new DOMParser();
+				const doc = parser.parseFromString(renderedHtml, 'text/html');
+				const elements = Array.from(doc.body.children);
+				const headingPageMapByIndex: number[] = [];
+				elements.forEach((el, idx) => {
+					if (/^H[1-6]$/.test(el.tagName)) {
+						headingPageMapByIndex.push(
+							elementPageMap[idx] !== undefined ? elementPageMap[idx] : 0
+						);
+					}
+				});
+				const tocSettings = profileData.value?.tableOfContents || undefined;
+				const tocHtml = renderTableOfContentsToHtml(
+					props.tableOfContents,
+					tocSettings,
+					headingPageMapByIndex,
+					0
+				);
+				tocPages = await splitIntoPages(
+					tocHtml,
+					contentHeight.value,
+					contentWidth.value
+				) as string[];
+				const pageOffset = 1 + (titlePageHtml.value ? 1 : 0) + tocPages.length;
+				const tocHtmlWithPages = renderTableOfContentsToHtml(
+					props.tableOfContents,
+					tocSettings,
+					headingPageMapByIndex,
+					pageOffset
+				);
+				tocPages = (await splitIntoPages(
+					tocHtmlWithPages,
+					contentHeight.value,
+					contentWidth.value
+				)) as string[];
+			} else {
+				contentPages = (await splitIntoPages(
+					renderedHtml,
+					contentHeight.value,
+					contentWidth.value
+				)) as string[];
+			}
+
 			if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
 				return;
 			}
-			try {
-				const hasToc =
-					props.tableOfContents &&
-					Array.isArray(props.tableOfContents) &&
-					props.tableOfContents.length > 0;
-				let contentPages: string[];
-				let tocPages: string[] = [];
 
-				if (hasToc && props.tableOfContents) {
-					const splitResult = (await splitIntoPages(
-						renderedHtml,
-						contentHeight.value,
-						contentWidth.value,
-						{ returnElementPageMap: true }
-					)) as { pages: string[]; elementPageMap: Record<number, number> };
-					contentPages = splitResult.pages;
-					const elementPageMap = splitResult.elementPageMap || {};
-					const parser = new DOMParser();
-					const doc = parser.parseFromString(renderedHtml, 'text/html');
-					const elements = Array.from(doc.body.children);
-					const headingPageMapByIndex: number[] = [];
-					elements.forEach((el, idx) => {
-						if (/^H[1-6]$/.test(el.tagName)) {
-							headingPageMapByIndex.push(
-								elementPageMap[idx] !== undefined ? elementPageMap[idx] : 0
-							);
-						}
-					});
-					const tocSettings = profileData.value?.tableOfContents || undefined;
-					const tocHtml = renderTableOfContentsToHtml(
-						props.tableOfContents,
-						tocSettings,
-						headingPageMapByIndex,
-						0
-					);
-					tocPages = await splitIntoPages(
-						tocHtml,
-						contentHeight.value,
-						contentWidth.value
-					) as string[];
-					const pageOffset = 1 + (titlePageHtml.value ? 1 : 0) + tocPages.length;
-					const tocHtmlWithPages = renderTableOfContentsToHtml(
-						props.tableOfContents,
-						tocSettings,
-						headingPageMapByIndex,
-						pageOffset
-					);
-					tocPages = (await splitIntoPages(
-						tocHtmlWithPages,
-						contentHeight.value,
-						contentWidth.value
-					)) as string[];
-				} else {
-					contentPages = (await splitIntoPages(
-						renderedHtml,
-						contentHeight.value,
-						contentWidth.value
-					)) as string[];
-				}
-
-				if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
-					return;
-				}
-
-				const nextPages = [...tocPages, ...contentPages];
-				const nextSignature = `${tocPages.length}|${nextPages.length}|${nextPages.join('::@@::').length}|${nextPages[0]?.length ?? 0}|${nextPages[nextPages.length - 1]?.length ?? 0}`;
-				if (lastPaginationSignature.value === nextSignature) {
-					return;
-				}
-
-				lastPaginationSignature.value = nextSignature;
-				tocPageCount.value = tocPages.length;
-				pages.value = nextPages;
-				
-				// After pages are set, handle image loading in the DOM
-				nextTick(() => {
-					handleImageLoading();
-				});
-			} catch (error) {
-				console.error('Failed to split pages:', error);
-				if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
-					return;
-				}
-				tocPageCount.value = 0;
-				pages.value = [renderedHtml];
-				nextTick(() => {
-					handleImageLoading();
-				});
-			} finally {
-				if (requestId === latestUpdateRequestId) {
-					isUpdatingPages.value = false;
-				}
+			const nextPages = [...tocPages, ...contentPages];
+			const nextSignature = `${tocPages.length}|${nextPages.length}|${nextPages.join('::@@::').length}|${nextPages[0]?.length ?? 0}|${nextPages[nextPages.length - 1]?.length ?? 0}`;
+			if (lastPaginationSignature.value === nextSignature) {
+				return;
 			}
-		})();
+
+			lastPaginationSignature.value = nextSignature;
+			tocPageCount.value = tocPages.length;
+			pages.value = nextPages;
+
+			// After pages are set, handle image loading in the DOM
+			nextTick(() => {
+				handleImageLoading();
+			});
+		} catch (error) {
+			console.error('Failed to split pages:', error);
+			if (requestId !== latestUpdateRequestId || requestId !== activeUpdateRequestId) {
+				return;
+			}
+			tocPageCount.value = 0;
+			pages.value = [renderedHtml];
+			nextTick(() => {
+				handleImageLoading();
+			});
+		} finally {
+			if (requestId === latestUpdateRequestId) {
+				isUpdatingPages.value = false;
+			}
+		}
 	} catch (error) {
 		console.error('Failed to update pages:', error);
 		if (requestId === latestUpdateRequestId) {

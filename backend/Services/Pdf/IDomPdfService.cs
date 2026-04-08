@@ -6,6 +6,8 @@ public interface IDomPdfService
         Guid documentId,
         Guid userId,
         string? accessToken,
-        Guid? titlePageId = null
+        Guid? titlePageId = null,
+        Guid? profileId = null,
+        bool omitTitlePageInPrint = false
     );
 }

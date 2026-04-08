@@ -1013,51 +1013,59 @@ public class DocumentService : IDocumentService
                 }
             }
 
-            if (options.IncludeStyleProfile && document.ProfileId.HasValue)
+            if (options.IncludeStyleProfile)
             {
-                try
+                var profileIdForExport = options.ExportStyleProfileId ?? document.ProfileId;
+                if (profileIdForExport.HasValue)
                 {
-                    var profile = await _profileService.GetProfileWithDataAsync(document.ProfileId.Value, userId);
-                    if (profile != null && profile.Data != null)
+                    try
                     {
-                        var profileJson = JsonSerializer.Serialize(profile.Data, new JsonSerializerOptions 
-                        { 
-                            WriteIndented = true 
-                        });
-                        var profileBytes = Encoding.UTF8.GetBytes(profileJson);
-                        using (var profileMemoryStream = new MemoryStream(profileBytes))
+                        var profile = await _profileService.GetProfileWithDataAsync(profileIdForExport.Value, userId);
+                        if (profile != null && profile.Data != null)
                         {
-                            await WriteFileToTarAsync("profile.json", profileMemoryStream);
+                            var profileJson = JsonSerializer.Serialize(profile.Data, new JsonSerializerOptions 
+                            { 
+                                WriteIndented = true 
+                            });
+                            var profileBytes = Encoding.UTF8.GetBytes(profileJson);
+                            using (var profileMemoryStream = new MemoryStream(profileBytes))
+                            {
+                                await WriteFileToTarAsync("profile.json", profileMemoryStream);
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to export profile {ProfileId}", document.ProfileId.Value);
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to export profile {ProfileId}", profileIdForExport.Value);
+                    }
                 }
             }
 
-            if (options.IncludeTitlePage && document.TitlePageId.HasValue)
+            if (options.IncludeTitlePage)
             {
-                try
+                var titlePageIdForExport = options.ExportTitlePageId ?? document.TitlePageId;
+                if (titlePageIdForExport.HasValue)
                 {
-                    var titlePage = await _titlePageService.GetTitlePageWithDataAsync(document.TitlePageId.Value, userId);
-                    if (titlePage != null && titlePage.Data != null)
+                    try
                     {
-                        var titlePageJson = JsonSerializer.Serialize(titlePage.Data, new JsonSerializerOptions 
-                        { 
-                            WriteIndented = true 
-                        });
-                        var titlePageBytes = Encoding.UTF8.GetBytes(titlePageJson);
-                        using (var titlePageMemoryStream = new MemoryStream(titlePageBytes))
+                        var titlePage = await _titlePageService.GetTitlePageWithDataAsync(titlePageIdForExport.Value, userId);
+                        if (titlePage != null && titlePage.Data != null)
                         {
-                            await WriteFileToTarAsync("titlepage.json", titlePageMemoryStream);
+                            var titlePageJson = JsonSerializer.Serialize(titlePage.Data, new JsonSerializerOptions 
+                            { 
+                                WriteIndented = true 
+                            });
+                            var titlePageBytes = Encoding.UTF8.GetBytes(titlePageJson);
+                            using (var titlePageMemoryStream = new MemoryStream(titlePageBytes))
+                            {
+                                await WriteFileToTarAsync("titlepage.json", titlePageMemoryStream);
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to export title page {TitlePageId}", document.TitlePageId.Value);
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to export title page {TitlePageId}", titlePageIdForExport.Value);
+                    }
                 }
             }
         }

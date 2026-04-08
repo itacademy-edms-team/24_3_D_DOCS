@@ -594,6 +594,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> GeneratePdf(
         Guid id,
         [FromQuery] Guid? titlePageId = null,
+        [FromQuery] Guid? profileId = null,
         [FromQuery] bool? includeDocument = null,
         [FromQuery] bool? includeStyleProfile = null,
         [FromQuery] bool? includeTitlePage = null)
@@ -602,13 +603,24 @@ public class DocumentsController : ControllerBase
         {
             var userId = GetUserId();
             var accessToken = GetAccessToken();
-            var pdfBytes = await _domPdfService.GenerateDocumentPdfAsync(id, userId, accessToken, titlePageId);
+            var includeTp = includeTitlePage ?? true;
+            var includeSp = includeStyleProfile ?? true;
+            var printProfileId = includeSp ? profileId : null;
+            var pdfBytes = await _domPdfService.GenerateDocumentPdfAsync(
+                id,
+                userId,
+                accessToken,
+                titlePageId,
+                printProfileId,
+                omitTitlePageInPrint: !includeTp);
 
             var bundleOptions = new DdocBundleOptions
             {
                 IncludeDocument = includeDocument ?? true,
-                IncludeStyleProfile = includeStyleProfile ?? true,
-                IncludeTitlePage = includeTitlePage ?? true,
+                IncludeStyleProfile = includeSp,
+                IncludeTitlePage = includeTp,
+                ExportStyleProfileId = profileId,
+                ExportTitlePageId = titlePageId,
             };
 
             if (bundleOptions.AnyIncluded)

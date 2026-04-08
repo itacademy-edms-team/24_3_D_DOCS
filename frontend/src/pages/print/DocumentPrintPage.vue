@@ -7,7 +7,7 @@
 		<DocumentPreview
 			v-else
 			:content="content"
-			:profileId="documentData?.profileId"
+			:profileId="effectiveProfileId"
 			:titlePageId="effectiveTitlePageId"
 			:titlePageVariables="titlePageVariables"
 			:documentId="documentId"
@@ -37,6 +37,13 @@ const requestedTitlePageId = computed(() => {
 	return typeof value === 'string' && value.length > 0 ? value : undefined;
 });
 
+const requestedProfileId = computed(() => {
+	const value = route.query.profileId;
+	return typeof value === 'string' && value.length > 0 ? value : undefined;
+});
+
+const forceNoTitlePage = computed(() => route.query.noTitlePage === '1');
+
 const isLoading = ref(true);
 const errorMessage = ref('');
 const documentData = ref<Document | null>(null);
@@ -64,7 +71,12 @@ const titlePageVariables = computed<Record<string, string>>(() => {
 	return vars;
 });
 
+const effectiveProfileId = computed(() => {
+	return requestedProfileId.value ?? documentData.value?.profileId;
+});
+
 const effectiveTitlePageId = computed(() => {
+	if (forceNoTitlePage.value) return undefined;
 	return requestedTitlePageId.value ?? documentData.value?.titlePageId;
 });
 
@@ -88,6 +100,11 @@ function isPreviewStable(): boolean {
 
 	const hasLoadingIndicator = dom.querySelector('.document-preview__loading');
 	if (hasLoadingIndicator) {
+		return false;
+	}
+
+	// Pagination/title HTML can run without the "Загрузка..." row; don't signal ready mid-update.
+	if (dom.querySelector('.document-preview--paginating')) {
 		return false;
 	}
 

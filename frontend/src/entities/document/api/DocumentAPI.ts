@@ -13,7 +13,10 @@ import type {
 } from '../types';
 
 export interface GeneratePdfRequest {
+	/** Титульник в PDF и вложение titlepage.json (если включён титульник). */
 	titlePageId?: string;
+	/** Профиль для вёрстки PDF и profile.json при включённом профиле. */
+	profileId?: string;
 	includeDocument?: boolean;
 	includeStyleProfile?: boolean;
 	includeTitlePage?: boolean;
@@ -131,6 +134,7 @@ class DocumentAPI extends HttpClient {
 				: options;
 		const params = new URLSearchParams();
 		if (req.titlePageId) params.set('titlePageId', req.titlePageId);
+		if (req.profileId) params.set('profileId', req.profileId);
 		if (req.includeDocument !== undefined)
 			params.set('includeDocument', String(req.includeDocument));
 		if (req.includeStyleProfile !== undefined)
