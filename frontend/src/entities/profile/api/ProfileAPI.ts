@@ -11,9 +11,8 @@ class ProfileAPI extends HttpClient {
 		super();
 	}
 
-	async getAll(includePublic = false): Promise<Profile[]> {
-		const params = includePublic ? '?includePublic=true' : '';
-		return this.get<Profile[]>(`/api/profiles${params}`);
+	async getAll(): Promise<Profile[]> {
+		return this.get<Profile[]>('/api/profiles');
 	}
 
 	async getById(id: string): Promise<ProfileWithData> {

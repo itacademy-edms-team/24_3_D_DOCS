@@ -39,12 +39,12 @@ public class ProfilesController : ControllerBase
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<ProfileDTO>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetProfiles([FromQuery] bool includePublic = false)
+    public async Task<IActionResult> GetProfiles()
     {
         try
         {
             var userId = GetUserId();
-            var profiles = await _profileService.GetProfilesAsync(userId, includePublic);
+            var profiles = await _profileService.GetProfilesAsync(userId);
             return Ok(profiles);
         }
         catch (Exception ex)

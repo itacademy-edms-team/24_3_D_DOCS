@@ -15,8 +15,13 @@ app.use(pinia);
 app.use(router);
 
 // Инициализируем auth store сразу после создания pinia, чтобы данные восстановились из localStorage
+import { setHttpAccessToken } from './shared/auth/httpAccessToken';
 import { useAuthStore } from './entities/auth/store/authStore';
 const authStore = useAuthStore();
+setHttpAccessToken(authStore.accessToken);
+authStore.$subscribe(() => {
+	setHttpAccessToken(authStore.accessToken);
+});
 
 // Синхронизируем store при 401 (HttpClient шлёт событие, т.к. не может импортировать store)
 window.addEventListener('auth:session-expired', () => {

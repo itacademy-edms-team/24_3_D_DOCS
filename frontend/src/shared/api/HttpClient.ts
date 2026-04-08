@@ -5,6 +5,8 @@ import axios, {
 	type AxiosResponse,
 } from 'axios';
 
+import { setHttpAccessToken } from '@/shared/auth/httpAccessToken';
+import { getAccessToken } from '@/shared/auth/tokenStorage';
 import BadRequest from './error/BadRequest';
 import HttpError from './error/HttpError';
 import NotFoundError from './error/NotFoundError';
@@ -43,18 +45,9 @@ class HttpClient {
 		// Request interceptor: Add Authorization header
 		this.instance.interceptors.request.use(
 			(config) => {
-				const authData = localStorage.getItem(AUTH_STORAGE_KEY);
-				if (authData) {
-					try {
-						const parsed = JSON.parse(authData);
-						// Pinia persist сохраняет данные в формате { state: { ... } }
-						const accessToken = parsed?.state?.accessToken || parsed?.accessToken;
-						if (accessToken) {
-							config.headers.Authorization = `Bearer ${accessToken}`;
-						}
-					} catch {
-						// Игнорируем ошибки парсинга
-					}
+				const accessToken = getAccessToken();
+				if (accessToken) {
+					config.headers.Authorization = `Bearer ${accessToken}`;
 				}
 				return config;
 			},
@@ -155,6 +148,7 @@ class HttpClient {
 								JSON.stringify(updatedAuthData),
 							);
 						}
+						setHttpAccessToken(newAccessToken);
 
 						// Обновляем заголовок для оригинального запроса
 						originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
@@ -182,6 +176,7 @@ class HttpClient {
 
 	private clearAuthAndRedirect() {
 		localStorage.removeItem(AUTH_STORAGE_KEY);
+		setHttpAccessToken(null);
 		// Синхронизируем Pinia store через событие (избегаем циклических импортов)
 		try {
 			window.dispatchEvent(new CustomEvent('auth:session-expired'));

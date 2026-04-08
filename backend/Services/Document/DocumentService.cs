@@ -1226,7 +1226,7 @@ public class DocumentService : IDocumentService
             try
             {
                 // Ищем существующий профиль по имени документа
-                var existingProfiles = await _profileService.GetProfilesAsync(userId, includePublic: false);
+                var existingProfiles = await _profileService.GetProfilesAsync(userId);
                 var existingProfile = existingProfiles.FirstOrDefault(p => p.Name.Equals(finalDocumentName, StringComparison.OrdinalIgnoreCase));
 
                 if (existingProfile != null)
@@ -1242,7 +1242,6 @@ public class DocumentService : IDocumentService
                     {
                         Name = profileName,
                         Description = "Импортирован из .ddoc файла",
-                        IsPublic = false,
                         Data = profileData
                     };
                     var newProfile = await _profileService.CreateProfileAsync(userId, createProfileDto);

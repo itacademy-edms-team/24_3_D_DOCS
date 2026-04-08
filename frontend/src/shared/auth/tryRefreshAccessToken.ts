@@ -2,6 +2,8 @@
  * Обновление access token через refresh (без axios).
  * Нужен для fetch-вызовов (SSE агент, multipart ingest), которые не проходят через HttpClient interceptors.
  */
+import { setHttpAccessToken } from './httpAccessToken';
+
 const AUTH_STORAGE_KEY = 'auth-storage';
 
 type TokenRefreshResponse = {
@@ -72,5 +74,6 @@ export async function tryRefreshAccessToken(apiBaseUrl: string): Promise<boolean
 
 	const updated = { ...parsed, state };
 	localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updated));
+	setHttpAccessToken(accessToken);
 	return true;
 }

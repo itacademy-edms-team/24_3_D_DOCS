@@ -1,3 +1,5 @@
+import { getHttpAccessToken } from './httpAccessToken';
+
 const AUTH_STORAGE_KEY = 'auth-storage';
 
 type AuthStorageState = {
@@ -62,5 +64,7 @@ function getAuthState(): AuthStorageState | null {
 }
 
 export function getAccessToken(): string | null {
+	const mem = getHttpAccessToken();
+	if (mem) return mem;
 	return getAuthState()?.accessToken ?? null;
 }

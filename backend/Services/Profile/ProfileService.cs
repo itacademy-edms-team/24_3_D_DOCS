@@ -271,7 +271,7 @@ public class ProfileService : IProfileService
             CreatorId = userId,
             Name = dto.Name,
             Description = dto.Description,
-            IsPublic = dto.IsPublic,
+            IsPublic = false,
             MinioPath = $"profiles/{Guid.NewGuid()}/profile.json"
         };
 
@@ -301,8 +301,7 @@ public class ProfileService : IProfileService
     public async Task<ProfileDTO?> GetProfileByIdAsync(Guid profileId, Guid userId)
     {
         var profile = await _context.SchemaLinks
-            .FirstOrDefaultAsync(p => p.Id == profileId && 
-                (p.CreatorId == userId || p.IsPublic));
+            .FirstOrDefaultAsync(p => p.Id == profileId && p.CreatorId == userId);
 
         if (profile == null) return null;
 
@@ -312,8 +311,7 @@ public class ProfileService : IProfileService
     public async Task<ProfileWithDataDTO?> GetProfileWithDataAsync(Guid profileId, Guid userId)
     {
         var profile = await _context.SchemaLinks
-            .FirstOrDefaultAsync(p => p.Id == profileId && 
-                (p.CreatorId == userId || p.IsPublic));
+            .FirstOrDefaultAsync(p => p.Id == profileId && p.CreatorId == userId);
 
         if (profile == null) return null;
 
@@ -323,7 +321,6 @@ public class ProfileService : IProfileService
             CreatorId = profile.CreatorId,
             Name = profile.Name,
             Description = profile.Description,
-            IsPublic = profile.IsPublic,
             CreatedAt = profile.CreatedAt,
             UpdatedAt = profile.UpdatedAt,
             Data = new ProfileData()
@@ -347,20 +344,10 @@ public class ProfileService : IProfileService
         return dto;
     }
 
-    public async Task<List<ProfileDTO>> GetProfilesAsync(Guid userId, bool includePublic = false)
+    public async Task<List<ProfileDTO>> GetProfilesAsync(Guid userId)
     {
-        var query = _context.SchemaLinks.AsQueryable();
-
-        if (includePublic)
-        {
-            query = query.Where(p => p.CreatorId == userId || p.IsPublic);
-        }
-        else
-        {
-            query = query.Where(p => p.CreatorId == userId);
-        }
-
-        var profiles = await query
+        var profiles = await _context.SchemaLinks
+            .Where(p => p.CreatorId == userId)
             .OrderByDescending(p => p.UpdatedAt)
             .ToListAsync();
 
@@ -377,7 +364,7 @@ public class ProfileService : IProfileService
 
         if (dto.Name != null) profile.Name = dto.Name;
         if (dto.Description != null) profile.Description = dto.Description;
-        if (dto.IsPublic.HasValue) profile.IsPublic = dto.IsPublic.Value;
+        profile.IsPublic = false;
 
         await _context.SaveChangesAsync();
 
@@ -418,8 +405,7 @@ public class ProfileService : IProfileService
     public async Task<ProfileDTO> DuplicateProfileAsync(Guid profileId, Guid userId, string? newName = null)
     {
         var sourceProfile = await _context.SchemaLinks
-            .FirstOrDefaultAsync(p => p.Id == profileId && 
-                (p.CreatorId == userId || p.IsPublic));
+            .FirstOrDefaultAsync(p => p.Id == profileId && p.CreatorId == userId);
 
         if (sourceProfile == null)
             throw new FileNotFoundException($"Profile {profileId} not found");
@@ -471,7 +457,7 @@ public class ProfileService : IProfileService
     public async Task<bool> ProfileExistsAsync(Guid profileId, Guid userId)
     {
         return await _context.SchemaLinks
-            .AnyAsync(p => p.Id == profileId && (p.CreatorId == userId || p.IsPublic));
+            .AnyAsync(p => p.Id == profileId && p.CreatorId == userId);
     }
 
     public async Task<Stream> ExportAsDdocAsync(Guid profileId, Guid userId)
@@ -491,7 +477,6 @@ public class ProfileService : IProfileService
             CreatorId = profile.CreatorId,
             Name = profile.Name,
             Description = profile.Description,
-            IsPublic = profile.IsPublic,
             CreatedAt = profile.CreatedAt,
             UpdatedAt = profile.UpdatedAt
         };

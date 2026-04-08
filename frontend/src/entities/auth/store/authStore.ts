@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { setHttpAccessToken } from '@/shared/auth/httpAccessToken';
 import AuthAPI from '../api/AuthAPI';
 import type {
 	User,
@@ -27,12 +28,14 @@ export const useAuthStore = defineStore(
 			user.value = data.user;
 			accessToken.value = data.accessToken;
 			refreshToken.value = data.refreshToken;
+			setHttpAccessToken(data.accessToken);
 		}
 
 		function clearAuthData() {
 			user.value = null;
 			accessToken.value = null;
 			refreshToken.value = null;
+			setHttpAccessToken(null);
 		}
 
 		async function login(data: LoginRequest) {

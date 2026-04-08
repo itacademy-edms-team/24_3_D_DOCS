@@ -3,7 +3,6 @@ export interface Profile {
 	creatorId: string;
 	name: string;
 	description?: string;
-	isPublic: boolean;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -89,13 +88,11 @@ export interface EntityStyle {
 export interface CreateProfileDTO {
 	name: string;
 	description?: string;
-	isPublic?: boolean;
 	data?: ProfileData;
 }
 
 export interface UpdateProfileDTO {
 	name?: string;
 	description?: string;
-	isPublic?: boolean;
 	data?: ProfileData;
 }
