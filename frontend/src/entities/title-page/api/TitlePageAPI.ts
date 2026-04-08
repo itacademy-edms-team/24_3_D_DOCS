@@ -84,6 +84,10 @@ class TitlePageAPI extends HttpClient {
 			ConvertTitlePageElementToVariableBody
 		>(`/api/title-pages/${titlePageId}/elements/${encodedId}/convert-to-variable`, body ?? {});
 	}
+
+	async exportDdoc(id: string): Promise<Blob> {
+		return this.getBlob(`/api/title-pages/${id}/export`);
+	}
 }
 
 export default new TitlePageAPI();

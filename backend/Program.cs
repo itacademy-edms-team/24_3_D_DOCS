@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using iText.Bouncycastle;
+using iText.Bouncycastleconnector;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -28,6 +30,9 @@ using RusalProject.Services.Ollama;
 using RusalProject.Services.AgentSources;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// iText 8: kernel (в т.ч. вложения в PDF) требует Bouncy Castle; пакет itext.bouncy-castle-adapter + явная фабрика
+BouncyCastleFactoryCreator.SetFactory(new BouncyCastleFactory());
 
 // Configure Kestrel request timeout for long-running operations
 builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>

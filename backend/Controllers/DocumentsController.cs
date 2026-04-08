@@ -591,13 +591,37 @@ public class DocumentsController : ControllerBase
     [HttpPost("{id}/pdf")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GeneratePdf(Guid id, [FromQuery] Guid? titlePageId = null)
+    public async Task<IActionResult> GeneratePdf(
+        Guid id,
+        [FromQuery] Guid? titlePageId = null,
+        [FromQuery] bool? includeDocument = null,
+        [FromQuery] bool? includeStyleProfile = null,
+        [FromQuery] bool? includeTitlePage = null)
     {
         try
         {
             var userId = GetUserId();
             var accessToken = GetAccessToken();
             var pdfBytes = await _domPdfService.GenerateDocumentPdfAsync(id, userId, accessToken, titlePageId);
+
+            var bundleOptions = new DdocBundleOptions
+            {
+                IncludeDocument = includeDocument ?? true,
+                IncludeStyleProfile = includeStyleProfile ?? true,
+                IncludeTitlePage = includeTitlePage ?? true,
+            };
+
+            if (bundleOptions.AnyIncluded)
+            {
+                await using var ddocStream = await _documentService.ExportDocumentAsync(id, userId, bundleOptions);
+                using var ddocBuffer = new MemoryStream();
+                await ddocStream.CopyToAsync(ddocBuffer);
+                var ddocBytes = ddocBuffer.ToArray();
+                if (ddocBytes.Length == 0)
+                    _logger.LogWarning("Ddoc stream empty for document {DocumentId}, skipping embed", id);
+                else
+                    pdfBytes = PdfDdocAttachmentService.EmbedDdocInPdf(pdfBytes, ddocBytes);
+            }
             
             // Сохраняем PDF в MinIO
             var document = await _documentService.GetDocumentByIdAsync(id, userId);
@@ -716,6 +740,98 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// Список вложенных файлов в PDF (для импорта .ddoc)
+    /// </summary>
+    [HttpPost("pdf-import/preview")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PreviewPdfDocumentImport([FromForm] IFormFile? file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "Файл не предоставлен" });
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+            && !(file.ContentType?.Contains("pdf", StringComparison.OrdinalIgnoreCase) ?? false))
+        {
+            return BadRequest(new { message = "Нужен PDF-файл" });
+        }
+
+        await using var input = file.OpenReadStream();
+        using var ms = new MemoryStream();
+        await input.CopyToAsync(ms);
+        var list = PdfDdocImportHelper.ListEmbeddedFiles(ms.ToArray());
+        return Ok(new
+        {
+            files = list.Select(f => new { f.Name, f.Size, f.Kind }).ToList(),
+        });
+    }
+
+    /// <summary>
+    /// Импорт документа: извлечь вложенный .ddoc и импортировать
+    /// </summary>
+    [HttpPost("pdf-import")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(DocumentDTO), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ImportDocumentFromPdf([FromForm] PdfDocumentFromPdfImportForm form)
+    {
+        if (form.File == null || form.File.Length == 0)
+            return BadRequest(new { message = "Файл не предоставлен" });
+        if (!form.File.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+            && !(form.File.ContentType?.Contains("pdf", StringComparison.OrdinalIgnoreCase) ?? false))
+        {
+            return BadRequest(new { message = "Нужен PDF-файл" });
+        }
+
+        try
+        {
+            await using var input = form.File.OpenReadStream();
+            using var ms = new MemoryStream();
+            await input.CopyToAsync(ms);
+            var pdfBytes = ms.ToArray();
+
+            byte[]? ddoc = null;
+            if (!string.IsNullOrWhiteSpace(form.SelectedFileName))
+            {
+                ddoc = PdfDdocImportHelper.GetEmbeddedFileBytes(pdfBytes, form.SelectedFileName.Trim());
+            }
+            if (ddoc == null)
+            {
+                var embedded = PdfDdocImportHelper.ListEmbeddedFiles(pdfBytes);
+                var first = embedded.FirstOrDefault(
+                    f => f.Kind == "ddoc" || f.Name.EndsWith(".ddoc", StringComparison.OrdinalIgnoreCase));
+                if (first != null)
+                    ddoc = PdfDdocImportHelper.GetEmbeddedFileBytes(pdfBytes, first.Name);
+            }
+
+            if (ddoc == null || ddoc.Length == 0)
+            {
+                return BadRequest(
+                    new { message = "В PDF нет вложенного .ddoc или не удалось прочитать вложение" });
+            }
+
+            var userId = GetUserId();
+            var baseName = form.Name?.Trim();
+            if (string.IsNullOrEmpty(baseName))
+                baseName = Path.GetFileNameWithoutExtension(form.File.FileName);
+
+            await using var ddocStream = new MemoryStream(ddoc, false);
+            var document = await _documentService.ImportDocumentAsync(userId, ddocStream, baseName);
+            return StatusCode(StatusCodes.Status201Created, document);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid ddoc in PDF import");
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing from PDF");
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера", details = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Импортировать документ из формата .ddoc
     /// </summary>
     [HttpPost("import")]
@@ -757,4 +873,11 @@ public class DocumentsController : ControllerBase
             return StatusCode(500, new { message = "Внутренняя ошибка сервера", details = ex.Message });
         }
     }
+}
+
+public class PdfDocumentFromPdfImportForm
+{
+    public IFormFile? File { get; set; }
+    public string? Name { get; set; }
+    public string? SelectedFileName { get; set; }
 }

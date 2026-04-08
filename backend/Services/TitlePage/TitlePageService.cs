@@ -6,6 +6,7 @@ using RusalProject.Models.Entities;
 using RusalProject.Models.Types;
 using RusalProject.Provider.Database;
 using RusalProject.Services.Storage;
+using RusalProject.Services.Document;
 
 namespace RusalProject.Services.TitlePage;
 
@@ -259,6 +260,15 @@ public class TitlePageService : ITitlePageService
         await _context.SaveChangesAsync();
 
         return new ConvertTitlePageElementToVariableResponse { Element = element };
+    }
+
+    public async Task<Stream> ExportAsDdocAsync(Guid titlePageId, Guid userId)
+    {
+        var titlePage = await GetTitlePageWithDataAsync(titlePageId, userId);
+        if (titlePage?.Data == null)
+            throw new FileNotFoundException($"Title page {titlePageId} not found");
+        var json = JsonSerializer.Serialize(titlePage.Data, new JsonSerializerOptions { WriteIndented = true });
+        return await DdocTarUtil.CreateTarWithSingleFileAsync("titlepage.json", Encoding.UTF8.GetBytes(json));
     }
 
     private static string FirstNonEmptyLine(string? text)

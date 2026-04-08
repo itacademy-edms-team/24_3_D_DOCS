@@ -103,25 +103,13 @@
 					</button>
 					<button
 						class="content-editor__header-btn"
-						@click="handleDownloadPdf"
-						:disabled="isDownloadingPdf || !documentId"
+						@click="openExportPdfModal"
+						:disabled="!documentId"
 						title="Скачать PDF"
 					>
-						<svg v-if="!isDownloadingPdf" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+						<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
 							<path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 10h1.5v1H10v-1zm0 3h1.5v1H10v-1zm0-6h1.5v1H10V7zm4 3h1.5v1H14v-1zm0 3h1.5v1H14v-1zm0-6h1.5v1H14V7zm4 3h1.5v1H18v-1zm0 3h1.5v1H18v-1zm0-6h1.5v1H18V7z"/>
 						</svg>
-						<span v-else class="spinner-small"></span>
-					</button>
-					<button
-						class="content-editor__header-btn"
-						@click="handleExportDdoc"
-						:disabled="isExportingDdoc || !documentId"
-						title="Экспорт .ddoc"
-					>
-						<svg v-if="!isExportingDdoc" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-							<path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10zM8 13.01l1.41 1.41L11 12.84V17h2v-4.16l1.59 1.59L16 13.01 12 9l-4 4.01z"/>
-						</svg>
-						<span v-else class="spinner-small"></span>
 					</button>
 					<div class="versions-dropdown" ref="versionsDropdownRef">
 						<button
@@ -467,11 +455,18 @@
 			@document-content-changed="debouncedReloadDocumentFromServer"
 			@width-changed="handleChatDockWidthChanged"
 		/>
+
+		<ExportPdfModal
+			v-model="showExportPdfModal"
+			:document-id="documentId"
+			:document-name="document?.name"
+			:initial-title-page-id="selectedTitlePageId || undefined"
+		/>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, provide } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import { useRoute, useRouter } from 'vue-router';
 import Button from '@/shared/ui/Button/Button.vue';
@@ -479,6 +474,7 @@ import MarkdownEditor from '@/widgets/markdown-editor/MarkdownEditor.vue';
 import DocumentPreview from '@/widgets/document-preview/DocumentPreview.vue';
 import TitlePageVariablesPanel from '@/widgets/title-page-variables/TitlePageVariablesPanel.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
+import ExportPdfModal from '@/widgets/export-pdf-modal/ExportPdfModal.vue';
 import Modal from '@/shared/ui/Modal/Modal.vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
@@ -498,8 +494,11 @@ const showPreview = ref(true);
 const swapped = ref(false);
 const activeTab = ref<'editor' | 'titlePage'>('editor');
 const markdownEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null);
-const isDownloadingPdf = ref(false);
-const isExportingDdoc = ref(false);
+const showExportPdfModal = ref(false);
+const openExportPdfModal = () => {
+	showExportPdfModal.value = true;
+};
+provide('openExportPdfModal', openExportPdfModal);
 
 const profiles = ref<Profile[]>([]);
 const isLoadingProfiles = ref(false);
@@ -625,94 +624,6 @@ const debouncedReloadDocumentFromServer = useDebounceFn(reloadDocumentFromServer
 const handleSettings = () => {
 	// TODO: Открыть настройки документа
 	console.log('Settings clicked');
-};
-
-const downloadFile = (blob: Blob, filename: string) => {
-	try {
-		const url = URL.createObjectURL(blob);
-		// Используем window.document чтобы избежать проблем с минификацией
-		const doc = typeof window !== 'undefined' ? window.document : document;
-		const link = doc.createElement('a');
-		link.href = url;
-		link.download = filename;
-		doc.body.appendChild(link);
-		link.click();
-		doc.body.removeChild(link);
-		URL.revokeObjectURL(url);
-	} catch (error) {
-		console.error('Error in downloadFile:', error);
-		throw error;
-	}
-};
-
-const handleDownloadPdf = async () => {
-	if (!documentId.value || isDownloadingPdf.value) return;
-
-	isDownloadingPdf.value = true;
-
-	try {
-		const filename = document.value?.name 
-			? `${document.value.name}.pdf` 
-			: `document-${documentId.value}.pdf`;
-		
-		// Always generate a new PDF to ensure it's up-to-date with the latest content
-		// Use selectedTitlePageId if available
-		const blob = await DocumentAPI.generatePdf(
-			documentId.value, 
-			selectedTitlePageId.value || undefined
-		);
-		
-		downloadFile(blob, filename);
-	} catch (error: any) {
-		console.error('Failed to generate PDF:', error);
-		
-		let errorMessage = 'Не удалось сгенерировать PDF. ';
-		if (error?.response?.status === 500) {
-			errorMessage += 'Ошибка на сервере при генерации PDF. Проверьте логи бэкенда.';
-		} else if (error?.response?.status === 404) {
-			errorMessage += 'Документ не найден.';
-		} else if (error?.message) {
-			errorMessage += error.message;
-		} else {
-			errorMessage += 'Попробуйте позже.';
-		}
-		
-		alert(errorMessage);
-	} finally {
-		isDownloadingPdf.value = false;
-	}
-};
-
-const handleExportDdoc = async () => {
-	if (!documentId.value || isExportingDdoc.value) return;
-
-	isExportingDdoc.value = true;
-
-	try {
-		const filename = document.value?.name 
-			? `${document.value.name}.ddoc` 
-			: `document-${documentId.value}.ddoc`;
-		
-		const blob = await DocumentAPI.exportDocument(documentId.value);
-		downloadFile(blob, filename);
-	} catch (error: any) {
-		console.error('Failed to export .ddoc:', error);
-		
-		let errorMessage = 'Не удалось экспортировать документ. ';
-		if (error?.response?.status === 500) {
-			errorMessage += 'Ошибка на сервере при экспорте. Проверьте логи бэкенда.';
-		} else if (error?.response?.status === 404) {
-			errorMessage += 'Документ не найден.';
-		} else if (error?.message) {
-			errorMessage += error.message;
-		} else {
-			errorMessage += 'Неизвестная ошибка.';
-		}
-		
-		alert(errorMessage);
-	} finally {
-		isExportingDdoc.value = false;
-	}
 };
 
 const documentName = ref<string>('');
@@ -913,7 +824,7 @@ const handleVariablesUpdate = async (newVariables: Record<string, string>) => {
 const loadProfiles = async () => {
 	isLoadingProfiles.value = true;
 	try {
-		const loadedProfiles = await ProfileAPI.getAll(true);
+		const loadedProfiles = await ProfileAPI.getAll();
 		profiles.value = loadedProfiles;
 	} catch (error) {
 		console.error('Failed to load profiles:', error);

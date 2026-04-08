@@ -18,4 +18,5 @@ public interface ITitlePageService
         Guid userId,
         string elementId,
         ConvertTitlePageElementToVariableRequest? request);
+    Task<Stream> ExportAsDdocAsync(Guid titlePageId, Guid userId);
 }

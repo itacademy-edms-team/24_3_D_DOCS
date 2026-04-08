@@ -857,8 +857,15 @@ public class DocumentService : IDocumentService
         return Task.FromResult(dto);
     }
 
-    public async Task<Stream> ExportDocumentAsync(Guid documentId, Guid userId)
+    public async Task<Stream> ExportDocumentAsync(Guid documentId, Guid userId) =>
+        await ExportDocumentAsync(documentId, userId, DdocBundleOptions.Full);
+
+    public async Task<Stream> ExportDocumentAsync(Guid documentId, Guid userId, DdocBundleOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!options.AnyIncluded)
+            throw new InvalidOperationException("At least one ddoc bundle part must be included.");
+
         var document = await _context.DocumentLinks
             .Include(d => d.Profile)
             .Include(d => d.TitlePage)
@@ -867,28 +874,30 @@ public class DocumentService : IDocumentService
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        // Получаем контент документа
-        var documentWithContent = await GetDocumentWithContentAsync(documentId, userId);
-        if (documentWithContent == null)
+        var documentWithContent = options.IncludeDocument
+            ? await GetDocumentWithContentAsync(documentId, userId)
+            : null;
+
+        if (options.IncludeDocument && documentWithContent == null)
             throw new FileNotFoundException($"Document content not found for {documentId}");
 
-        var content = documentWithContent.Content ?? string.Empty;
+        var content = options.IncludeDocument
+            ? (documentWithContent!.Content ?? string.Empty)
+            : $"# {document.Name}\n";
         var bucket = GetUserBucket(userId);
 
-        // Извлекаем изображения из markdown
-        var imagePattern = @"!\[([^\]]*)\]\(([^)]+)\)";
-        var regex = new Regex(imagePattern);
-        var imageMatches = regex.Matches(content);
-        var imageMap = new Dictionary<string, string>(); // URL -> fileName
-
-        foreach (Match match in imageMatches)
+        var imageMap = new Dictionary<string, string>();
+        if (options.IncludeDocument)
         {
-            var url = match.Groups[2].Value;
-            var fileName = ExtractFileNameFromUrl(url, documentId);
-            
-            if (!string.IsNullOrWhiteSpace(fileName) && !imageMap.ContainsKey(url))
+            var imagePattern = @"!\[([^\]]*)\]\(([^)]+)\)";
+            var regex = new Regex(imagePattern);
+            var imageMatches = regex.Matches(content);
+            foreach (Match match in imageMatches)
             {
-                imageMap[url] = fileName;
+                var url = match.Groups[2].Value;
+                var fileName = ExtractFileNameFromUrl(url, documentId);
+                if (!string.IsNullOrWhiteSpace(fileName) && !imageMap.ContainsKey(url))
+                    imageMap[url] = fileName;
             }
         }
 
@@ -896,14 +905,16 @@ public class DocumentService : IDocumentService
         var tarStream = new MemoryStream();
         using (var tarWriter = new TarWriter(tarStream, leaveOpen: true))
         {
-            // 1. Добавляем document.md с замененными ссылками на изображения
             var modifiedContent = content;
-            foreach (var kvp in imageMap)
+            if (options.IncludeDocument)
             {
-                var oldUrl = kvp.Key;
-                var fileName = kvp.Value;
-                var newPath = $"assets/{fileName}";
-                modifiedContent = modifiedContent.Replace($"]({oldUrl})", $"]({newPath})");
+                foreach (var kvp in imageMap)
+                {
+                    var oldUrl = kvp.Key;
+                    var fileName = kvp.Value;
+                    var newPath = $"assets/{fileName}";
+                    modifiedContent = modifiedContent.Replace($"]({oldUrl})", $"]({newPath})");
+                }
             }
 
             // Вспомогательная функция для записи файла в TAR
@@ -982,27 +993,27 @@ public class DocumentService : IDocumentService
                 }
             }
 
-            // 4. Добавляем изображения в папку assets/
-            foreach (var kvp in imageMap)
+            if (options.IncludeDocument)
             {
-                var fileName = kvp.Value;
-                var objectPath = $"documents/{documentId}/assets/{fileName}";
+                foreach (var kvp in imageMap)
+                {
+                    var fileName = kvp.Value;
+                    var objectPath = $"documents/{documentId}/assets/{fileName}";
 
-                try
-                {
-                    using var imageStream = await _minioService.DownloadFileAsync(bucket, objectPath);
-                    var assetPath = $"assets/{fileName}";
-                    await WriteFileToTarAsync(assetPath, imageStream);
-                }
-                catch (FileNotFoundException ex)
-                {
-                    _logger.LogWarning(ex, "Image not found in MinIO: {ObjectPath}", objectPath);
-                    // Пропускаем изображение, если оно не найдено
+                    try
+                    {
+                        using var imageStream = await _minioService.DownloadFileAsync(bucket, objectPath);
+                        var assetPath = $"assets/{fileName}";
+                        await WriteFileToTarAsync(assetPath, imageStream);
+                    }
+                    catch (FileNotFoundException ex)
+                    {
+                        _logger.LogWarning(ex, "Image not found in MinIO: {ObjectPath}", objectPath);
+                    }
                 }
             }
 
-            // 5. Добавляем profile.json (если есть ProfileId)
-            if (document.ProfileId.HasValue)
+            if (options.IncludeStyleProfile && document.ProfileId.HasValue)
             {
                 try
                 {
@@ -1026,8 +1037,7 @@ public class DocumentService : IDocumentService
                 }
             }
 
-            // 6. Добавляем titlepage.json (если есть TitlePageId)
-            if (document.TitlePageId.HasValue)
+            if (options.IncludeTitlePage && document.TitlePageId.HasValue)
             {
                 try
                 {
@@ -1216,7 +1226,7 @@ public class DocumentService : IDocumentService
             try
             {
                 // Ищем существующий профиль по имени документа
-                var existingProfiles = await _profileService.GetProfilesAsync(userId, includePublic: true);
+                var existingProfiles = await _profileService.GetProfilesAsync(userId, includePublic: false);
                 var existingProfile = existingProfiles.FirstOrDefault(p => p.Name.Equals(finalDocumentName, StringComparison.OrdinalIgnoreCase));
 
                 if (existingProfile != null)

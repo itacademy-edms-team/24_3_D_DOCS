@@ -6,6 +6,7 @@ using RusalProject.Models.Entities;
 using RusalProject.Models.Types;
 using RusalProject.Provider.Database;
 using RusalProject.Services.Storage;
+using RusalProject.Services.Document;
 
 namespace RusalProject.Services.Profile;
 
@@ -346,7 +347,7 @@ public class ProfileService : IProfileService
         return dto;
     }
 
-    public async Task<List<ProfileDTO>> GetProfilesAsync(Guid userId, bool includePublic = true)
+    public async Task<List<ProfileDTO>> GetProfilesAsync(Guid userId, bool includePublic = false)
     {
         var query = _context.SchemaLinks.AsQueryable();
 
@@ -471,6 +472,15 @@ public class ProfileService : IProfileService
     {
         return await _context.SchemaLinks
             .AnyAsync(p => p.Id == profileId && (p.CreatorId == userId || p.IsPublic));
+    }
+
+    public async Task<Stream> ExportAsDdocAsync(Guid profileId, Guid userId)
+    {
+        var profile = await GetProfileWithDataAsync(profileId, userId);
+        if (profile?.Data == null)
+            throw new FileNotFoundException($"Profile {profileId} not found");
+        var json = JsonSerializer.Serialize(profile.Data, new JsonSerializerOptions { WriteIndented = true });
+        return await DdocTarUtil.CreateTarWithSingleFileAsync("profile.json", Encoding.UTF8.GetBytes(json));
     }
 
     private ProfileDTO MapToDTO(SchemaLink profile)

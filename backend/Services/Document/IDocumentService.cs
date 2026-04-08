@@ -24,6 +24,7 @@ public interface IDocumentService
     Task<bool> DocumentExistsAsync(Guid documentId, Guid userId);
     Task UpdatePdfPathAsync(Guid documentId, Guid userId, string pdfPath);
     Task<Stream> ExportDocumentAsync(Guid documentId, Guid userId);
+    Task<Stream> ExportDocumentAsync(Guid documentId, Guid userId, DdocBundleOptions options);
     Task<DocumentDTO> ImportDocumentAsync(Guid userId, Stream ddocStream, string? documentName = null);
 
     Task<List<TocItem>?> GetTableOfContentsAsync(Guid documentId, Guid userId);

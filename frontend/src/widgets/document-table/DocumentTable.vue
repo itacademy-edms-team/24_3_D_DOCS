@@ -38,23 +38,10 @@
 							</button>
 							<button
 								class="document-table__action-btn"
-								:class="{ 'document-table__action-btn--generating': isGeneratingPdf(document.id) }"
 								@click.stop="handleAction(document, 'export-pdf')"
-								:disabled="isGeneratingPdf(document.id)"
 								title="Экспорт PDF"
 							>
-								<span v-if="isGeneratingPdf(document.id)" class="document-table__spinner"></span>
-								<Icon v-else name="description" size="18" />
-							</button>
-							<button
-								class="document-table__action-btn"
-								:class="{ 'document-table__action-btn--generating': isGeneratingDdoc(document.id) }"
-								@click.stop="handleAction(document, 'export-ddoc')"
-								:disabled="isGeneratingDdoc(document.id)"
-								title="Экспорт .ddoc"
-							>
-								<span v-if="isGeneratingDdoc(document.id)" class="document-table__spinner"></span>
-								<Icon v-else name="archive" size="18" />
+								<Icon name="description" size="18" />
 							</button>
 							<button
 								class="document-table__action-btn document-table__action-btn--delete"
@@ -86,23 +73,13 @@ interface Props {
 	isLoading?: boolean;
 	sortBy?: 'name' | 'updatedAt';
 	sortOrder?: 'asc' | 'desc';
-	generatingStates?: Map<string, Set<'pdf' | 'ddoc'>>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	isLoading: false,
 	sortBy: 'updatedAt',
 	sortOrder: 'desc',
-	generatingStates: () => new Map(),
 });
-
-const isGeneratingPdf = (documentId: string): boolean => {
-	return props.generatingStates?.get(documentId)?.has('pdf') ?? false;
-};
-
-const isGeneratingDdoc = (documentId: string): boolean => {
-	return props.generatingStates?.get(documentId)?.has('ddoc') ?? false;
-};
 
 const emit = defineEmits<{
 	'update:sortBy': [field: 'name' | 'updatedAt'];

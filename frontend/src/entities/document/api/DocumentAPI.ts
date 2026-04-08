@@ -12,6 +12,13 @@ import type {
 	SaveDocumentVersionDTO,
 } from '../types';
 
+export interface GeneratePdfRequest {
+	titlePageId?: string;
+	includeDocument?: boolean;
+	includeStyleProfile?: boolean;
+	includeTitlePage?: boolean;
+}
+
 class DocumentAPI extends HttpClient {
 	constructor() {
 		super();
@@ -114,16 +121,57 @@ class DocumentAPI extends HttpClient {
 		return super.delete<void>(`/api/documents/${id}/versions/${versionId}`);
 	}
 
-	async generatePdf(id: string, titlePageId?: string): Promise<Blob> {
-		const params = titlePageId ? `?titlePageId=${titlePageId}` : '';
+	async generatePdf(
+		id: string,
+		options?: string | GeneratePdfRequest,
+	): Promise<Blob> {
+		const req: GeneratePdfRequest =
+			typeof options === 'string' || options === undefined
+				? { titlePageId: typeof options === 'string' ? options : undefined }
+				: options;
+		const params = new URLSearchParams();
+		if (req.titlePageId) params.set('titlePageId', req.titlePageId);
+		if (req.includeDocument !== undefined)
+			params.set('includeDocument', String(req.includeDocument));
+		if (req.includeStyleProfile !== undefined)
+			params.set('includeStyleProfile', String(req.includeStyleProfile));
+		if (req.includeTitlePage !== undefined)
+			params.set('includeTitlePage', String(req.includeTitlePage));
+		const q = params.toString();
 		return this.post<Blob>(
-			`/api/documents/${id}/pdf${params}`,
+			`/api/documents/${id}/pdf${q ? `?${q}` : ''}`,
 			{},
 			{
 				responseType: 'blob',
-				timeout: 10 * 60 * 1000, // 10 minutes timeout for PDF generation
+				timeout: 10 * 60 * 1000,
 			},
 		);
+	}
+
+	async previewPdfImport(file: File): Promise<{
+		files: { name: string; size: number; kind: string }[];
+	}> {
+		const form = new FormData();
+		form.append('file', file);
+		return this.post<{ files: { name: string; size: number; kind: string }[] }>(
+			'/api/documents/pdf-import/preview',
+			form,
+			{ headers: { 'Content-Type': 'multipart/form-data' } },
+		);
+	}
+
+	async importFromPdf(
+		file: File,
+		name?: string,
+		selectedFileName?: string,
+	): Promise<DocumentMeta> {
+		const form = new FormData();
+		form.append('file', file);
+		if (name) form.append('name', name);
+		if (selectedFileName) form.append('selectedFileName', selectedFileName);
+		return this.post<DocumentMeta, FormData>('/api/documents/pdf-import', form, {
+			headers: { 'Content-Type': 'multipart/form-data' },
+		});
 	}
 
 	async downloadPdf(id: string): Promise<Blob> {

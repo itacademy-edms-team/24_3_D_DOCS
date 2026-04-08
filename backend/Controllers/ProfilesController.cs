@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RusalProject.Models.DTOs.Profile;
 using RusalProject.Services.Profile;
+using System.IO;
 using System.Security.Claims;
 
 namespace RusalProject.Controllers;
@@ -38,7 +39,7 @@ public class ProfilesController : ControllerBase
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<ProfileDTO>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetProfiles([FromQuery] bool includePublic = true)
+    public async Task<IActionResult> GetProfiles([FromQuery] bool includePublic = false)
     {
         try
         {
@@ -145,6 +146,37 @@ public class ProfilesController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting profile {ProfileId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Экспорт профиля в .ddoc (TAR с profile.json)
+    /// </summary>
+    [HttpGet("{id}/export")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportProfileDdoc(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var profile = await _profileService.GetProfileByIdAsync(id, userId);
+            if (profile == null)
+                return NotFound(new { message = "Профиль не найден" });
+
+            var stream = await _profileService.ExportAsDdocAsync(id, userId);
+            if (stream.CanSeek)
+                stream.Position = 0;
+            return File(stream, "application/x-tar", $"{profile.Name}.ddoc");
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Профиль не найден" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting profile {ProfileId} as ddoc", id);
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }

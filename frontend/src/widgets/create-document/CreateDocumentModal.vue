@@ -22,6 +22,7 @@
 					v-model="form.profileId"
 					:options="profileOptions"
 					placeholder="Выберите профиль стилей"
+					:disabled="importFromPdf"
 				/>
 			</div>
 
@@ -31,63 +32,80 @@
 					v-model="form.titlePageId"
 					:options="titlePageOptions"
 					placeholder="Выберите титульную страницу (опционально)"
+					:disabled="importFromPdf"
 				/>
 			</div>
 
 			<div class="create-document-modal__field">
 				<label class="create-document-modal__label">
 					<input
-						v-model="importFromFile"
+						v-model="importFromPdf"
 						type="checkbox"
 						class="create-document-modal__checkbox"
-						:disabled="importFromDdoc"
 					/>
-					Импортировать из Markdown файла
+					Импортировать из PDF файла
 				</label>
-				<input
-					v-if="importFromFile"
-					type="file"
-					accept=".md,.markdown"
-					@change="handleFileSelect"
-					class="create-document-modal__file-input"
-				/>
 			</div>
 
-			<div class="create-document-modal__field">
-				<label class="create-document-modal__label">
-					<input
-						v-model="importFromDdoc"
-						type="checkbox"
-						class="create-document-modal__checkbox"
-						:disabled="importFromFile"
-					/>
-					Импортировать из .ddoc файла
-				</label>
+			<div
+				v-if="importFromPdf"
+				class="create-document-modal__drop"
+				:class="{ 'create-document-modal__drop--active': isDragging }"
+				@dragenter.prevent="isDragging = true"
+				@dragleave.prevent="onDragLeave"
+				@dragover.prevent
+				@drop.prevent="onDrop"
+			>
 				<input
-					v-if="importFromDdoc"
+					ref="pdfInputRef"
 					type="file"
-					accept=".ddoc"
-					@change="handleDdocSelect"
-					class="create-document-modal__file-input"
+					accept="application/pdf,.pdf"
+					class="create-document-modal__file-input-hidden"
+					@change="onPdfFileChange"
 				/>
+				<p v-if="!pdfFile" class="create-document-modal__drop-hint" @click="pdfInputRef?.click()">
+					Перетащите PDF сюда или нажмите, чтобы выбрать
+				</p>
+				<template v-else>
+					<div class="create-document-modal__pdf-name">
+						{{ pdfFile.name }} ({{ (pdfFile.size / 1024).toFixed(1) }} КБ)
+						<button type="button" class="create-document-modal__clear" @click="clearPdf">×</button>
+					</div>
+					<p v-if="isPreviewLoading" class="create-document-modal__status">Анализ вложений…</p>
+					<div v-else-if="pdfPreviewList.length" class="create-document-modal__embed-list">
+						<div class="create-document-modal__embed-title">Вложения в PDF</div>
+						<label
+							v-for="f in pdfPreviewList"
+							:key="f.name"
+							class="create-document-modal__embed-row"
+						>
+							<input v-model="selectedNames[f.name]" type="checkbox" />
+							<span class="name">{{ f.name }}</span>
+							<span class="meta">{{ f.kind === 'ddoc' ? 'пакет' : 'файл' }} ·
+								{{ (f.size / 1024).toFixed(1) }} КБ</span>
+						</label>
+					</div>
+					<p v-else class="create-document-modal__status">Вложения не найдены</p>
+				</template>
 			</div>
 		</div>
 
 		<template #footer>
 			<Button variant="secondary" @click="handleClose">Отмена</Button>
-			<Button 
-				v-if="!importFromDdoc"
-				@click="handleCreate" 
+			<Button
+				v-if="!importFromPdf"
+				@click="handleCreate"
 				:isLoading="isCreating"
 			>
 				Создать
 			</Button>
-			<Button 
+			<Button
 				v-else
-				disabled
-				:isLoading="isImportingDdoc"
+				:disabled="!canImportFromPdf"
+				:isLoading="isImportingPdf"
+				@click="handleImportPdf"
 			>
-				{{ isImportingDdoc ? 'Импорт...' : 'Выберите .ddoc файл' }}
+				{{ isImportingPdf ? 'Импорт...' : 'Импорт' }}
 			</Button>
 		</template>
 	</Modal>
@@ -126,10 +144,15 @@ const form = ref({
 	initialContent: '',
 });
 
-const importFromFile = ref(false);
-const importFromDdoc = ref(false);
+const importFromPdf = ref(false);
+const pdfFile = ref<File | null>(null);
+const pdfInputRef = ref<HTMLInputElement | null>(null);
+const isDragging = ref(false);
+const isPreviewLoading = ref(false);
+const pdfPreviewList = ref<{ name: string; size: number; kind: string }[]>([]);
+const selectedNames = ref<Record<string, boolean>>({});
 const isCreating = ref(false);
-const isImportingDdoc = ref(false);
+const isImportingPdf = ref(false);
 const profiles = ref<Profile[]>([]);
 const titlePages = ref<any[]>([]);
 
@@ -142,6 +165,16 @@ const titlePageOptions = computed(() => [
 	...titlePages.value.map((tp) => ({ value: tp.id, label: tp.name })),
 ]);
 
+const canImportFromPdf = computed(() => {
+	if (!pdfFile.value) return false;
+	if (isPreviewLoading.value) return false;
+	const ddocPicks = pdfPreviewList.value.filter(
+		(f) => f.kind === 'ddoc' && selectedNames.value[f.name],
+	);
+	if (ddocPicks.length > 0) return true;
+	return false;
+});
+
 const handleClose = () => {
 	isOpen.value = false;
 	form.value = {
@@ -150,49 +183,69 @@ const handleClose = () => {
 		titlePageId: undefined,
 		initialContent: '',
 	};
-	importFromFile.value = false;
-	importFromDdoc.value = false;
+	importFromPdf.value = false;
+	clearPdfState();
 };
 
-const handleFileSelect = async (e: Event) => {
-	const target = e.target as HTMLInputElement;
-	const file = target.files?.[0];
-	if (file) {
-		const text = await file.text();
-		form.value.initialContent = text;
-		if (!form.value.name) {
-			form.value.name = file.name.replace(/\.(md|markdown)$/i, '');
-		}
-	}
+const clearPdfState = () => {
+	pdfFile.value = null;
+	pdfPreviewList.value = [];
+	selectedNames.value = {};
+	isPreviewLoading.value = false;
+	if (pdfInputRef.value) pdfInputRef.value.value = '';
 };
 
-const handleDdocSelect = async (e: Event) => {
-	const target = e.target as HTMLInputElement;
-	const file = target.files?.[0];
-	if (!file) return;
+const onDragLeave = (e: DragEvent) => {
+	if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+	isDragging.value = false;
+};
 
-	// Валидация расширения
-	if (!file.name.toLowerCase().endsWith('.ddoc')) {
-		alert('Файл должен иметь расширение .ddoc');
-		target.value = '';
+async function setPdfFile(file: File) {
+	if (!file.name.toLowerCase().endsWith('.pdf') && !file.type.includes('pdf')) {
+		alert('Нужен файл PDF');
 		return;
 	}
-
-	isImportingDdoc.value = true;
-	try {
-		const documentName = form.value.name.trim() || undefined;
-		const document = await DocumentAPI.importDocument(file, documentName);
-		emit('created', document.id);
-		handleClose();
-	} catch (error: any) {
-		console.error('Failed to import .ddoc:', error);
-		const errorMessage = error?.message || error?.response?.data?.message || 'Ошибка при импорте документа';
-		alert(`Ошибка при импорте документа: ${errorMessage}`);
-	} finally {
-		isImportingDdoc.value = false;
-		target.value = '';
+	pdfFile.value = file;
+	if (!form.value.name.trim()) {
+		form.value.name = file.name.replace(/\.pdf$/i, '');
 	}
-};
+	isPreviewLoading.value = true;
+	pdfPreviewList.value = [];
+	try {
+		const { files } = await DocumentAPI.previewPdfImport(file);
+		pdfPreviewList.value = files;
+		const sel: Record<string, boolean> = {};
+		for (const f of files) {
+			if (f.kind === 'ddoc' || f.name.toLowerCase().endsWith('.ddoc')) sel[f.name] = true;
+		}
+		selectedNames.value = sel;
+	} catch (e) {
+		console.error(e);
+		alert('Не удалось прочитать вложения PDF');
+	} finally {
+		isPreviewLoading.value = false;
+	}
+}
+
+function onDrop(e: DragEvent) {
+	isDragging.value = false;
+	const f = e.dataTransfer?.files?.[0];
+	if (f) void setPdfFile(f);
+}
+
+function onPdfFileChange(e: Event) {
+	const t = e.target as HTMLInputElement;
+	const f = t.files?.[0];
+	if (f) void setPdfFile(f);
+}
+
+function clearPdf() {
+	clearPdfState();
+}
+
+watch(importFromPdf, (v) => {
+	if (!v) clearPdfState();
+});
 
 const handleCreate = async () => {
 	if (!form.value.name.trim()) {
@@ -202,10 +255,10 @@ const handleCreate = async () => {
 
 	isCreating.value = true;
 	try {
-		// Преобразуем пустую строку в undefined для titlePageId
-		const titlePageId = form.value.titlePageId === '' || !form.value.titlePageId 
-			? undefined 
-			: form.value.titlePageId;
+		const titlePageId =
+			form.value.titlePageId === '' || !form.value.titlePageId
+				? undefined
+				: form.value.titlePageId;
 
 		const document = await DocumentAPI.create({
 			name: form.value.name,
@@ -217,10 +270,37 @@ const handleCreate = async () => {
 		handleClose();
 	} catch (error: any) {
 		console.error('Failed to create document:', error);
-		const errorMessage = error?.message || error?.response?.data?.message || 'Ошибка при создании документа';
+		const errorMessage =
+			error?.message || error?.response?.data?.message || 'Ошибка при создании документа';
 		alert(`Ошибка при создании документа: ${errorMessage}`);
 	} finally {
 		isCreating.value = false;
+	}
+};
+
+const handleImportPdf = async () => {
+	if (!pdfFile.value || !canImportFromPdf.value) return;
+	const ddocPicks = pdfPreviewList.value.filter(
+		(f) => (f.kind === 'ddoc' || f.name.toLowerCase().endsWith('.ddoc')) && selectedNames.value[f.name],
+	);
+	if (ddocPicks.length === 0) {
+		alert('Выберите вложение с пакетом .ddoc');
+		return;
+	}
+	const name = ddocPicks[0]!.name;
+	isImportingPdf.value = true;
+	try {
+		const documentName = form.value.name.trim() || undefined;
+		const doc = await DocumentAPI.importFromPdf(pdfFile.value, documentName, name);
+		emit('created', doc.id);
+		handleClose();
+	} catch (error: any) {
+		console.error('Failed to import from PDF:', error);
+		const errorMessage =
+			error?.message || error?.response?.data?.message || 'Ошибка при импорте';
+		alert(`Ошибка: ${errorMessage}`);
+	} finally {
+		isImportingPdf.value = false;
 	}
 };
 
@@ -278,7 +358,83 @@ watch(isOpen, async (open) => {
 	margin-right: var(--spacing-xs);
 }
 
-.create-document-modal__file-input {
-	margin-top: var(--spacing-xs);
+.create-document-modal__drop {
+	border: 2px dashed var(--border-color);
+	border-radius: var(--radius-md);
+	padding: var(--spacing-md);
+	min-height: 100px;
+	transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.create-document-modal__drop--active {
+	border-color: var(--accent);
+	background: var(--bg-secondary);
+}
+
+.create-document-modal__file-input-hidden {
+	display: none;
+}
+
+.create-document-modal__drop-hint {
+	margin: 0;
+	text-align: center;
+	cursor: pointer;
+	color: var(--text-secondary);
+}
+
+.create-document-modal__pdf-name {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-weight: 500;
+}
+
+.create-document-modal__clear {
+	border: none;
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	font-size: 20px;
+	line-height: 1;
+	padding: 0 4px;
+}
+
+.create-document-modal__status {
+	margin: 8px 0 0;
+	font-size: 13px;
+	color: var(--text-secondary);
+}
+
+.create-document-modal__embed-list {
+	margin-top: var(--spacing-sm);
+}
+
+.create-document-modal__embed-title {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--text-secondary);
+	margin-bottom: 8px;
+}
+
+.create-document-modal__embed-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--border-color);
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.create-document-modal__embed-row .name {
+	font-weight: 500;
+}
+.create-document-modal__embed-row .meta {
+	display: block;
+	margin-left: 24px;
+	font-size: 12px;
+	color: var(--text-secondary);
 }
 </style>

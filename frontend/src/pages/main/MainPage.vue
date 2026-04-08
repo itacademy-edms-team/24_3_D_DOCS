@@ -69,6 +69,19 @@
 					{{ activeTab === 'docs' ? 'Все документы' : activeTab === 'profiles' ? 'Профили стилей' : 'Титульные листы' }}
 				</h1>
 				<div class="header-actions">
+					<button
+						type="button"
+						class="main-page__share-btn"
+						title="Поделиться / экспорт"
+						aria-label="Поделиться"
+						@click="openShareExportModal"
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+							<path
+								d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"
+							/>
+						</svg>
+					</button>
 					<Button
 						v-if="activeTab === 'profiles' || activeTab === 'shared'"
 						@click="handleCreateProfileOrTitlePage"
@@ -118,7 +131,6 @@
 						:isLoading="isLoading"
 						:sortBy="sortBy"
 						:sortOrder="sortOrder"
-						:generatingStates="generatingStates"
 						@update:sortBy="sortBy = $event"
 						@update:sortOrder="sortOrder = $event"
 						@row-click="handleItemClick"
@@ -157,6 +169,13 @@
 											title="Открыть"
 										>
 											<Icon name="folder_open" size="18" />
+										</button>
+										<button
+											class="items-table__action-btn"
+											@click.stop="handleProfileExportDdoc(item)"
+											title="Экспорт .ddoc"
+										>
+											<Icon name="archive" size="18" />
 										</button>
 										<button
 											class="items-table__action-btn items-table__action-btn--delete"
@@ -211,6 +230,13 @@
 											<Icon name="folder_open" size="18" />
 										</button>
 										<button
+											class="items-table__action-btn"
+											@click.stop="handleTitlePageExportDdoc(item)"
+											title="Экспорт .ddoc"
+										>
+											<Icon name="archive" size="18" />
+										</button>
+										<button
 											class="items-table__action-btn items-table__action-btn--delete"
 											@click.stop="handleTitlePageDelete(item)"
 											title="Удалить"
@@ -250,6 +276,13 @@
 			@created="handleTitlePageCreatedFromModal"
 		/>
 
+		<ExportPdfModal
+			v-model="showExportPdfModal"
+			:with-entity-picker="exportModalWithPicker"
+			:document-id="exportModalDocumentId"
+			:document-name="exportModalDocumentName"
+		/>
+
 		<!-- AI Panel (Chat Dock) -->
 		<ChatDock
 			v-model:open="showAIPanel"
@@ -269,6 +302,7 @@ import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import DocumentTable from '@/widgets/document-table/DocumentTable.vue';
+import ExportPdfModal from '@/widgets/export-pdf-modal/ExportPdfModal.vue';
 import CreateDocumentModal from '@/widgets/create-document/CreateDocumentModal.vue';
 import CreateTitlePageModal from '@/widgets/create-title-page/CreateTitlePageModal.vue';
 import InfoBanner from '@/widgets/info-banner/InfoBanner.vue';
@@ -277,12 +311,6 @@ import ChatDock from '@/features/agent/ChatDock.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import Icon from '@/components/Icon.vue';
 import { getDefaultProfileData } from '@/utils/profileDefaults';
-import {
-	saveGenerationState,
-	removeGenerationState,
-	getGenerationStates,
-	isGenerating,
-} from '@/utils/generationState';
 import type { Profile } from '@/entities/profile/types';
 import type { DocumentMeta } from '@/entities/document/types';
 
@@ -303,9 +331,10 @@ const showCreateModal = ref(false);
 const showCreateTitlePageModal = ref(false);
 const isCreating = ref(false);
 const showAIPanel = ref(false);
-
-// Состояние генерации для каждого документа
-const generatingStates = ref<Map<string, Set<'pdf' | 'ddoc'>>>(new Map());
+const showExportPdfModal = ref(false);
+const exportModalWithPicker = ref(false);
+const exportModalDocumentId = ref<string | undefined>(undefined);
+const exportModalDocumentName = ref<string | undefined>(undefined);
 
 const user = computed(() => authStore.user);
 
@@ -507,28 +536,18 @@ function handleDocumentCreated(documentId: string) {
 	loadData();
 }
 
-function updateGeneratingState(documentId: string, type: 'pdf' | 'ddoc', isGenerating: boolean) {
-	if (!generatingStates.value.has(documentId)) {
-		generatingStates.value.set(documentId, new Set());
-	}
-	const types = generatingStates.value.get(documentId)!;
-	if (isGenerating) {
-		types.add(type);
-	} else {
-		types.delete(type);
-	}
-	if (types.size === 0) {
-		generatingStates.value.delete(documentId);
-	}
+function openShareExportModal() {
+	exportModalWithPicker.value = true;
+	exportModalDocumentId.value = undefined;
+	exportModalDocumentName.value = undefined;
+	showExportPdfModal.value = true;
 }
 
 function handleDocumentAction(document: DocumentMeta, action: string) {
 	if (action === 'open') {
 		router.push(`/document/${document.id}`);
 	} else if (action === 'export-pdf') {
-		handleExportPdf(document);
-	} else if (action === 'export-ddoc') {
-		handleExportDdoc(document);
+		openDocumentExportModal(document);
 	} else if (action === 'delete') {
 		handleDelete(document);
 	}
@@ -536,72 +555,39 @@ function handleDocumentAction(document: DocumentMeta, action: string) {
 
 function downloadFile(blob: Blob, filename: string) {
 	const url = URL.createObjectURL(blob);
-	const link = window.document.createElement('a');
-	link.href = url;
-	link.download = filename;
-	window.document.body.appendChild(link);
-	link.click();
-	window.document.body.removeChild(link);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = filename;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
 	URL.revokeObjectURL(url);
 }
 
-async function handleExportPdf(document: DocumentMeta) {
-	if (isGenerating(document.id, 'pdf')) {
-		return; // Уже идет генерация
-	}
+function openDocumentExportModal(document: DocumentMeta) {
+	exportModalWithPicker.value = false;
+	exportModalDocumentId.value = document.id;
+	exportModalDocumentName.value = document.name;
+	showExportPdfModal.value = true;
+}
 
-	// Сохраняем состояние генерации
-	saveGenerationState(document.id, 'pdf');
-	updateGeneratingState(document.id, 'pdf', true);
-
+async function handleProfileExportDdoc(item: Profile) {
 	try {
-		const blob = await DocumentAPI.generatePdf(document.id);
-		downloadFile(blob, `${document.name}.pdf`);
-	} catch (error: any) {
-		console.error('Failed to export PDF:', error);
-		let errorMessage = 'Ошибка при экспорте PDF. ';
-		if (error?.response?.status === 500) {
-			errorMessage += 'Ошибка на сервере при генерации PDF.';
-		} else if (error?.response?.status === 404) {
-			errorMessage += 'Документ не найден.';
-		} else if (error?.message) {
-			errorMessage += error.message;
-		}
-		alert(errorMessage);
-	} finally {
-		// Удаляем состояние генерации
-		removeGenerationState(document.id, 'pdf');
-		updateGeneratingState(document.id, 'pdf', false);
+		const blob = await ProfileAPI.exportDdoc(item.id);
+		downloadFile(blob, `${item.name}.ddoc`);
+	} catch (e) {
+		console.error(e);
+		alert('Не удалось скачать .ddoc');
 	}
 }
 
-async function handleExportDdoc(document: DocumentMeta) {
-	if (isGenerating(document.id, 'ddoc')) {
-		return; // Уже идет генерация
-	}
-
-	// Сохраняем состояние генерации
-	saveGenerationState(document.id, 'ddoc');
-	updateGeneratingState(document.id, 'ddoc', true);
-
+async function handleTitlePageExportDdoc(item: { id: string; name: string }) {
 	try {
-		const blob = await DocumentAPI.exportDocument(document.id);
-		downloadFile(blob, `${document.name}.ddoc`);
-	} catch (error: any) {
-		console.error('Failed to export .ddoc:', error);
-		let errorMessage = 'Ошибка при экспорте документа. ';
-		if (error?.response?.status === 500) {
-			errorMessage += 'Ошибка на сервере при экспорте.';
-		} else if (error?.response?.status === 404) {
-			errorMessage += 'Документ не найден.';
-		} else if (error?.message) {
-			errorMessage += error.message;
-		}
-		alert(errorMessage);
-	} finally {
-		// Удаляем состояние генерации
-		removeGenerationState(document.id, 'ddoc');
-		updateGeneratingState(document.id, 'ddoc', false);
+		const blob = await TitlePageAPI.exportDdoc(item.id);
+		downloadFile(blob, `${item.name}.ddoc`);
+	} catch (e) {
+		console.error(e);
+		alert('Не удалось скачать .ddoc');
 	}
 }
 
@@ -647,14 +633,6 @@ watch([activeTab, debouncedSearchQuery], () => {
 });
 
 onMounted(async () => {
-	// Восстанавливаем состояние генерации из localStorage
-	// Это позволяет видеть процесс генерации даже после обновления страницы
-	const savedStates = getGenerationStates();
-	savedStates.forEach((state) => {
-		updateGeneratingState(state.documentId, state.type, true);
-	});
-
-	// Проверяем авторизацию перед загрузкой данных
 	if (authStore.isAuth) {
 		try {
 			await authStore.checkAuth();
@@ -928,6 +906,25 @@ onMounted(async () => {
 	gap: 1rem;
 	flex-wrap: nowrap;
 	white-space: nowrap;
+}
+
+.main-page__share-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
+	color: var(--text-primary);
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+.main-page__share-btn:hover {
+	border-color: var(--accent);
+	color: var(--accent);
 }
 
 .main-page__ai-btn {

@@ -11,7 +11,7 @@ class ProfileAPI extends HttpClient {
 		super();
 	}
 
-	async getAll(includePublic = true): Promise<Profile[]> {
+	async getAll(includePublic = false): Promise<Profile[]> {
 		const params = includePublic ? '?includePublic=true' : '';
 		return this.get<Profile[]>(`/api/profiles${params}`);
 	}
@@ -34,6 +34,10 @@ class ProfileAPI extends HttpClient {
 
 	async duplicate(id: string, name?: string): Promise<Profile> {
 		return this.post<Profile>(`/api/profiles/${id}/duplicate`, { name });
+	}
+
+	async exportDdoc(id: string): Promise<Blob> {
+		return this.getBlob(`/api/profiles/${id}/export`);
 	}
 }
 

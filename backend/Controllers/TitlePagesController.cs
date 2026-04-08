@@ -85,6 +85,37 @@ public class TitlePagesController : ControllerBase
     }
 
     /// <summary>
+    /// Экспорт титульной страницы в .ddoc (TAR с titlepage.json)
+    /// </summary>
+    [HttpGet("{id}/export")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportTitlePageDdoc(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var titlePage = await _titlePageService.GetTitlePageByIdAsync(id, userId);
+            if (titlePage == null)
+                return NotFound(new { message = "Титульная страница не найдена" });
+
+            var stream = await _titlePageService.ExportAsDdocAsync(id, userId);
+            if (stream.CanSeek)
+                stream.Position = 0;
+            return File(stream, "application/x-tar", $"{titlePage.Name}.ddoc");
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound(new { message = "Титульная страница не найдена" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting title page {TitlePageId} as ddoc", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
     /// Импорт титульной страницы с первой страницы PDF (текстовый слой и горизонтальные линии).
     /// </summary>
     [HttpPost("import-pdf")]
