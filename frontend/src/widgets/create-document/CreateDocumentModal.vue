@@ -73,16 +73,21 @@
 					</div>
 					<p v-if="isPreviewLoading" class="create-document-modal__status">Анализ вложений…</p>
 					<div v-else-if="pdfPreviewList.length" class="create-document-modal__embed-list">
-						<div class="create-document-modal__embed-title">Вложения в PDF</div>
-						<label
-							v-for="f in pdfPreviewList"
-							:key="f.name"
-							class="create-document-modal__embed-row"
-						>
-							<input v-model="selectedNames[f.name]" type="checkbox" />
-							<span class="name">{{ f.name }}</span>
-							<span class="meta">{{ f.kind === 'ddoc' ? 'пакет' : 'файл' }} ·
-								{{ (f.size / 1024).toFixed(1) }} КБ</span>
+						<div class="create-document-modal__embed-title">Что импортировать из архива</div>
+						<label class="create-document-modal__embed-row create-document-modal__embed-row--fixed">
+							<input :checked="true" type="checkbox" disabled />
+							<span class="name">Документ</span>
+							<span class="meta">текст и вложения · {{ formatKb(bundleDocumentSize) }}</span>
+						</label>
+						<label v-if="hasBundleStyleProfile" class="create-document-modal__embed-row">
+							<input v-model="includeBundleStyleProfile" type="checkbox" />
+							<span class="name">Профиль стилей</span>
+							<span class="meta">настройки вёрстки · {{ formatKb(bundleStyleProfileSize) }}</span>
+						</label>
+						<label v-if="hasBundleTitlePage" class="create-document-modal__embed-row">
+							<input v-model="includeBundleTitlePage" type="checkbox" />
+							<span class="name">Титульник</span>
+							<span class="meta">шаблон титульного листа · {{ formatKb(bundleTitlePageSize) }}</span>
 						</label>
 					</div>
 					<p v-else class="create-document-modal__status">Вложения не найдены</p>
@@ -117,6 +122,7 @@ import Modal from '@/shared/ui/Modal/Modal.vue';
 import Dropdown from '@/shared/ui/Dropdown/Dropdown.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
+import type { PdfImportBundleParts } from '@/entities/document/api/DocumentAPI';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import type { Profile } from '@/entities/profile/types';
@@ -130,6 +136,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
 	'update:modelValue': [value: boolean];
 	created: [documentId: string];
+	imported: [documentId: string];
 }>();
 
 const isOpen = computed({
@@ -150,7 +157,10 @@ const pdfInputRef = ref<HTMLInputElement | null>(null);
 const isDragging = ref(false);
 const isPreviewLoading = ref(false);
 const pdfPreviewList = ref<{ name: string; size: number; kind: string }[]>([]);
-const selectedNames = ref<Record<string, boolean>>({});
+const selectedDdocName = ref('');
+const bundleParts = ref<PdfImportBundleParts | null>(null);
+const includeBundleStyleProfile = ref(true);
+const includeBundleTitlePage = ref(true);
 const isCreating = ref(false);
 const isImportingPdf = ref(false);
 const profiles = ref<Profile[]>([]);
@@ -168,12 +178,14 @@ const titlePageOptions = computed(() => [
 const canImportFromPdf = computed(() => {
 	if (!pdfFile.value) return false;
 	if (isPreviewLoading.value) return false;
-	const ddocPicks = pdfPreviewList.value.filter(
-		(f) => f.kind === 'ddoc' && selectedNames.value[f.name],
-	);
-	if (ddocPicks.length > 0) return true;
-	return false;
+	return Boolean(selectedDdocName.value && bundleParts.value?.hasDocument);
 });
+
+const hasBundleStyleProfile = computed(() => bundleParts.value?.hasStyleProfile === true);
+const hasBundleTitlePage = computed(() => bundleParts.value?.hasTitlePage === true);
+const bundleDocumentSize = computed(() => bundleParts.value?.documentSize ?? 0);
+const bundleStyleProfileSize = computed(() => bundleParts.value?.styleProfileSize ?? 0);
+const bundleTitlePageSize = computed(() => bundleParts.value?.titlePageSize ?? 0);
 
 const handleClose = () => {
 	isOpen.value = false;
@@ -190,7 +202,10 @@ const handleClose = () => {
 const clearPdfState = () => {
 	pdfFile.value = null;
 	pdfPreviewList.value = [];
-	selectedNames.value = {};
+	selectedDdocName.value = '';
+	bundleParts.value = null;
+	includeBundleStyleProfile.value = true;
+	includeBundleTitlePage.value = true;
 	isPreviewLoading.value = false;
 	if (pdfInputRef.value) pdfInputRef.value.value = '';
 };
@@ -212,13 +227,18 @@ async function setPdfFile(file: File) {
 	isPreviewLoading.value = true;
 	pdfPreviewList.value = [];
 	try {
-		const { files } = await DocumentAPI.previewPdfImport(file);
+		const { files, bundleParts: previewBundleParts } = await DocumentAPI.previewPdfImport(file);
 		pdfPreviewList.value = files;
-		const sel: Record<string, boolean> = {};
+		bundleParts.value = previewBundleParts;
+		let firstDdocName = '';
 		for (const f of files) {
-			if (f.kind === 'ddoc' || f.name.toLowerCase().endsWith('.ddoc')) sel[f.name] = true;
+			if ((f.kind === 'ddoc' || f.name.toLowerCase().endsWith('.ddoc')) && !firstDdocName) {
+				firstDdocName = f.name;
+			}
 		}
-		selectedNames.value = sel;
+		selectedDdocName.value = firstDdocName;
+		includeBundleStyleProfile.value = previewBundleParts?.hasStyleProfile ?? false;
+		includeBundleTitlePage.value = previewBundleParts?.hasTitlePage ?? false;
 	} catch (e) {
 		console.error(e);
 		alert('Не удалось прочитать вложения PDF');
@@ -280,19 +300,24 @@ const handleCreate = async () => {
 
 const handleImportPdf = async () => {
 	if (!pdfFile.value || !canImportFromPdf.value) return;
-	const ddocPicks = pdfPreviewList.value.filter(
-		(f) => (f.kind === 'ddoc' || f.name.toLowerCase().endsWith('.ddoc')) && selectedNames.value[f.name],
-	);
-	if (ddocPicks.length === 0) {
+	if (!selectedDdocName.value) {
 		alert('Выберите вложение с пакетом .ddoc');
 		return;
 	}
-	const name = ddocPicks[0]!.name;
 	isImportingPdf.value = true;
 	try {
 		const documentName = form.value.name.trim() || undefined;
-		const doc = await DocumentAPI.importFromPdf(pdfFile.value, documentName, name);
-		emit('created', doc.id);
+		const doc = await DocumentAPI.importFromPdf(
+			pdfFile.value,
+			documentName,
+			selectedDdocName.value,
+			{
+				includeDocument: true,
+				includeStyleProfile: includeBundleStyleProfile.value,
+				includeTitlePage: includeBundleTitlePage.value,
+			},
+		);
+		emit('imported', doc.id);
 		handleClose();
 	} catch (error: any) {
 		console.error('Failed to import from PDF:', error);
@@ -318,6 +343,10 @@ watch(isOpen, async (open) => {
 		}
 	}
 });
+
+function formatKb(bytes: number): string {
+	return `${(bytes / 1024).toFixed(1)} КБ`;
+}
 </script>
 
 <style scoped>
@@ -426,6 +455,10 @@ watch(isOpen, async (open) => {
 	border-bottom: 1px solid var(--border-color);
 	font-size: 14px;
 	cursor: pointer;
+}
+
+.create-document-modal__embed-row--fixed {
+	opacity: 0.9;
 }
 
 .create-document-modal__embed-row .name {

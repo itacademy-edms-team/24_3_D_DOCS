@@ -269,7 +269,16 @@
 		<CreateDocumentModal
 			v-model="showCreateModal"
 			@created="handleDocumentCreated"
+			@imported="handleFilesImported"
 		/>
+
+		<Modal v-model="showImportSuccessModal" title="Импорт завершен" size="sm">
+			<p class="main-page__import-message">Файлы успешно импортированы</p>
+			<template #footer>
+				<Button :disabled="!importedDocumentId" @click="goToImportedDocument">К документу</Button>
+				<Button variant="secondary" @click="closeImportSuccessModal">Ок</Button>
+			</template>
+		</Modal>
 
 		<CreateTitlePageModal
 			v-model="showCreateTitlePageModal"
@@ -308,6 +317,7 @@ import CreateTitlePageModal from '@/widgets/create-title-page/CreateTitlePageMod
 import InfoBanner from '@/widgets/info-banner/InfoBanner.vue';
 import ThemeToggle from '@/features/theme-toggle/ThemeToggle.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
+import Modal from '@/shared/ui/Modal/Modal.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import Icon from '@/components/Icon.vue';
 import { getDefaultProfileData } from '@/utils/profileDefaults';
@@ -335,6 +345,8 @@ const showExportPdfModal = ref(false);
 const exportModalWithPicker = ref(false);
 const exportModalDocumentId = ref<string | undefined>(undefined);
 const exportModalDocumentName = ref<string | undefined>(undefined);
+const showImportSuccessModal = ref(false);
+const importedDocumentId = ref<string | null>(null);
 
 const user = computed(() => authStore.user);
 
@@ -534,6 +546,24 @@ function handleNewProject() {
 function handleDocumentCreated(documentId: string) {
 	router.push(`/document/${documentId}`);
 	loadData();
+}
+
+function handleFilesImported(documentId: string) {
+	importedDocumentId.value = documentId;
+	showImportSuccessModal.value = true;
+	loadData();
+}
+
+function closeImportSuccessModal() {
+	showImportSuccessModal.value = false;
+	importedDocumentId.value = null;
+}
+
+function goToImportedDocument() {
+	if (!importedDocumentId.value) return;
+	const id = importedDocumentId.value;
+	closeImportSuccessModal();
+	router.push(`/document/${id}`);
 }
 
 function openShareExportModal() {
@@ -949,6 +979,12 @@ onMounted(async () => {
 	background: var(--accent);
 	color: white;
 	border-color: var(--accent);
+}
+
+.main-page__import-message {
+	margin: 0;
+	font-size: 14px;
+	color: var(--text-primary);
 }
 
 .search-section {

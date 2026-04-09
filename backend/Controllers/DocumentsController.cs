@@ -771,10 +771,31 @@ public class DocumentsController : ControllerBase
         await using var input = file.OpenReadStream();
         using var ms = new MemoryStream();
         await input.CopyToAsync(ms);
-        var list = PdfDdocImportHelper.ListEmbeddedFiles(ms.ToArray());
+        var pdfBytes = ms.ToArray();
+        var list = PdfDdocImportHelper.ListEmbeddedFiles(pdfBytes);
+        DdocBundlePartsPreview? parts = null;
+        var ddoc = list.FirstOrDefault(
+            f => f.Kind == "ddoc" || f.Name.EndsWith(".ddoc", StringComparison.OrdinalIgnoreCase));
+        if (ddoc != null)
+        {
+            var ddocBytes = PdfDdocImportHelper.GetEmbeddedFileBytes(pdfBytes, ddoc.Name);
+            if (ddocBytes is { Length: > 0 })
+                parts = PdfDdocImportHelper.InspectDdocBundle(ddocBytes);
+        }
         return Ok(new
         {
             files = list.Select(f => new { f.Name, f.Size, f.Kind }).ToList(),
+            bundleParts = parts == null
+                ? null
+                : new
+                {
+                    hasDocument = parts.HasDocument,
+                    documentSize = parts.DocumentSize,
+                    hasStyleProfile = parts.HasStyleProfile,
+                    styleProfileSize = parts.StyleProfileSize,
+                    hasTitlePage = parts.HasTitlePage,
+                    titlePageSize = parts.TitlePageSize,
+                },
         });
     }
 
@@ -821,6 +842,15 @@ public class DocumentsController : ControllerBase
                 return BadRequest(
                     new { message = "В PDF нет вложенного .ddoc или не удалось прочитать вложение" });
             }
+
+            var includeDocument = form.IncludeDocument ?? true;
+            var includeStyleProfile = form.IncludeStyleProfile ?? true;
+            var includeTitlePage = form.IncludeTitlePage ?? true;
+            ddoc = PdfDdocImportHelper.FilterDdocBundle(
+                ddoc,
+                includeDocument,
+                includeStyleProfile,
+                includeTitlePage);
 
             var userId = GetUserId();
             var baseName = form.Name?.Trim();
@@ -892,4 +922,7 @@ public class PdfDocumentFromPdfImportForm
     public IFormFile? File { get; set; }
     public string? Name { get; set; }
     public string? SelectedFileName { get; set; }
+    public bool? IncludeDocument { get; set; }
+    public bool? IncludeStyleProfile { get; set; }
+    public bool? IncludeTitlePage { get; set; }
 }

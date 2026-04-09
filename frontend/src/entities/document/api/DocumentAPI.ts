@@ -22,6 +22,15 @@ export interface GeneratePdfRequest {
 	includeTitlePage?: boolean;
 }
 
+export interface PdfImportBundleParts {
+	hasDocument: boolean;
+	documentSize: number;
+	hasStyleProfile: boolean;
+	styleProfileSize: number;
+	hasTitlePage: boolean;
+	titlePageSize: number;
+}
+
 class DocumentAPI extends HttpClient {
 	constructor() {
 		super();
@@ -154,10 +163,14 @@ class DocumentAPI extends HttpClient {
 
 	async previewPdfImport(file: File): Promise<{
 		files: { name: string; size: number; kind: string }[];
+		bundleParts: PdfImportBundleParts | null;
 	}> {
 		const form = new FormData();
 		form.append('file', file);
-		return this.post<{ files: { name: string; size: number; kind: string }[] }>(
+		return this.post<{
+			files: { name: string; size: number; kind: string }[];
+			bundleParts: PdfImportBundleParts | null;
+		}>(
 			'/api/documents/pdf-import/preview',
 			form,
 			{ headers: { 'Content-Type': 'multipart/form-data' } },
@@ -168,11 +181,22 @@ class DocumentAPI extends HttpClient {
 		file: File,
 		name?: string,
 		selectedFileName?: string,
+		options?: {
+			includeDocument?: boolean;
+			includeStyleProfile?: boolean;
+			includeTitlePage?: boolean;
+		},
 	): Promise<DocumentMeta> {
 		const form = new FormData();
 		form.append('file', file);
 		if (name) form.append('name', name);
 		if (selectedFileName) form.append('selectedFileName', selectedFileName);
+		if (options?.includeDocument !== undefined)
+			form.append('includeDocument', String(options.includeDocument));
+		if (options?.includeStyleProfile !== undefined)
+			form.append('includeStyleProfile', String(options.includeStyleProfile));
+		if (options?.includeTitlePage !== undefined)
+			form.append('includeTitlePage', String(options.includeTitlePage));
 		return this.post<DocumentMeta, FormData>('/api/documents/pdf-import', form, {
 			headers: { 'Content-Type': 'multipart/form-data' },
 		});
