@@ -154,6 +154,43 @@
 			</div>
 		</div>
 
+		<div class="entity-style-form__section" v-if="isUnorderedList">
+			<h4 class="entity-style-form__section-title">Маркер списка</h4>
+			<div class="entity-style-form__fields">
+				<div class="entity-style-form__field" style="grid-column: 1 / -1;">
+					<label class="entity-style-form__label">Символ маркера</label>
+					<div class="entity-style-form__marker-row">
+						<div class="entity-style-form__marker-presets">
+							<button
+								v-for="preset in markerPresets"
+								:key="preset.value"
+								type="button"
+								class="entity-style-form__marker-preset"
+								:class="{
+									'entity-style-form__marker-preset--active':
+										(localStyle.unorderedListMarker || '•') === preset.value,
+								}"
+								:title="preset.label"
+								@click="localStyle.unorderedListMarker = preset.value"
+							>
+								{{ preset.value }}
+							</button>
+						</div>
+						<input
+							v-model="localStyle.unorderedListMarker"
+							type="text"
+							class="entity-style-form__marker-input"
+							maxlength="4"
+							placeholder="•"
+						/>
+					</div>
+					<small class="entity-style-form__hint">
+						Любой символ или короткая строка, которая будет использоваться вместо точки
+					</small>
+				</div>
+			</div>
+		</div>
+
 		<div class="entity-style-form__section" v-if="isListType">
 			<h4 class="entity-style-form__section-title">Отступы списка</h4>
 			<div class="entity-style-form__fields">
@@ -355,6 +392,19 @@ const isListType = computed(() =>
 	['ordered-list', 'unordered-list'].includes(props.entityType),
 );
 
+const isUnorderedList = computed(() => props.entityType === 'unordered-list');
+
+const markerPresets = [
+	{ value: '•', label: 'Круглая точка' },
+	{ value: '◦', label: 'Пустой кружок' },
+	{ value: '▪', label: 'Квадрат' },
+	{ value: '–', label: 'Короткое тире' },
+	{ value: '—', label: 'Длинное тире' },
+	{ value: '*', label: 'Звёздочка' },
+	{ value: '→', label: 'Стрелка' },
+	{ value: '✓', label: 'Галочка' },
+];
+
 watch(
 	() => props.style,
 	(newStyle) => {
@@ -536,5 +586,63 @@ const alignOptions = [
 	font-size: 13px;
 	color: var(--text-secondary);
 	font-style: italic;
+}
+
+.entity-style-form__marker-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--spacing-sm);
+	align-items: center;
+}
+
+.entity-style-form__marker-presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--spacing-xs);
+}
+
+.entity-style-form__marker-preset {
+	width: 32px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--bg-primary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+	color: var(--text-primary);
+	font-size: 16px;
+	font-family: inherit;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	padding: 0;
+}
+
+.entity-style-form__marker-preset:hover {
+	border-color: var(--primary-color);
+	background: var(--bg-secondary);
+}
+
+.entity-style-form__marker-preset--active {
+	border-color: var(--primary-color);
+	background: var(--primary-color);
+	color: #fff;
+}
+
+.entity-style-form__marker-input {
+	flex: 1;
+	min-width: 80px;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: var(--bg-primary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+	color: var(--text-primary);
+	font-size: 14px;
+	font-family: monospace;
+}
+
+.entity-style-form__marker-input:focus {
+	outline: none;
+	border-color: var(--primary-color);
 }
 </style>

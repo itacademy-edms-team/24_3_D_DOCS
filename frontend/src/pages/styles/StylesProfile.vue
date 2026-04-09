@@ -93,7 +93,15 @@ const tabGroups = [
 			{ value: 'heading-6', label: 'Заголовок H6' },
 		],
 	},
-	{ value: 'ordered-list', label: 'Списки' },
+	{
+		type: 'group',
+		value: 'lists',
+		label: 'Списки',
+		children: [
+			{ value: 'ordered-list', label: 'Нумерованный' },
+			{ value: 'unordered-list', label: 'Маркированный' },
+		],
+	},
 	{ value: 'table', label: 'Таблицы' },
 	{ value: 'image', label: 'Изображения' },
 	{ value: 'formula', label: 'Формулы' },

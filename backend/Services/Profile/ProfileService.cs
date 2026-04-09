@@ -166,7 +166,8 @@ public class ProfileService : IProfileService
                     LineHeightUseGlobal = true,
                     MarginTop = 6,
                     MarginBottom = 6,
-                    ListUseParagraphTextIndent = true
+                    ListUseParagraphTextIndent = true,
+                    UnorderedListMarker = "•"
                 },
                 // Таблицы - ГОСТ
                 [EntityTypes.Table] = new EntityStyle

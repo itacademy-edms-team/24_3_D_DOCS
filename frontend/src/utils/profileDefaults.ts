@@ -153,6 +153,7 @@ export function getDefaultProfileData(): ProfileData {
 				marginBottom: 6,
 				listAdditionalIndent: 0,
 				listUseParagraphTextIndent: true,
+				unorderedListMarker: '•',
 			} as EntityStyle,
 
 			// Таблицы - ГОСТ

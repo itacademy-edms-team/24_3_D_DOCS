@@ -49,6 +49,14 @@ const BLOCK_TAGS = new Set([
 	'UL', 'OL', 'TABLE', 'FIGURE', 'HR',
 ]);
 
+/** Default bullet used when profile/style doesn't specify one. */
+const DEFAULT_UNORDERED_MARKER = '\u2022'; // •
+
+/** Escape a string to be safely used inside a double-quoted CSS string literal. */
+function escapeCssString(value: string): string {
+	return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 /**
  * Inject explicit marker into first block child of li for loose list items.
  * Returns true if injection was done (so caller can set list-style: none).
@@ -112,6 +120,11 @@ export function renderUnorderedLists(
 		el.id = elId;
 		el.setAttribute('data-type', 'unordered-list');
 
+		const markerChar = style.unorderedListMarker && style.unorderedListMarker.length > 0
+			? style.unorderedListMarker
+			: DEFAULT_UNORDERED_MARKER;
+		const markerWithSpace = `${markerChar} `;
+
 		// Red line (text-indent): only for the first list item
 		const firstItemTextIndentCm = getFirstItemTextIndentCm(style, profile);
 
@@ -119,7 +132,7 @@ export function renderUnorderedLists(
 		const listItems = Array.from(el.querySelectorAll(':scope > li'));
 		let hasInjectedMarker = false;
 		listItems.forEach((li, index) => {
-			const injected = injectMarkerIntoFirstBlock(li, '\u2022 ');
+			const injected = injectMarkerIntoFirstBlock(li, markerWithSpace);
 			if (injected) hasInjectedMarker = true;
 			const nestingLevel = calculateListItemLevel(li);
 			const parts: string[] = [];
@@ -143,9 +156,12 @@ export function renderUnorderedLists(
 			(li as HTMLElement).setAttribute('style', newStyle);
 		});
 
+		const markerCss = `"${escapeCssString(markerWithSpace)}"`;
 		const listCss =
 			styleToCSS(listStyle) +
-			(hasInjectedMarker ? '; list-style: none' : '; list-style-position: inside');
+			(hasInjectedMarker
+				? '; list-style: none'
+				: `; list-style-position: inside; list-style-type: ${markerCss}`);
 		el.setAttribute('style', listCss);
 		if (selectable) el.classList.add('element-selectable');
 	});

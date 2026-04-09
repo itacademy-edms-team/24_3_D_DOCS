@@ -78,6 +78,7 @@ export interface EntityStyle {
 	paddingLeft?: number;
 	listAdditionalIndent?: number;
 	listUseParagraphTextIndent?: boolean;
+	unorderedListMarker?: string;
 	borderWidth?: number;
 	borderColor?: string;
 	borderStyle?: string;

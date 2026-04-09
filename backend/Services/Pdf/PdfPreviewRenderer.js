@@ -675,6 +675,12 @@
         'UL', 'OL', 'TABLE', 'FIGURE', 'HR'
     ]);
 
+    const DEFAULT_UNORDERED_MARKER = '\u2022';
+
+    function escapeCssString(value) {
+        return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    }
+
     function injectMarkerIntoFirstBlock(li, markerText) {
         const firstChild = li.firstElementChild;
         if (!firstChild || !BLOCK_TAGS.has(firstChild.tagName)) {
@@ -732,11 +738,16 @@
             el.id = elId;
             el.setAttribute('data-type', 'unordered-list');
 
+            const markerChar = style.unorderedListMarker && style.unorderedListMarker.length > 0
+                ? style.unorderedListMarker
+                : DEFAULT_UNORDERED_MARKER;
+            const markerWithSpace = markerChar + ' ';
+
             const firstItemTextIndentCm = getFirstItemTextIndentCm(style, profile);
             const listItems = Array.from(el.querySelectorAll(':scope > li'));
             let hasInjectedMarker = false;
             listItems.forEach((li, index) => {
-                const injected = injectMarkerIntoFirstBlock(li, '\u2022 ');
+                const injected = injectMarkerIntoFirstBlock(li, markerWithSpace);
                 if (injected) hasInjectedMarker = true;
 
                 const nestingLevel = calculateListItemLevel(li);
@@ -759,7 +770,10 @@
                 li.setAttribute('style', newStyle);
             });
 
-            const listCss = styleToCSS(listStyle) + (hasInjectedMarker ? '; list-style: none' : '; list-style-position: inside');
+            const markerCss = '"' + escapeCssString(markerWithSpace) + '"';
+            const listCss = styleToCSS(listStyle) + (hasInjectedMarker
+                ? '; list-style: none'
+                : '; list-style-position: inside; list-style-type: ' + markerCss);
             el.setAttribute('style', listCss);
             if (selectable) el.classList.add('element-selectable');
         });

@@ -29,6 +29,9 @@ public class EntityStyle
     public double? ListAdditionalIndent { get; set; } // мм, от -50 до 50 (добавочный отступ для каждого уровня)
     public bool? ListUseParagraphTextIndent { get; set; } // Использовать красную строку из параграфа
 
+    // Настройки маркера ненумерованного списка
+    public string? UnorderedListMarker { get; set; } // Символ маркера (например, "•", "–", "*", "◦")
+
     // Границы (для таблиц и изображений)
     public double? BorderWidth { get; set; } // px
     public string? BorderColor { get; set; }
