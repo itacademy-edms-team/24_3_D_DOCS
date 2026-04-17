@@ -36,6 +36,29 @@
 						Титульник
 					</button>
 				</div>
+				<div
+					v-if="activeTab === 'editor'"
+					class="content-editor__view-mode"
+					role="group"
+					aria-label="Режим редактора"
+				>
+					<button
+						type="button"
+						class="content-editor__view-mode-btn"
+						:class="{ 'content-editor__view-mode-btn--active': editorViewMode === 'raw' }"
+						@click="editorViewMode = 'raw'"
+					>
+						Исходник
+					</button>
+					<button
+						type="button"
+						class="content-editor__view-mode-btn"
+						:class="{ 'content-editor__view-mode-btn--active': editorViewMode === 'render' }"
+						@click="editorViewMode = 'render'"
+					>
+						Визуально
+					</button>
+				</div>
 				<div class="content-editor__header-selectors">
 					<div class="select-group">
 						<span class="select-label">Стиль</span>
@@ -236,7 +259,7 @@
 					<button
 						class="content-editor__header-btn"
 						@click="swapped = !swapped"
-						v-if="showEditor && showPreview"
+						v-if="showPreview"
 						title="Поменять местами"
 					>
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -271,7 +294,7 @@
 			}"
 		>
 			<!-- Editor Panel -->
-			<div class="content-editor__editor-panel" v-show="showEditor">
+			<div class="content-editor__editor-panel">
 				<div
 					v-if="activeTab === 'editor' && aiPendingChanges.length > 0"
 					class="content-editor__ai-pending-banner"
@@ -282,6 +305,12 @@
 							<strong class="content-editor__ai-pending-title">Есть предложения ИИ</strong>
 							<p class="content-editor__ai-pending-text">
 								Примите или отклоните правки у каждого фрагмента, либо используйте кнопки ниже.
+							</p>
+							<p
+								v-if="editorViewMode === 'render'"
+								class="content-editor__ai-pending-hint"
+							>
+								Подсветка предложений ИИ доступна в режиме «Исходник».
 							</p>
 						</div>
 						<div class="content-editor__ai-pending-actions">
@@ -302,16 +331,21 @@
 						</div>
 					</div>
 				</div>
-				<!-- Markdown Editor -->
 				<MarkdownEditor
-					v-if="activeTab === 'editor'"
-					ref="markdownEditorRef"
+					v-if="activeTab === 'editor' && editorViewMode === 'raw'"
 					v-model="content"
 					:documentId="documentId"
 					:aiChanges="aiPendingChanges"
 					@update:modelValue="handleContentChange"
 					@accept-ai-change="handleAcceptAiChange"
 					@undo-ai-change="handleUndoAiChange"
+				/>
+				<CrepeEditor
+					v-else-if="activeTab === 'editor' && editorViewMode === 'render'"
+					:key="crepeContentKey"
+					v-model="content"
+					:document-id="documentId"
+					@update:modelValue="handleContentChange"
 				/>
 				<!-- Title Page Variables Panel -->
 				<TitlePageVariablesPanel
@@ -471,6 +505,7 @@ import { onClickOutside } from '@vueuse/core';
 import { useRoute, useRouter } from 'vue-router';
 import Button from '@/shared/ui/Button/Button.vue';
 import MarkdownEditor from '@/widgets/markdown-editor/MarkdownEditor.vue';
+import CrepeEditor from '@/widgets/crepe-editor/CrepeEditor.vue';
 import DocumentPreview from '@/widgets/document-preview/DocumentPreview.vue';
 import TitlePageVariablesPanel from '@/widgets/title-page-variables/TitlePageVariablesPanel.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
@@ -489,11 +524,17 @@ const documentId = computed(() => route.params.id as string);
 
 const document = ref<Document | null>(null);
 const content = ref('');
-const showEditor = ref(true);
+
+const editorViewMode = ref<'raw' | 'render'>('raw');
+const crepeContentKey = ref(0);
+
+function bumpCrepeContentKey() {
+	crepeContentKey.value += 1;
+}
+
 const showPreview = ref(true);
 const swapped = ref(false);
 const activeTab = ref<'editor' | 'titlePage'>('editor');
-const markdownEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null);
 const showExportPdfModal = ref(false);
 const openExportPdfModal = () => {
 	showExportPdfModal.value = true;
@@ -603,6 +644,7 @@ async function reloadDocumentFromServer() {
 		const doc = await DocumentAPI.getById(documentId.value);
 		if (doc) {
 			content.value = doc.content || '';
+			bumpCrepeContentKey();
 			aiPendingChanges.value = doc.aiChanges || [];
 			document.value = document.value
 				? {
@@ -861,6 +903,7 @@ const loadDocument = async () => {
 		document.value = doc;
 		documentName.value = doc.name || 'Документ';
 		content.value = doc.content || '';
+		bumpCrepeContentKey();
 		aiPendingChanges.value = doc.aiChanges || [];
 		selectedProfileId.value = doc.profileId || '';
 		selectedTitlePageId.value = doc.titlePageId || '';
@@ -1008,6 +1051,7 @@ const handleLoadVersion = async (v: DocumentVersion) => {
 	try {
 		const versionContent = await DocumentAPI.getVersionContent(documentId.value, v.id);
 		content.value = versionContent;
+		bumpCrepeContentKey();
 		aiPendingChanges.value = [];
 		showVersionsPanel.value = false;
 	} catch (error) {
@@ -1249,6 +1293,38 @@ watch(
 	background: var(--bg-primary);
 	color: var(--accent);
 	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.content-editor__view-mode {
+	display: flex;
+	background: var(--bg-secondary);
+	padding: 3px;
+	border-radius: var(--radius-lg);
+	border: 1px solid var(--border-color);
+	flex-shrink: 0;
+}
+
+.content-editor__view-mode-btn {
+	padding: 5px 10px;
+	font-size: 11px;
+	font-weight: 600;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-md);
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	white-space: nowrap;
+}
+
+.content-editor__view-mode-btn:hover {
+	color: var(--text-primary);
+}
+
+.content-editor__view-mode-btn--active {
+	background: var(--bg-primary);
+	color: var(--accent);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .content-editor__header-selectors {
@@ -1563,6 +1639,13 @@ watch(
 	color: var(--text-secondary, #64748b);
 }
 
+.content-editor__ai-pending-hint {
+	margin: 6px 0 0 0;
+	font-size: 11px;
+	line-height: 1.3;
+	color: var(--text-tertiary, #94a3b8);
+}
+
 .content-editor__ai-pending-actions {
 	display: flex;
 	gap: 8px;
@@ -1605,7 +1688,8 @@ watch(
 	background: rgba(239, 68, 68, 0.2);
 }
 
-.content-editor__editor-panel :deep(.markdown-editor) {
+.content-editor__editor-panel :deep(.markdown-editor),
+.content-editor__editor-panel :deep(.crepe-editor) {
 	flex: 1;
 	min-height: 0;
 }
