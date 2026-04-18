@@ -340,9 +340,9 @@
 					@accept-ai-change="handleAcceptAiChange"
 					@undo-ai-change="handleUndoAiChange"
 				/>
-				<CrepeEditor
+				<TipTapDocumentEditor
 					v-else-if="activeTab === 'editor' && editorViewMode === 'render'"
-					:key="crepeContentKey"
+					:key="tiptapContentKey"
 					v-model="content"
 					:document-id="documentId"
 					@update:modelValue="handleContentChange"
@@ -505,7 +505,7 @@ import { onClickOutside } from '@vueuse/core';
 import { useRoute, useRouter } from 'vue-router';
 import Button from '@/shared/ui/Button/Button.vue';
 import MarkdownEditor from '@/widgets/markdown-editor/MarkdownEditor.vue';
-import CrepeEditor from '@/widgets/crepe-editor/CrepeEditor.vue';
+import TipTapDocumentEditor from '@/widgets/tiptap-editor/TipTapDocumentEditor.vue';
 import DocumentPreview from '@/widgets/document-preview/DocumentPreview.vue';
 import TitlePageVariablesPanel from '@/widgets/title-page-variables/TitlePageVariablesPanel.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
@@ -526,10 +526,11 @@ const document = ref<Document | null>(null);
 const content = ref('');
 
 const editorViewMode = ref<'raw' | 'render'>('raw');
-const crepeContentKey = ref(0);
 
-function bumpCrepeContentKey() {
-	crepeContentKey.value += 1;
+const tiptapContentKey = ref(0);
+
+function bumpTiptapContentKey() {
+	tiptapContentKey.value += 1;
 }
 
 const showPreview = ref(true);
@@ -644,7 +645,7 @@ async function reloadDocumentFromServer() {
 		const doc = await DocumentAPI.getById(documentId.value);
 		if (doc) {
 			content.value = doc.content || '';
-			bumpCrepeContentKey();
+			bumpTiptapContentKey();
 			aiPendingChanges.value = doc.aiChanges || [];
 			document.value = document.value
 				? {
@@ -903,7 +904,7 @@ const loadDocument = async () => {
 		document.value = doc;
 		documentName.value = doc.name || 'Документ';
 		content.value = doc.content || '';
-		bumpCrepeContentKey();
+		bumpTiptapContentKey();
 		aiPendingChanges.value = doc.aiChanges || [];
 		selectedProfileId.value = doc.profileId || '';
 		selectedTitlePageId.value = doc.titlePageId || '';
@@ -1051,7 +1052,7 @@ const handleLoadVersion = async (v: DocumentVersion) => {
 	try {
 		const versionContent = await DocumentAPI.getVersionContent(documentId.value, v.id);
 		content.value = versionContent;
-		bumpCrepeContentKey();
+		bumpTiptapContentKey();
 		aiPendingChanges.value = [];
 		showVersionsPanel.value = false;
 	} catch (error) {
@@ -1112,6 +1113,13 @@ const toggleVersionsPanel = () => {
 
 onClickOutside(versionsDropdownRef, () => {
 	showVersionsPanel.value = false;
+});
+
+watch(editorViewMode, (mode, prev) => {
+	if (activeTab.value !== 'editor') return;
+	if (mode === 'render' && prev === 'raw') {
+		bumpTiptapContentKey();
+	}
 });
 
 watch(
@@ -1689,7 +1697,7 @@ watch(
 }
 
 .content-editor__editor-panel :deep(.markdown-editor),
-.content-editor__editor-panel :deep(.crepe-editor) {
+.content-editor__editor-panel :deep(.tiptap-document-editor) {
 	flex: 1;
 	min-height: 0;
 }
