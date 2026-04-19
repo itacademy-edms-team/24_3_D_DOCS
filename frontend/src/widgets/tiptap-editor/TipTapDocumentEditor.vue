@@ -277,6 +277,13 @@ watch(
 	color: var(--text-primary, #0f172a);
 }
 
+.tiptap-document-editor :deep(img.tiptap-document-editor__img) {
+	max-width: 100%;
+	height: auto;
+	vertical-align: middle;
+	object-fit: contain;
+}
+
 .tiptap-document-editor--dark :deep(.tiptap-document-editor__prose) {
 	color: var(--text-primary, #f1f5f9);
 }
