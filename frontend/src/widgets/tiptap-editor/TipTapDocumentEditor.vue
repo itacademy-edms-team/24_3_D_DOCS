@@ -1,40 +1,102 @@
 <template>
 	<div class="tiptap-document-editor" :class="{ 'tiptap-document-editor--dark': isDark }">
 		<EditorContent v-if="editor" :editor="editor" class="tiptap-document-editor__surface" />
+		<FormulaBuilderModal
+			v-model="formulaModalOpen"
+			:initial-latex="formulaModalInitial"
+			:is-block="formulaModalIsBlock"
+			@apply="onFormulaModalApply"
+		/>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue';
+import { ref, watch, provide } from 'vue';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
-import { useDebounceFn } from '@vueuse/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import Link from '@tiptap/extension-link';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Highlight from '@tiptap/extension-highlight';
-import Underline from '@tiptap/extension-underline';
+import { Markdown } from '@tiptap/markdown';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
-import Gapcursor from '@tiptap/extension-gapcursor';
 import Image from '@tiptap/extension-image';
 import 'katex/dist/katex.min.css';
 import { useTheme } from '@/app/composables/useTheme';
-import {
-	markdownToTipTapHtml,
-	tipTapHtmlToMarkdown,
-	normalizeMarkdownForCompare,
-} from './markdownBridge';
 import { InlineMathTipTap, BlockMathTipTap } from './mathTipTap';
 import { DocumentCaptionTipTap } from './documentCaptionTipTap';
+import FormulaBuilderModal from './FormulaBuilderModal.vue';
+import { formulaBuilderKey, type OpenFormulaBuilderFn } from './formulaBuilderContext';
 
-/** В буфере только текст — без HTML-разметки, чтобы в content не попадали «чужие» теги. */
+function canonicalMarkdown(s: string): string {
+	return s
+		.replace(/\r\n/g, '\n')
+		.replace(/\n{3,}/g, '\n\n')
+		.trimEnd();
+}
+
+function normalizeMarkdownForCompare(a: string, b: string): boolean {
+	return canonicalMarkdown(a) === canonicalMarkdown(b);
+}
+
+function protectFencedCodeBlocks(md: string): { text: string; blocks: string[] } {
+	const blocks: string[] = [];
+	const text = md.replace(/```[\s\S]*?```/g, (block) => {
+		const i = blocks.length;
+		blocks.push(block);
+		return `\uE000CODE${i}\uE001`;
+	});
+	return { text, blocks };
+}
+
+function restoreFencedCodeBlocks(text: string, blocks: string[]): string {
+	let out = text;
+	blocks.forEach((block, i) => {
+		out = out.replace(`\uE000CODE${i}\uE001`, block);
+	});
+	return out;
+}
+
+function markdownToEditorInput(md: string): string {
+	const { text, blocks } = protectFencedCodeBlocks(md);
+	let t = text;
+	t = t.replace(/\[(IMAGE|TABLE|FORMULA)-CAPTION:\s*([^\]]+)\]/g, (_, type: string, cap: string) => {
+		const enc = encodeURIComponent(String(cap).trim());
+		return `<div data-ddoc-caption="${type}" data-ddoc-text="${enc}"></div>`;
+	});
+	t = t.replace(/\$\$([\s\S]+?)\$\$/g, (_, formula: string) => {
+		const enc = encodeURIComponent(formula.trim());
+		return `<div data-type="block-math" data-formula="${enc}"></div>`;
+	});
+	t = t.replace(/\$([^$\n]+)\$/g, (_, formula: string) => {
+		const enc = encodeURIComponent(formula.trim());
+		return `<span data-type="inline-math" data-formula="${enc}"></span>`;
+	});
+	return restoreFencedCodeBlocks(t, blocks);
+}
+
+function htmlContainsTable(html: string): boolean {
+	if (typeof DOMParser === 'undefined') {
+		return /<table\b/i.test(html);
+	}
+	try {
+		const doc = new DOMParser().parseFromString(html, 'text/html');
+		return Boolean(doc.body.querySelector('table'));
+	} catch {
+		return /<table\b/i.test(html);
+	}
+}
+
+/** В буфере обычно только текст — без HTML-разметки, чтобы в content не попадали «чужие» теги. */
 function clipboardHtmlToEditorHtml(html: string): string {
 	if (typeof document === 'undefined') {
 		return '<p></p>';
+	}
+	if (htmlContainsTable(html)) {
+		return html;
 	}
 	const wrap = document.createElement('div');
 	wrap.innerHTML = html;
@@ -63,45 +125,65 @@ const emit = defineEmits<{
 
 const { isDark } = useTheme();
 
+const formulaModalOpen = ref(false);
+const formulaModalInitial = ref('');
+const formulaModalIsBlock = ref(false);
+let formulaModalOnApply: ((latex: string) => void) | null = null;
+
+const openFormulaBuilder: OpenFormulaBuilderFn = (opts) => {
+	formulaModalInitial.value = opts.initialLatex;
+	formulaModalIsBlock.value = opts.isBlock;
+	formulaModalOnApply = opts.onApply;
+	formulaModalOpen.value = true;
+};
+
+provide(formulaBuilderKey, openFormulaBuilder);
+
+function onFormulaModalApply(latex: string) {
+	formulaModalOnApply?.(latex);
+	formulaModalOnApply = null;
+}
+
+watch(formulaModalOpen, (open) => {
+	if (!open) {
+		formulaModalOnApply = null;
+	}
+});
+
 let isApplyingExternalUpdate = false;
 /** Пока false — игнорируем onUpdate (исключаем ложный emit после setContent). */
 const editorReady = ref(false);
 
-const emitDebounced = useDebounceFn((md: string) => {
-	emit('update:modelValue', md);
-}, 400);
-
-function emitImmediate(md: string) {
-	emitDebounced.cancel();
-	emit('update:modelValue', md);
+function getEditorMarkdown(ed: NonNullable<typeof editor.value>): string {
+	return canonicalMarkdown(ed.getMarkdown());
 }
 
-function emitIfChanged(html: string) {
-	const md = tipTapHtmlToMarkdown(html);
+function emitIfChanged(ed: NonNullable<typeof editor.value>) {
+	const md = getEditorMarkdown(ed);
 	if (normalizeMarkdownForCompare(md, props.modelValue)) {
 		return;
 	}
-	emitDebounced(md);
+	/* Синхронно с редактором; API save debounced в ContentEditor. */
+	emit('update:modelValue', md);
 }
 
 const editor = useEditor({
 	extensions: [
 		StarterKit.configure({
 			heading: { levels: [1, 2, 3, 4, 5, 6] },
+			link: {
+				openOnClick: false,
+				autolink: true,
+				HTMLAttributes: {
+					class: 'tiptap-document-editor__link',
+				},
+			},
 		}),
 		DocumentCaptionTipTap,
 		Placeholder.configure({
 			placeholder: 'Начните ввод…',
 		}),
-		Underline,
 		Highlight.configure({ multicolor: true }),
-		Link.configure({
-			openOnClick: false,
-			autolink: true,
-			HTMLAttributes: {
-				class: 'tiptap-document-editor__link',
-			},
-		}),
 		TaskList,
 		TaskItem.configure({ nested: true }),
 		Table.configure({
@@ -111,7 +193,6 @@ const editor = useEditor({
 		TableRow,
 		TableHeader,
 		TableCell,
-		Gapcursor,
 		Image.configure({
 			inline: true,
 			allowBase64: true,
@@ -119,8 +200,12 @@ const editor = useEditor({
 		}),
 		InlineMathTipTap,
 		BlockMathTipTap,
+		Markdown.configure({
+			markedOptions: { gfm: true },
+		}),
 	],
-	content: markdownToTipTapHtml(props.modelValue),
+	content: markdownToEditorInput(props.modelValue),
+	contentType: 'markdown',
 	immediatelyRender: false,
 	editorProps: {
 		attributes: {
@@ -139,7 +224,7 @@ const editor = useEditor({
 		if (isApplyingExternalUpdate || !editorReady.value) {
 			return;
 		}
-		emitIfChanged(ed.getHTML());
+		emitIfChanged(ed);
 	},
 });
 
@@ -150,27 +235,20 @@ watch(
 		if (!ed) {
 			return;
 		}
-		const current = tipTapHtmlToMarkdown(ed.getHTML());
+		const current = getEditorMarkdown(ed);
 		if (normalizeMarkdownForCompare(current, md)) {
 			return;
 		}
 		isApplyingExternalUpdate = true;
-		ed.commands.setContent(markdownToTipTapHtml(md), { emitUpdate: false });
+		ed.commands.setContent(markdownToEditorInput(md), {
+			contentType: 'markdown',
+			emitUpdate: false,
+		});
 		queueMicrotask(() => {
 			isApplyingExternalUpdate = false;
 		});
 	},
 );
-
-onBeforeUnmount(() => {
-	const ed = editor.value;
-	if (ed) {
-		const next = tipTapHtmlToMarkdown(ed.getHTML());
-		if (!normalizeMarkdownForCompare(next, props.modelValue)) {
-			emitImmediate(next);
-		}
-	}
-});
 </script>
 
 <style scoped>

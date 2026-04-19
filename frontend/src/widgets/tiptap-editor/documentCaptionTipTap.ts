@@ -56,6 +56,12 @@ export const DocumentCaptionTipTap = Node.create({
 		];
 	},
 
+	renderMarkdown(node) {
+		const kind = String(node.attrs?.kind ?? 'TABLE');
+		const text = String(node.attrs?.text ?? '');
+		return `\n\n[${kind}-CAPTION: ${text}]\n\n`;
+	},
+
 	addNodeView() {
 		return VueNodeViewRenderer(DocumentCaptionNodeView);
 	},

@@ -95,6 +95,114 @@ export function markdownToTipTapHtml(markdown: string): string {
 
 let turndownSingleton: TurndownService | null = null;
 
+/** На время `tipTapHtmlToMarkdown`: плейсхолдеры `<div data-ddoc-table-embed>` → готовый GFM. */
+let tableEmbedPayloads: string[] = [];
+
+/**
+ * Атомарный вывод таблицы в GFM: ячейки без блочных `\n\n` от `<p>` (типичная поломка Turndown).
+ * Экспорт для конструкторов / тестов; полный документ проходит через {@link tipTapHtmlToMarkdown}.
+ */
+export function serializeHtmlTableToGfmMarkdown(table: HTMLTableElement): string {
+	const td = getTurndown();
+
+	function getDirectRows(): HTMLTableRowElement[] {
+		const rows: HTMLTableRowElement[] = [];
+		const sections = [
+			table.tHead,
+			...Array.from(table.tBodies),
+			table.tFoot,
+		].filter((section): section is HTMLTableSectionElement => Boolean(section));
+
+		for (const section of sections) {
+			rows.push(...Array.from(section.rows));
+		}
+
+		rows.push(
+			...Array.from(table.children).filter(
+				(child): child is HTMLTableRowElement => child.tagName.toLowerCase() === 'tr',
+			),
+		);
+
+		return rows;
+	}
+
+	function flattenCellHtml(html: string): string {
+		let h = html;
+		h = h.replace(/<br\b[^>]*\/?>/gi, ' ');
+		h = h.replace(/<p\b[^>]*>/gi, '<span>').replace(/<\/p>/gi, '</span>');
+		return h;
+	}
+
+	function cellToMd(cell: HTMLTableCellElement): string {
+		const raw = flattenCellHtml(cell.innerHTML).trim();
+		if (!raw) {
+			return '';
+		}
+		let md = td.turndown(raw).trim();
+		md = md.replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim();
+		return md.replace(/\|/g, '\\|');
+	}
+
+	const rows = getDirectRows();
+	const serializedRows: string[][] = [];
+	for (const row of rows) {
+		const cells = Array.from(row.cells) as HTMLTableCellElement[];
+		if (cells.length === 0) {
+			continue;
+		}
+		const parts: string[] = [];
+		for (const cell of cells) {
+			const span = Math.max(1, cell.colSpan);
+			parts.push(cellToMd(cell));
+			for (let s = 1; s < span; s++) {
+				parts.push('');
+			}
+		}
+		serializedRows.push(parts);
+	}
+
+	const width = Math.max(1, ...serializedRows.map((row) => row.length));
+	const normalizedRows = serializedRows.length > 0 ? serializedRows : [Array(width).fill('')];
+	const lines: string[] = [];
+	for (let ri = 0; ri < normalizedRows.length; ri++) {
+		const parts = normalizedRows[ri].slice(0, width);
+		while (parts.length < width) {
+			parts.push('');
+		}
+		lines.push(`| ${parts.join(' | ')} |`);
+		/* GFM требует строку-разделитель после первой строки; без неё markdown-it не строит <table>, и таблица пропадает при round-trip (часто первая строка — <td>, не <th>). */
+		if (ri === 0) {
+			lines.push(`| ${parts.map(() => '---').join(' | ')} |`);
+		}
+	}
+
+	return lines.join('\n');
+}
+
+function replaceTablesWithEmbedPlaceholders(html: string): string {
+	if (typeof DOMParser === 'undefined') {
+		return html;
+	}
+
+	try {
+		const doc = new DOMParser().parseFromString(html, 'text/html');
+		const tables = Array.from(doc.body.querySelectorAll('table')).filter(
+			(table) => !table.parentElement?.closest('table'),
+		);
+		for (const table of tables) {
+			const md = serializeHtmlTableToGfmMarkdown(table);
+			const idx = tableEmbedPayloads.length;
+			tableEmbedPayloads.push(md);
+			const placeholder = doc.createElement('div');
+			placeholder.setAttribute('data-ddoc-table-embed', String(idx));
+			table.replaceWith(placeholder);
+		}
+		return doc.body.innerHTML;
+	} catch {
+		return html;
+	}
+}
+
 function getTurndown(): TurndownService {
 	if (!turndownSingleton) {
 		const td = new TurndownService({
@@ -147,13 +255,42 @@ function getTurndown(): TurndownService {
 			},
 		});
 		td.use(gfm);
+		td.addRule('ddocTableEmbed', {
+			filter(node) {
+				return (
+					node.nodeName === 'DIV' &&
+					(node as HTMLElement).getAttribute('data-ddoc-table-embed') !== null
+				);
+			},
+			replacement(_content, node) {
+				const el = node as HTMLElement;
+				const i = Number(el.getAttribute('data-ddoc-table-embed'));
+				const block = tableEmbedPayloads[i];
+				return block != null && block.length > 0 ? `\n\n${block}\n\n` : '\n\n';
+			},
+		});
 		turndownSingleton = td;
 	}
 	return turndownSingleton;
 }
 
+/**
+ * TipTap Table кладёт `<colgroup>` перед `<tbody>`. Turndown GFM считает первую строку заголовком
+ * только при `isFirstTbody` — при соседнем colgroup условие ложно, таблица уходит в `keep` как сырой HTML.
+ */
+function stripColgroupForTurndown(html: string): string {
+	return html.replace(/<colgroup\b[^>]*>[\s\S]*?<\/colgroup>/gi, '');
+}
+
 /** HTML из TipTap → markdown для API (канонический вид). */
 export function tipTapHtmlToMarkdown(html: string): string {
 	const td = getTurndown();
-	return canonicalMarkdown(td.turndown(html));
+	const prepared = stripColgroupForTurndown(html);
+	tableEmbedPayloads = [];
+	try {
+		const withEmbeds = replaceTablesWithEmbedPlaceholders(prepared);
+		return canonicalMarkdown(td.turndown(withEmbeds));
+	} finally {
+		tableEmbedPayloads = [];
+	}
 }

@@ -35,6 +35,7 @@ import {
 	aiChangeStyles,
 	refreshAiChangeDecorationsEffect,
 } from './aiChangeDecorations';
+import { imagePreviewExtension } from './imagePreviewDecorations';
 
 interface Props {
 	modelValue: string;
@@ -66,6 +67,8 @@ const aiChangeExtensions = [
 	),
 	aiChangeStyles,
 ];
+
+const codeMirrorExtraExtensions = [...aiChangeExtensions, ...imagePreviewExtension];
 
 const editorTheme = computed(() => {
 	return theme.value === 'dark' ? 'dark' : 'light';
@@ -197,7 +200,7 @@ const ensureAiExtensionInstalled = () => {
 	}
 
 	editorView.dispatch({
-		effects: StateEffect.appendConfig.of(aiChangeExtensions),
+		effects: StateEffect.appendConfig.of(codeMirrorExtraExtensions),
 	});
 	aiExtensionInstalled.value = true;
 	installRetryCount = 0;

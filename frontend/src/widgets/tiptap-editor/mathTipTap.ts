@@ -19,7 +19,8 @@ export const InlineMathTipTap = Node.create({
 
 	addAttributes() {
 		return {
-			formula: { default: '' },
+			/** Не сериализовать как HTML-атрибут — только `data-formula` в renderHTML (иначе Turndown/браузер дают лишний `formula=…`). */
+			formula: { default: '', rendered: false },
 		};
 	},
 
@@ -47,6 +48,11 @@ export const InlineMathTipTap = Node.create({
 		];
 	},
 
+	renderMarkdown(node) {
+		const formula = String(node.attrs?.formula ?? '');
+		return `$${formula}$`;
+	},
+
 	addNodeView() {
 		return VueNodeViewRenderer(InlineMathNodeView);
 	},
@@ -70,7 +76,7 @@ export const BlockMathTipTap = Node.create({
 
 	addAttributes() {
 		return {
-			formula: { default: '' },
+			formula: { default: '', rendered: false },
 		};
 	},
 
@@ -96,6 +102,11 @@ export const BlockMathTipTap = Node.create({
 				'data-formula': enc,
 			}),
 		];
+	},
+
+	renderMarkdown(node) {
+		const formula = String(node.attrs?.formula ?? '');
+		return `\n\n$$${formula}$$\n\n`;
 	},
 
 	addNodeView() {

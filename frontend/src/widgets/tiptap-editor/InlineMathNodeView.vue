@@ -14,18 +14,21 @@
 			v-else
 			ref="displayRef"
 			class="tiptap-math-inline__display"
-			title="Двойной щелчок — правка"
-			@dblclick="startEdit"
+			title="Щелчок — конструктор, двойной щелчок — правка вручную"
+			@click="onDisplayClick"
 		/>
 	</NodeViewWrapper>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { ref, watch, nextTick, onMounted, onBeforeUnmount, inject } from 'vue';
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3';
 import katex from 'katex';
+import { formulaBuilderKey } from './formulaBuilderContext';
 
 const props = defineProps(nodeViewProps);
+
+const openFormulaBuilder = inject(formulaBuilderKey, null);
 
 const isEditing = ref(false);
 const localFormula = ref((props.node.attrs.formula as string) || '');
@@ -45,7 +48,11 @@ function paint() {
 	const el = displayRef.value;
 	if (!el || isEditing.value) return;
 	try {
-		katex.render(localFormula.value || '?', el, { throwOnError: false, displayMode: false });
+		katex.render(localFormula.value || '?', el, {
+			throwOnError: false,
+			displayMode: false,
+			strict: 'ignore',
+		});
 	} catch {
 		el.textContent = localFormula.value || '?';
 	}
@@ -59,6 +66,39 @@ onMounted(() => {
 	paint();
 });
 
+let displayClickTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearDisplayClickTimer() {
+	if (displayClickTimer !== null) {
+		clearTimeout(displayClickTimer);
+		displayClickTimer = null;
+	}
+}
+
+function onDisplayClick(e: MouseEvent) {
+	if (e.detail === 2) {
+		clearDisplayClickTimer();
+		startEdit();
+		return;
+	}
+	if (e.detail !== 1) return;
+	const fn = openFormulaBuilder;
+	if (!fn) return;
+	clearDisplayClickTimer();
+	displayClickTimer = setTimeout(() => {
+		displayClickTimer = null;
+		fn({
+			initialLatex: localFormula.value,
+			isBlock: false,
+			onApply: (latex) => {
+				localFormula.value = latex;
+				props.updateAttributes({ formula: latex });
+				void nextTick(() => paint());
+			},
+		});
+	}, 280);
+}
+
 function startEdit() {
 	isEditing.value = true;
 	void nextTick(() => {
@@ -66,6 +106,10 @@ function startEdit() {
 		inputRef.value?.select();
 	});
 }
+
+onBeforeUnmount(() => {
+	clearDisplayClickTimer();
+});
 
 function commit() {
 	isEditing.value = false;

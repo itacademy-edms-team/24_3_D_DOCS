@@ -333,19 +333,19 @@
 				</div>
 				<MarkdownEditor
 					v-if="activeTab === 'editor' && editorViewMode === 'raw'"
-					v-model="content"
+					:model-value="content"
 					:documentId="documentId"
 					:aiChanges="aiPendingChanges"
-					@update:modelValue="handleContentChange"
+					@update:model-value="handleContentChange"
 					@accept-ai-change="handleAcceptAiChange"
 					@undo-ai-change="handleUndoAiChange"
 				/>
 				<TipTapDocumentEditor
 					v-else-if="activeTab === 'editor' && editorViewMode === 'render'"
 					:key="tiptapContentKey"
-					v-model="content"
+					:model-value="content"
 					:document-id="documentId"
-					@update:modelValue="handleContentChange"
+					@update:model-value="handleContentChange"
 				/>
 				<!-- Title Page Variables Panel -->
 				<TitlePageVariablesPanel
@@ -705,6 +705,8 @@ function cancelPendingContentSave() {
 
 const handleContentChange = (newContent: string) => {
 	if (!document.value) return;
+	/* Один источник для v-model редакторов: раньше обновлялся только document, ref content отставал. */
+	content.value = newContent;
 	document.value = { ...document.value, content: newContent };
 	cancelPendingContentSave();
 	contentSaveTimer = setTimeout(async () => {
@@ -1113,13 +1115,6 @@ const toggleVersionsPanel = () => {
 
 onClickOutside(versionsDropdownRef, () => {
 	showVersionsPanel.value = false;
-});
-
-watch(editorViewMode, (mode, prev) => {
-	if (activeTab.value !== 'editor') return;
-	if (mode === 'render' && prev === 'raw') {
-		bumpTiptapContentKey();
-	}
 });
 
 watch(
