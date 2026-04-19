@@ -21,6 +21,9 @@
 				<Button type="button" :disabled="!canApply" @click="apply">Применить</Button>
 			</div>
 		</template>
+		<template #keyboard>
+			<div ref="kbContainerRef" class="formula-builder-modal__keyboard-slot" />
+		</template>
 	</Modal>
 </template>
 
@@ -44,10 +47,50 @@ const emit = defineEmits<{
 }>();
 
 const mathFieldRef = ref<MathfieldElement | null>(null);
+const kbContainerRef = ref<HTMLElement | null>(null);
 const liveLatex = ref('');
 
 function getVirtualKeyboard() {
 	return typeof window !== 'undefined' ? window.mathVirtualKeyboard : undefined;
+}
+
+let keyboardGeometryListener: ((ev: Event) => void) | null = null;
+
+function setKeyboardSlotHeightFromEvent(ev?: Event) {
+	const el = kbContainerRef.value;
+	const kb = getVirtualKeyboard();
+	if (!el || !kb) return;
+	const detail = ev && 'detail' in ev ? (ev as CustomEvent<{ boundingRect?: DOMRect }>).detail : undefined;
+	const h = detail?.boundingRect?.height ?? kb.boundingRect?.height ?? 0;
+	el.style.height = h > 0 ? `${Math.ceil(h)}px` : '';
+}
+
+function detachKeyboardGeometryListener() {
+	const kb = getVirtualKeyboard();
+	if (kb && keyboardGeometryListener) {
+		kb.removeEventListener('geometrychange', keyboardGeometryListener);
+		keyboardGeometryListener = null;
+	}
+}
+
+function attachKeyboardGeometryListener() {
+	const kb = getVirtualKeyboard();
+	if (!kb) return;
+	detachKeyboardGeometryListener();
+	keyboardGeometryListener = (ev) => setKeyboardSlotHeightFromEvent(ev);
+	kb.addEventListener('geometrychange', keyboardGeometryListener);
+}
+
+function teardownVirtualKeyboard() {
+	detachKeyboardGeometryListener();
+	if (kbContainerRef.value) {
+		kbContainerRef.value.style.height = '';
+	}
+	const kb = getVirtualKeyboard();
+	if (kb) {
+		kb.hide();
+		kb.container = document.body;
+	}
 }
 
 const canApply = computed(() => liveLatex.value.trim().length > 0);
@@ -71,7 +114,7 @@ function apply() {
 function onModalUpdate(open: boolean) {
 	emit('update:modelValue', open);
 	if (!open) {
-		getVirtualKeyboard()?.hide();
+		teardownVirtualKeyboard();
 	}
 }
 
@@ -83,13 +126,21 @@ function onWindowKeydown(e: KeyboardEvent) {
 async function syncFieldWhenOpen() {
 	if (!props.modelValue) return;
 	await nextTick();
+	await nextTick();
 	const field = mathFieldRef.value;
 	if (!field) return;
 	field.value = props.initialLatex;
 	liveLatex.value = props.initialLatex;
+	const kb = getVirtualKeyboard();
+	if (!kb) return;
+	const slot = kbContainerRef.value;
+	kb.container = slot ?? document.body;
+	attachKeyboardGeometryListener();
 	field.focus();
 	requestAnimationFrame(() => {
-		getVirtualKeyboard()?.show();
+		kb.show();
+		setKeyboardSlotHeightFromEvent();
+		requestAnimationFrame(() => setKeyboardSlotHeightFromEvent());
 	});
 }
 
@@ -98,6 +149,7 @@ watch(
 	(open) => {
 		if (!open) {
 			liveLatex.value = '';
+			teardownVirtualKeyboard();
 			return;
 		}
 		void syncFieldWhenOpen();
@@ -117,7 +169,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onWindowKeydown);
-	getVirtualKeyboard()?.hide();
+	teardownVirtualKeyboard();
 });
 </script>
 
@@ -150,10 +202,12 @@ onBeforeUnmount(() => {
 	justify-content: flex-end;
 	gap: 10px;
 }
-</style>
 
-<style>
-math-virtual-keyboard {
-	z-index: 1400 !important;
+/* MathLive positions the panel with position:absolute inside this container */
+.formula-builder-modal__keyboard-slot {
+	position: relative;
+	width: 100%;
+	flex-shrink: 0;
+	overflow: visible;
 }
 </style>

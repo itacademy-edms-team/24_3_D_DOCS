@@ -23,6 +23,7 @@
 					<div class="modal__footer" v-if="$slots.footer">
 						<slot name="footer" />
 					</div>
+					<slot name="keyboard" />
 				</div>
 			</div>
 		</Transition>
