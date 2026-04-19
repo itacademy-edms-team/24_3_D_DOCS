@@ -17,14 +17,14 @@
 			v-else
 			ref="displayRef"
 			class="tiptap-math-block__display"
-			title="Щелчок — конструктор, двойной щелчок — правка вручную"
+			title="Двойной щелчок — правка; Alt+щелчок — конструктор формул"
 			@click="onDisplayClick"
 		/>
 	</NodeViewWrapper>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onBeforeUnmount, inject } from 'vue';
+import { ref, watch, nextTick, onMounted, inject } from 'vue';
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3';
 import katex from 'katex';
 import { formulaBuilderKey } from './formulaBuilderContext';
@@ -69,27 +69,14 @@ onMounted(() => {
 	paint();
 });
 
-let displayClickTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearDisplayClickTimer() {
-	if (displayClickTimer !== null) {
-		clearTimeout(displayClickTimer);
-		displayClickTimer = null;
-	}
-}
-
 function onDisplayClick(e: MouseEvent) {
 	if (e.detail === 2) {
-		clearDisplayClickTimer();
 		startEdit();
 		return;
 	}
-	if (e.detail !== 1) return;
-	const fn = openFormulaBuilder;
-	if (!fn) return;
-	clearDisplayClickTimer();
-	displayClickTimer = setTimeout(() => {
-		displayClickTimer = null;
+	if (e.detail === 1 && e.altKey) {
+		const fn = openFormulaBuilder;
+		if (!fn) return;
 		fn({
 			initialLatex: localFormula.value,
 			isBlock: true,
@@ -99,7 +86,7 @@ function onDisplayClick(e: MouseEvent) {
 				void nextTick(() => paint());
 			},
 		});
-	}, 280);
+	}
 }
 
 function startEdit() {
@@ -109,10 +96,6 @@ function startEdit() {
 		textareaRef.value?.select();
 	});
 }
-
-onBeforeUnmount(() => {
-	clearDisplayClickTimer();
-});
 
 function commit() {
 	isEditing.value = false;

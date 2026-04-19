@@ -14,8 +14,8 @@
 			<span
 				v-else
 				class="ddoc-caption-node__text"
-				title="Двойной щелчок — правка текста подписи"
-				@dblclick="startEdit"
+				title="Щелчок — правка текста подписи"
+				@click.stop="startEdit"
 			>{{ displayText }}</span>
 			<span class="ddoc-caption-node__close">]</span>
 		</div>

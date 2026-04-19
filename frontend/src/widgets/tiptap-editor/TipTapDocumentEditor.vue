@@ -60,22 +60,85 @@ function restoreFencedCodeBlocks(text: string, blocks: string[]): string {
 	return out;
 }
 
-function markdownToEditorInput(md: string): string {
-	const { text, blocks } = protectFencedCodeBlocks(md);
-	let t = text;
-	t = t.replace(/\[(IMAGE|TABLE|FORMULA)-CAPTION:\s*([^\]]+)\]/g, (_, type: string, cap: string) => {
-		const enc = encodeURIComponent(String(cap).trim());
-		return `<div data-ddoc-caption="${type}" data-ddoc-text="${enc}"></div>`;
+/** Строка-разделитель колонок GFM (`| --- | :---: |`). */
+function isGfmTableDelimiterRow(line: string): boolean {
+	const t = line.trim();
+	if (!t.includes('|') || !t.includes('-')) {
+		return false;
+	}
+	const cells = t
+		.split('|')
+		.map((c) => c.trim())
+		.filter((c) => c.length > 0);
+	if (cells.length < 2) {
+		return false;
+	}
+	return cells.every((c) => /^:?-{2,}:?$/.test(c));
+}
+
+/** Строка похожа на строку pipe-таблицы (не пустая, есть `|`). */
+function isGfmTableRowLine(line: string): boolean {
+	const t = line.trim();
+	return t.length > 0 && t.includes('|');
+}
+
+/**
+ * Временно убирает GFM-таблицы из строки.
+ * Иначе подстановки блочного HTML (`$$` → div, подписи) ломают разбор ячеек:
+ * @tiptap/markdown кладёт результат parseHTMLToken в inline ячейки, а blockMath/documentCaption — block-узлы → невалидный doc и «contentMatchAt on invalid content».
+ */
+function protectGfmPipeTables(md: string): { text: string; blocks: string[] } {
+	const lines = md.replace(/\r\n/g, '\n').split('\n');
+	const blocks: string[] = [];
+	const out: string[] = [];
+	let i = 0;
+	while (i < lines.length) {
+		if (i + 1 < lines.length && isGfmTableRowLine(lines[i]) && isGfmTableDelimiterRow(lines[i + 1])) {
+			const chunk: string[] = [];
+			let j = i;
+			while (j < lines.length && lines[j].trim() !== '' && isGfmTableRowLine(lines[j])) {
+				chunk.push(lines[j]);
+				j += 1;
+			}
+			const idx = blocks.length;
+			blocks.push(chunk.join('\n'));
+			out.push(`\uE000TABLE${idx}\uE001`);
+			i = j;
+			continue;
+		}
+		out.push(lines[i]);
+		i += 1;
+	}
+	return { text: out.join('\n'), blocks };
+}
+
+function restoreGfmPipeTables(text: string, blocks: string[]): string {
+	let out = text;
+	blocks.forEach((block, i) => {
+		out = out.replace(`\uE000TABLE${i}\uE001`, block);
 	});
+	return out;
+}
+
+function markdownToEditorInput(md: string): string {
+	const { text: withoutCode, blocks: codeBlocks } = protectFencedCodeBlocks(md);
+	const { text: withoutTables, blocks: tableBlocks } = protectGfmPipeTables(withoutCode);
+	let t = withoutTables;
+	/* Блочная математика только вне таблиц — в ячейках оставляем сырой `$$`, иначе HTML попадает в parseInlineTokens и даёт block-узлы внутри paragraph. */
 	t = t.replace(/\$\$([\s\S]+?)\$\$/g, (_, formula: string) => {
 		const enc = encodeURIComponent(formula.trim());
 		return `<div data-type="block-math" data-formula="${enc}"></div>`;
+	});
+	t = restoreGfmPipeTables(t, tableBlocks);
+	t = t.replace(/\[(IMAGE|TABLE|FORMULA)-CAPTION:\s*([^\]]+)\]/g, (_, type: string, cap: string) => {
+		const enc = encodeURIComponent(String(cap).trim());
+		return `<div data-ddoc-caption="${type}" data-ddoc-text="${enc}"></div>`;
 	});
 	t = t.replace(/\$([^$\n]+)\$/g, (_, formula: string) => {
 		const enc = encodeURIComponent(formula.trim());
 		return `<span data-type="inline-math" data-formula="${enc}"></span>`;
 	});
-	return restoreFencedCodeBlocks(t, blocks);
+	return restoreFencedCodeBlocks(t, codeBlocks);
 }
 
 function htmlContainsTable(html: string): boolean {
@@ -193,8 +256,9 @@ const editor = useEditor({
 		TableRow,
 		TableHeader,
 		TableCell,
+		/* Top-level `![](url)` from markdown must be a block; inline image is not valid under doc block+. */
 		Image.configure({
-			inline: true,
+			inline: false,
 			allowBase64: true,
 			HTMLAttributes: { class: 'tiptap-document-editor__img' },
 		}),
@@ -308,6 +372,12 @@ watch(
 	border: 1px solid var(--border-color, #cbd5e1);
 	padding: 6px 10px;
 	vertical-align: top;
+}
+
+/* Пустые/узкие ячейки: зона клика для курсора (иначе «не вводится» в колонку вроде «Объём |  | $…$»). */
+.tiptap-document-editor :deep(.tiptap-document-editor__prose th > p),
+.tiptap-document-editor :deep(.tiptap-document-editor__prose td > p) {
+	min-height: 1.35em;
 }
 
 .tiptap-document-editor :deep(.tiptap-document-editor__prose th) {
