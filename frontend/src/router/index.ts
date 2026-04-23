@@ -62,6 +62,12 @@ const router = createRouter({
 			component: () => import('@/pages/settings/SettingsLLMPage.vue'),
 			meta: { requiresAuth: true },
 		},
+		{
+			path: '/settings/keyboard',
+			name: 'settings-keyboard',
+			component: () => import('@/pages/settings/SettingsKeyboardPage.vue'),
+			meta: { requiresAuth: true },
+		},
 	],
 });
 

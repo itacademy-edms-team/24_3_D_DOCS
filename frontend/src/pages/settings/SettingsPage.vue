@@ -22,6 +22,16 @@
 				</li>
 				<li>
 					<Button
+						variant="secondary"
+						fullWidth
+						class="settings-btn"
+						@click="router.push('/settings/keyboard')"
+					>
+						Клавиши (отладка)
+					</Button>
+				</li>
+				<li>
+					<Button
 						variant="danger"
 						fullWidth
 						class="settings-btn"
