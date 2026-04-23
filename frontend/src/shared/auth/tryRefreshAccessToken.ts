@@ -6,6 +6,18 @@ import { setHttpAccessToken } from './httpAccessToken';
 
 const AUTH_STORAGE_KEY = 'auth-storage';
 
+/** База API как у HttpClient / ассетов (без завершающего `/`). */
+export function getAuthApiBaseUrl(): string {
+	if (typeof window === 'undefined') {
+		return '';
+	}
+	const raw =
+		typeof BASE_URI !== 'undefined' && BASE_URI
+			? BASE_URI
+			: window.location.origin;
+	return raw.replace(/\/$/, '');
+}
+
 type TokenRefreshResponse = {
 	accessToken?: string;
 	refreshToken?: string;
@@ -37,7 +49,9 @@ function readRefreshToken(parsed: Record<string, unknown>): string | null {
 /**
  * @returns true если токены в localStorage обновлены
  */
-export async function tryRefreshAccessToken(apiBaseUrl: string): Promise<boolean> {
+export async function tryRefreshAccessToken(
+	apiBaseUrl: string = getAuthApiBaseUrl(),
+): Promise<boolean> {
 	const parsed = parseAuthStorage();
 	if (!parsed) return false;
 

@@ -8,6 +8,8 @@ import {
 	type Extension,
 	type ViewUpdate,
 } from '@codemirror/view';
+import { tryRefreshAccessToken } from '@/shared/auth/tryRefreshAccessToken';
+import { withFreshUploadAssetToken } from '@/shared/utils/withFreshUploadAssetToken';
 
 class ImageThumbWidget extends WidgetType {
 	constructor(readonly url: string) {
@@ -20,15 +22,26 @@ class ImageThumbWidget extends WidgetType {
 		const img = document.createElement('img');
 		img.alt = '';
 		img.loading = 'lazy';
-		img.src = this.url;
+		img.src = withFreshUploadAssetToken(this.url);
+		let retried = false;
 		img.addEventListener(
 			'error',
 			() => {
-				wrap.replaceChildren();
-				wrap.classList.add('ddoc-cm-img-preview--broken');
-				wrap.textContent = '×';
+				void (async () => {
+					const u = this.url.trim();
+					const isApi = u.includes('/api/') || u.startsWith('api/');
+					if (!retried && isApi) {
+						retried = true;
+						await tryRefreshAccessToken();
+						img.src = withFreshUploadAssetToken(this.url);
+						return;
+					}
+					wrap.replaceChildren();
+					wrap.classList.add('ddoc-cm-img-preview--broken');
+					wrap.textContent = '×';
+				})();
 			},
-			{ once: true },
+			{ once: false },
 		);
 		wrap.appendChild(img);
 		return wrap;

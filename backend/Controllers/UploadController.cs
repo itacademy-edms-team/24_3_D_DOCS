@@ -376,7 +376,9 @@ public class UploadController : ControllerBase
             
             // Set cache headers for images (1 hour cache)
             Response.Headers["Cache-Control"] = "public, max-age=3600";
-            
+            // SPA (другой origin в dev) грузит картинки через <img>; CORP снижает риск ORB в браузере.
+            Response.Headers["Cross-Origin-Resource-Policy"] = "cross-origin";
+
             // CORS headers are handled by global CORS policy in Program.cs
             // Don't set them manually here to avoid conflicts
             

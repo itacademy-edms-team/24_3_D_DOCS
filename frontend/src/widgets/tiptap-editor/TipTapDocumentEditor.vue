@@ -23,7 +23,7 @@ import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
-import Image from '@tiptap/extension-image';
+import { DocumentImageTipTap } from './documentImageTipTap';
 import 'katex/dist/katex.min.css';
 import { useTheme } from '@/app/composables/useTheme';
 import { InlineMathTipTap, BlockMathTipTap } from './mathTipTap';
@@ -257,7 +257,7 @@ const editor = useEditor({
 		TableHeader,
 		TableCell,
 		/* Top-level `![](url)` from markdown must be a block; inline image is not valid under doc block+. */
-		Image.configure({
+		DocumentImageTipTap.configure({
 			inline: false,
 			allowBase64: true,
 			HTMLAttributes: { class: 'tiptap-document-editor__img' },

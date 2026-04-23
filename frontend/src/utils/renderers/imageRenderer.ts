@@ -1,7 +1,8 @@
 import type { ProfileData, EntityStyle } from '@/entities/profile/types';
 import { getFinalStyle, styleToCSS, generateElementId } from '../renderUtils';
 import type { EntityType } from '../renderUtils';
-import { getAccessToken } from '@/shared/auth/tokenStorage';
+import { tryRefreshAccessToken } from '@/shared/auth/tryRefreshAccessToken';
+import { withFreshUploadAssetToken } from '@/shared/utils/withFreshUploadAssetToken';
 
 /**
  * Render images with profile styles
@@ -52,67 +53,38 @@ export function renderImages(
 	
 	// Second pass: render images with their captions
 	images.forEach((img) => {
-		let src = img.getAttribute('src') || '';
+		const rawSrc = img.getAttribute('src') || '';
+		let src = rawSrc;
 		const alt = img.getAttribute('alt') || '';
-		const elId = generateElementId('img', src + alt, usedIds);
-		
-		
-		
-		// Update image src with fresh token if it's an API URL
-		// This ensures images always have a valid token when rendering
+		const elId = generateElementId('img', rawSrc + alt, usedIds);
+
 		if (src && (src.includes('/api/') || src.startsWith('api/'))) {
-			const currentToken = getAccessToken();
-			if (currentToken) {
-				try {
-					// Parse URL and update token
-					let url: URL;
-					const base = typeof BASE_URI !== 'undefined' ? BASE_URI : window.location.origin;
-					
-					if (src.startsWith('http://') || src.startsWith('https://')) {
-						// Absolute URL - parse directly
-						url = new URL(src);
-					} else {
-						// Relative URL - use base
-						url = new URL(src, base);
-					}
-
-					// Replace or add token parameter
-					url.searchParams.set('token', currentToken);
-
-					// Always use absolute URL for API calls to ensure correct origin
-					src = url.toString();
-				} catch (urlError) {
-					// If URL parsing fails, try to replace or append token manually
-					try {
-						const base = typeof BASE_URI !== 'undefined' ? BASE_URI : '';
-						let fullUrl = src;
-						if (base && !src.startsWith('http')) {
-							fullUrl = base.endsWith('/') ? base + src.replace(/^\//, '') : base + (src.startsWith('/') ? src : '/' + src);
-						}
-						
-						// Remove existing token parameter if present
-						const urlWithoutToken = fullUrl.split('?')[0];
-						const existingParams = fullUrl.includes('?') ? fullUrl.split('?')[1] : '';
-						const params = new URLSearchParams(existingParams);
-						params.set('token', currentToken);
-
-						src = urlWithoutToken + '?' + params.toString();
-					} catch (fallbackError) {
-						// Last resort: simple append
-						// Remove existing token if present
-						const baseUrl = src.split('?')[0];
-						const existingParams = src.includes('?') ? src.split('?')[1] : '';
-						const params = new URLSearchParams(existingParams);
-						params.set('token', currentToken);
-						src = baseUrl + '?' + params.toString();
-					}
-				}
-			}
+			src = withFreshUploadAssetToken(src);
 		}
-		
-		// Update src attribute with potentially updated URL
+
 		if (src) {
 			img.setAttribute('src', src);
+			if (rawSrc.includes('/api/') || rawSrc.startsWith('api/')) {
+				let assetRetried = false;
+				img.addEventListener(
+					'error',
+					function onAssetImgError() {
+						void (async () => {
+							if (assetRetried) {
+								img.removeEventListener('error', onAssetImgError);
+								return;
+							}
+							assetRetried = true;
+							if (await tryRefreshAccessToken()) {
+								img.setAttribute('src', withFreshUploadAssetToken(rawSrc));
+								return;
+							}
+							img.removeEventListener('error', onAssetImgError);
+						})();
+					},
+					{ passive: true },
+				);
+			}
 			// Don't set crossorigin attribute - it can cause issues with query parameters
 			// Images will load normally without CORS preflight
 		}
