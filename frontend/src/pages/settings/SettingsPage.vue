@@ -27,7 +27,7 @@
 						class="settings-btn"
 						@click="router.push('/settings/keyboard')"
 					>
-						Клавиши (отладка)
+						Клавиши редактора
 					</Button>
 				</li>
 				<li>

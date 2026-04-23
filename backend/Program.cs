@@ -30,6 +30,7 @@ using RusalProject.Services.TitlePage;
 using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
 using RusalProject.Services.AgentSources;
+using RusalProject.Services.EditorHotkeys;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -171,6 +172,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<IUserOllamaApiKeyService, UserOllamaApiKeyService>();
 builder.Services.AddScoped<IUserOllamaModelResolutionService, UserOllamaModelResolutionService>();
 builder.Services.AddScoped<IUserOllamaModelSettingsService, UserOllamaModelSettingsService>();
+builder.Services.AddScoped<IUserEditorHotkeysService, UserEditorHotkeysService>();
 builder.Services.AddScoped<IOllamaChatService, OllamaChatService>();
 builder.Services.AddScoped<IOllamaSimpleChatService>(sp => (IOllamaSimpleChatService)sp.GetRequiredService<IOllamaChatService>());
 

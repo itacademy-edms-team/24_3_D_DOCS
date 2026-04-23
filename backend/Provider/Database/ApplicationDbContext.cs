@@ -27,6 +27,7 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<UserOllamaApiKey> UserOllamaApiKeys { get; set; }
     public DbSet<LlmModel> LlmModels { get; set; }
     public DbSet<UserOllamaModelPreferences> UserOllamaModelPreferences { get; set; }
+    public DbSet<UserEditorHotkeys> UserEditorHotkeys { get; set; }
     public DbSet<AgentSourceSession> AgentSourceSessions { get; set; }
     public DbSet<AgentSourcePart> AgentSourceParts { get; set; }
 
@@ -322,6 +323,20 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<UserEditorHotkeys>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+            entity.Property(e => e.BindingsJson)
+                .HasColumnType("jsonb")
+                .IsRequired();
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Configure AgentLog entity
         modelBuilder.Entity<AgentLog>(entity =>
         {
@@ -445,6 +460,10 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             else if (entry.Entity is UserOllamaModelPreferences prefs)
             {
                 prefs.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is UserEditorHotkeys editorHotkeys)
+            {
+                editorHotkeys.UpdatedAt = DateTime.UtcNow;
             }
         }
     }
