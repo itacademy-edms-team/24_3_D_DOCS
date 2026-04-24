@@ -30,6 +30,8 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<UserEditorHotkeys> UserEditorHotkeys { get; set; }
     public DbSet<AgentSourceSession> AgentSourceSessions { get; set; }
     public DbSet<AgentSourcePart> AgentSourceParts { get; set; }
+    public DbSet<DocumentCollaborator> DocumentCollaborators { get; set; }
+    public DbSet<UserNotification> UserNotifications { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -409,6 +411,41 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasOne(e => e.Session)
                 .WithMany(s => s.Parts)
                 .HasForeignKey(e => e.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DocumentCollaborator>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.DocumentId).HasDatabaseName("IX_DocumentCollaborators_DocumentId");
+            entity.HasIndex(e => e.UserId).HasDatabaseName("IX_DocumentCollaborators_UserId");
+            entity.HasIndex(e => new { e.DocumentId, e.UserId })
+                .IsUnique()
+                .HasDatabaseName("IX_DocumentCollaborators_Document_User");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.Document)
+                .WithMany(d => d.Collaborators)
+                .HasForeignKey(e => e.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.User)
+                .WithMany(u => u.DocumentCollaborations)
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Inviter)
+                .WithMany()
+                .HasForeignKey(e => e.InvitedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<UserNotification>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId).HasDatabaseName("IX_Notifications_UserId");
+            entity.Property(e => e.PayloadJson).HasColumnType("jsonb");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.HasOne(e => e.User)
+                .WithMany(u => u.Notifications)
+                .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

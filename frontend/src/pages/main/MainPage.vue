@@ -69,6 +69,7 @@
 					{{ activeTab === 'docs' ? 'Все документы' : activeTab === 'profiles' ? 'Профили стилей' : 'Титульные листы' }}
 				</h1>
 				<div class="header-actions">
+					<NotificationBell @accepted="loadData" />
 					<button
 						type="button"
 						class="main-page__share-btn"
@@ -317,6 +318,7 @@ import CreateTitlePageModal from '@/widgets/create-title-page/CreateTitlePageMod
 import InfoBanner from '@/widgets/info-banner/InfoBanner.vue';
 import ThemeToggle from '@/features/theme-toggle/ThemeToggle.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
+import NotificationBell from '@/features/notifications/NotificationBell.vue';
 import Modal from '@/shared/ui/Modal/Modal.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import Icon from '@/components/Icon.vue';

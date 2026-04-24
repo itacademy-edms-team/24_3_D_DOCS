@@ -44,6 +44,47 @@ public class DocumentService : IDocumentService
 
     private string GetUserBucket(Guid userId) => $"user-{userId}";
 
+    private static string BucketForDocument(DocumentLink document) => $"user-{document.CreatorId}";
+
+    private IQueryable<DocumentLink> DocumentLinksWithNav() =>
+        _context.DocumentLinks
+            .Include(d => d.Profile)
+            .Include(d => d.TitlePage)
+            .Include(d => d.Creator)
+            .Include(d => d.Collaborators);
+
+    private Task<DocumentLink?> GetAccessibleWithNavAsync(Guid documentId, Guid userId, CancellationToken ct = default) =>
+        DocumentLinksWithNav().FirstOrDefaultAsync(
+            d => d.Id == documentId
+                && (d.CreatorId == userId
+                    || d.Collaborators.Any(c =>
+                        c.UserId == userId && c.Status == DocumentCollaborator.StatusAccepted)),
+            ct);
+
+    private Task<DocumentLink?> GetOwnedWithNavAsync(Guid documentId, Guid userId, CancellationToken ct = default) =>
+        DocumentLinksWithNav().FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId, ct);
+
+    private Task<DocumentLink?> GetOwnedAsync(Guid documentId, Guid userId, CancellationToken ct = default) =>
+        _context.DocumentLinks.FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId, ct);
+
+    private Task<DocumentLink?> GetAccessibleAsync(Guid documentId, Guid userId, CancellationToken ct = default) =>
+        _context.DocumentLinks
+            .Include(d => d.Collaborators)
+            .FirstOrDefaultAsync(
+                d => d.Id == documentId
+                    && (d.CreatorId == userId
+                        || d.Collaborators.Any(c =>
+                            c.UserId == userId && c.Status == DocumentCollaborator.StatusAccepted)),
+                ct);
+
+    private Task<bool> DocumentIsAccessibleAsync(Guid documentId, Guid userId, CancellationToken ct = default) =>
+        _context.DocumentLinks.AnyAsync(
+            d => d.Id == documentId
+                && (d.CreatorId == userId
+                    || d.Collaborators.Any(c =>
+                        c.UserId == userId && c.Status == DocumentCollaborator.StatusAccepted)),
+            ct);
+
     public async Task<DocumentDTO> CreateDocumentAsync(Guid userId, CreateDocumentDTO dto)
     {
         var document = new DocumentLink
@@ -94,31 +135,25 @@ public class DocumentService : IDocumentService
         if (documentWithNav == null)
             throw new InvalidOperationException($"Document {document.Id} not found after creation");
 
-        return await MapToDTOAsync(documentWithNav);
+        return await MapToDTOAsync(documentWithNav, userId);
     }
 
     public async Task<DocumentDTO?> GetDocumentByIdAsync(Guid documentId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .Include(d => d.Profile)
-            .Include(d => d.TitlePage)
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleWithNavAsync(documentId, userId);
 
         if (document == null) return null;
 
-        return await MapToDTOAsync(document);
+        return await MapToDTOAsync(document, userId);
     }
 
     public async Task<DocumentWithContentDTO?> GetDocumentWithContentAsync(Guid documentId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .Include(d => d.Profile)
-            .Include(d => d.TitlePage)
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleWithNavAsync(documentId, userId);
 
         if (document == null) return null;
 
-        var dto = await MapToDTOAsync(document);
+        var dto = await MapToDTOAsync(document, userId);
         var withContent = new DocumentWithContentDTO
         {
             Id = dto.Id,
@@ -139,7 +174,7 @@ public class DocumentService : IDocumentService
         // Загружаем контент из MinIO
         try
         {
-            var bucket = GetUserBucket(userId);
+            var bucket = BucketForDocument(document);
             using var contentStream = await _minioService.DownloadFileAsync(bucket, document.MdMinioPath);
             using var reader = new StreamReader(contentStream, Encoding.UTF8);
             withContent.Content = await reader.ReadToEndAsync();
@@ -152,7 +187,7 @@ public class DocumentService : IDocumentService
         // Загружаем overrides
         try
         {
-            var bucket = GetUserBucket(userId);
+            var bucket = BucketForDocument(document);
             var overridesPath = document.MdMinioPath.Replace("content.md", "overrides.json");
             using var overridesStream = await _minioService.DownloadFileAsync(bucket, overridesPath);
             using var reader = new StreamReader(overridesStream, Encoding.UTF8);
@@ -178,44 +213,46 @@ public class DocumentService : IDocumentService
 
     public async Task<List<DocumentDTO>> GetDocumentsAsync(Guid userId, string? status = null, string? search = null)
     {
-        var query = _context.DocumentLinks
-            .Include(d => d.Profile)
-            .Include(d => d.TitlePage)
-            .Where(d => d.CreatorId == userId);
-
-        // Фильтр по статусу (all, archived)
-        if (status == "archived")
+        IQueryable<DocumentLink> ApplyFilters(IQueryable<DocumentLink> q)
         {
-            query = query.Where(d => d.IsArchived);
-        }
-        else if (status != "all")
-        {
-            query = query.Where(d => !d.IsArchived);
+            if (status == "archived")
+                q = q.Where(d => d.IsArchived);
+            else if (status != "all")
+                q = q.Where(d => !d.IsArchived);
+            if (!string.IsNullOrWhiteSpace(search))
+                q = q.Where(d => d.Name.Contains(search));
+            return q;
         }
 
-        // Поиск по названию
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            query = query.Where(d => d.Name.Contains(search));
-        }
+        var ownedQuery = ApplyFilters(
+            DocumentLinksWithNav().Where(d => d.CreatorId == userId));
 
-        var documents = await query
-            .OrderByDescending(d => d.UpdatedAt)
-            .ToListAsync();
+        var sharedQuery = ApplyFilters(
+            DocumentLinksWithNav().Where(d =>
+                d.Collaborators.Any(c =>
+                    c.UserId == userId && c.Status == DocumentCollaborator.StatusAccepted)));
+
+        var owned = await ownedQuery.OrderByDescending(d => d.UpdatedAt).ToListAsync();
+        var shared = await sharedQuery.OrderByDescending(d => d.UpdatedAt).ToListAsync();
+
+        var byId = new Dictionary<Guid, DocumentLink>();
+        foreach (var d in owned)
+            byId[d.Id] = d;
+        foreach (var d in shared)
+            byId[d.Id] = d;
+
+        var merged = byId.Values.OrderByDescending(d => d.UpdatedAt).ToList();
 
         var result = new List<DocumentDTO>();
-        foreach (var doc in documents)
-        {
-            result.Add(await MapToDTOAsync(doc));
-        }
+        foreach (var doc in merged)
+            result.Add(await MapToDTOAsync(doc, userId));
 
         return result;
     }
 
     public async Task<DocumentDTO> UpdateDocumentAsync(Guid documentId, Guid userId, UpdateDocumentDTO dto)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedWithNavAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -231,35 +268,57 @@ public class DocumentService : IDocumentService
 
         await _context.SaveChangesAsync();
 
-        return await MapToDTOAsync(document);
+        return await MapToDTOAsync(document, userId);
     }
 
-    public async Task UpdateDocumentContentAsync(Guid documentId, Guid userId, string content)
+    public async Task<UpdateDocumentContentResultDto> UpdateDocumentContentAsync(
+        Guid documentId,
+        Guid userId,
+        string? baseContent,
+        string newContent)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        var bucket = GetUserBucket(userId);
-        _logger.LogInformation("UpdateDocumentContentAsync: Saving content for document {DocumentId} to bucket {Bucket}, path {Path}, content length: {ContentLength}", 
-            documentId, bucket, document.MdMinioPath, content.Length);
-        
-        var contentBytes = Encoding.UTF8.GetBytes(content);
-        using var contentStream = new MemoryStream(contentBytes);
-        await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStream, "text/markdown");
+        var bucket = BucketForDocument(document);
+
+        string currentContent;
+        try
+        {
+            using var contentStream = await _minioService.DownloadFileAsync(bucket, document.MdMinioPath);
+            using var reader = new StreamReader(contentStream, Encoding.UTF8);
+            currentContent = await reader.ReadToEndAsync();
+        }
+        catch (FileNotFoundException)
+        {
+            currentContent = string.Empty;
+        }
+
+        var (merged, hasConflicts) = MergeService.MergeMarkdown(baseContent, currentContent, newContent);
+
+        _logger.LogInformation(
+            "UpdateDocumentContentAsync: document {DocumentId}, bucket {Bucket}, merged length {Len}, conflicts {Conflicts}",
+            documentId,
+            bucket,
+            merged.Length,
+            hasConflicts);
+
+        var contentBytes = Encoding.UTF8.GetBytes(merged);
+        using var contentStreamOut = new MemoryStream(contentBytes);
+        await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStreamOut, "text/markdown");
 
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("UpdateDocumentContentAsync: Content saved successfully to MinIO");
+        return new UpdateDocumentContentResultDto { Content = merged, HasConflicts = hasConflicts };
     }
 
     public async Task AddPendingDocumentChangesAsync(Guid documentId, Guid userId, IReadOnlyCollection<DocumentEntityChangeDTO> changes)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -288,8 +347,7 @@ public class DocumentService : IDocumentService
 
     public async Task<List<DocumentEntityChangeDTO>> GetPendingDocumentChangesAsync(Guid documentId, Guid userId)
     {
-        var documentExists = await _context.DocumentLinks
-            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var documentExists = await DocumentIsAccessibleAsync(documentId, userId);
 
         if (!documentExists)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -315,8 +373,7 @@ public class DocumentService : IDocumentService
 
     public async Task AcceptPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -346,7 +403,7 @@ public class DocumentService : IDocumentService
         var currentContent = currentDocument?.Content ?? string.Empty;
         var updatedContent = ApplyAcceptedChangeGroup(currentContent, groupChanges);
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
         var contentBytes = Encoding.UTF8.GetBytes(updatedContent);
         using var contentStream = new MemoryStream(contentBytes);
         await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStream, "text/markdown");
@@ -364,8 +421,7 @@ public class DocumentService : IDocumentService
 
     public async Task RejectPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -393,13 +449,12 @@ public class DocumentService : IDocumentService
 
     public async Task UpdateDocumentOverridesAsync(Guid documentId, Guid userId, Dictionary<string, object> overrides)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
         var overridesPath = document.MdMinioPath.Replace("content.md", "overrides.json");
         
         var styleOverrides = new StyleOverrides
@@ -418,8 +473,7 @@ public class DocumentService : IDocumentService
 
     public async Task UpdateDocumentMetadataAsync(Guid documentId, Guid userId, DocumentMetadataDTO metadata)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -430,13 +484,12 @@ public class DocumentService : IDocumentService
 
     public async Task<DocumentVersionDTO> SaveVersionAsync(Guid documentId, Guid userId, string name)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
 
         // Read current content from MinIO
         string content;
@@ -506,8 +559,7 @@ public class DocumentService : IDocumentService
 
     public async Task<List<DocumentVersionDTO>> GetVersionsAsync(Guid documentId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             return new List<DocumentVersionDTO>();
@@ -528,8 +580,7 @@ public class DocumentService : IDocumentService
 
     public async Task<string> GetVersionContentAsync(Guid documentId, Guid versionId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -540,7 +591,7 @@ public class DocumentService : IDocumentService
         if (version == null)
             throw new FileNotFoundException($"Version {versionId} not found");
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
 
         try
         {
@@ -558,13 +609,12 @@ public class DocumentService : IDocumentService
     {
         var content = await GetVersionContentAsync(documentId, versionId, userId);
 
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
         var contentBytes = Encoding.UTF8.GetBytes(content);
         using var contentStream = new MemoryStream(contentBytes);
         await _minioService.UploadFileAsync(bucket, document.MdMinioPath, contentStream, "text/markdown");
@@ -578,8 +628,7 @@ public class DocumentService : IDocumentService
 
     public async Task DeleteVersionAsync(Guid documentId, Guid versionId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -590,7 +639,7 @@ public class DocumentService : IDocumentService
         if (version == null)
             throw new FileNotFoundException($"Version {versionId} not found");
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
 
         try
         {
@@ -609,12 +658,11 @@ public class DocumentService : IDocumentService
 
     public async Task<List<TocItem>?> GetTableOfContentsAsync(Guid documentId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null) return null;
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
         var tocPath = document.MdMinioPath.Replace("content.md", "toc.json");
 
         try
@@ -645,8 +693,7 @@ public class DocumentService : IDocumentService
 
     public async Task UpdateTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -703,13 +750,12 @@ public class DocumentService : IDocumentService
 
     private async Task SaveTableOfContentsAsync(Guid documentId, Guid userId, List<TocItem> items)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
         var tocPath = document.MdMinioPath.Replace("content.md", "toc.json");
 
         var json = JsonSerializer.Serialize(items);
@@ -720,16 +766,15 @@ public class DocumentService : IDocumentService
 
     public async Task DeleteDocumentAsync(Guid documentId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
 
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
 
         var attachments = await _context.Attachments
-            .Where(a => a.DocumentId == documentId && a.CreatorId == userId)
+            .Where(a => a.DocumentId == documentId)
             .ToListAsync();
         foreach (var attachment in attachments)
         {
@@ -784,8 +829,7 @@ public class DocumentService : IDocumentService
 
     public async Task ArchiveDocumentAsync(Guid documentId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -796,8 +840,7 @@ public class DocumentService : IDocumentService
 
     public async Task UnarchiveDocumentAsync(Guid documentId, Guid userId)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetOwnedAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -806,16 +849,12 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
     }
 
-    public async Task<bool> DocumentExistsAsync(Guid documentId, Guid userId)
-    {
-        return await _context.DocumentLinks
-            .AnyAsync(d => d.Id == documentId && d.CreatorId == userId);
-    }
+    public async Task<bool> DocumentExistsAsync(Guid documentId, Guid userId) =>
+        await DocumentIsAccessibleAsync(documentId, userId);
 
     public async Task UpdatePdfPathAsync(Guid documentId, Guid userId, string pdfPath)
     {
-        var document = await _context.DocumentLinks
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -824,7 +863,7 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
     }
 
-    private Task<DocumentDTO> MapToDTOAsync(DocumentLink document)
+    private Task<DocumentDTO> MapToDTOAsync(DocumentLink document, Guid? viewingUserId = null)
     {
         var dto = new DocumentDTO
         {
@@ -841,6 +880,17 @@ public class DocumentService : IDocumentService
             UpdatedAt = document.UpdatedAt,
             HasPdf = !string.IsNullOrEmpty(document.PdfMinioPath)
         };
+
+        if (viewingUserId.HasValue && document.CreatorId != viewingUserId.Value)
+        {
+            dto.IsShared = true;
+            dto.OwnerName = document.Creator?.Name;
+            // Collaborator uses their own profiles/title pages — don't expose owner's IDs
+            dto.ProfileId = null;
+            dto.ProfileName = null;
+            dto.TitlePageId = null;
+            dto.TitlePageName = null;
+        }
 
         if (!string.IsNullOrEmpty(document.Metadata))
         {
@@ -866,10 +916,7 @@ public class DocumentService : IDocumentService
         if (!options.AnyIncluded)
             throw new InvalidOperationException("At least one ddoc bundle part must be included.");
 
-        var document = await _context.DocumentLinks
-            .Include(d => d.Profile)
-            .Include(d => d.TitlePage)
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.CreatorId == userId);
+        var document = await GetAccessibleWithNavAsync(documentId, userId);
 
         if (document == null)
             throw new FileNotFoundException($"Document {documentId} not found");
@@ -884,7 +931,7 @@ public class DocumentService : IDocumentService
         var content = options.IncludeDocument
             ? (documentWithContent!.Content ?? string.Empty)
             : $"# {document.Name}\n";
-        var bucket = GetUserBucket(userId);
+        var bucket = BucketForDocument(document);
 
         var imageMap = new Dictionary<string, string>();
         if (options.IncludeDocument)
@@ -1368,7 +1415,7 @@ public class DocumentService : IDocumentService
         if (documentWithNav == null)
             throw new InvalidOperationException($"Document {document.Id} not found after import");
 
-        return await MapToDTOAsync(documentWithNav);
+        return await MapToDTOAsync(documentWithNav, userId);
     }
 
     private string GetMimeType(string fileName)

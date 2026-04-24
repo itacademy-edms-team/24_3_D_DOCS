@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RusalProject.Models.DTOs.Collab;
 using RusalProject.Models.DTOs.Document;
 using RusalProject.Models.Exceptions;
 using RusalProject.Models.Types;
+using RusalProject.Services.Collab;
 using RusalProject.Services.Document;
 using RusalProject.Services.Pdf;
 using RusalProject.Services.Storage;
@@ -17,17 +19,20 @@ namespace RusalProject.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
+    private readonly ICollabService _collabService;
     private readonly IDomPdfService _domPdfService;
     private readonly IMinioService _minioService;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         IDocumentService documentService,
+        ICollabService collabService,
         IDomPdfService domPdfService,
         IMinioService minioService,
         ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
+        _collabService = collabService;
         _domPdfService = domPdfService;
         _minioService = minioService;
         _logger = logger;
@@ -160,15 +165,19 @@ public class DocumentsController : ControllerBase
     /// Обновить контент документа (Markdown)
     /// </summary>
     [HttpPut("{id}/content")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(UpdateDocumentContentResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateDocumentContent(Guid id, [FromBody] UpdateDocumentContentDTO dto)
     {
         try
         {
             var userId = GetUserId();
-            await _documentService.UpdateDocumentContentAsync(id, userId, dto.Content);
-            return NoContent();
+            var result = await _documentService.UpdateDocumentContentAsync(
+                id,
+                userId,
+                dto.BaseContent,
+                dto.Content);
+            return Ok(result);
         }
         catch (FileNotFoundException)
         {
@@ -177,6 +186,75 @@ public class DocumentsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating document content {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Пригласить пользователя по email (только владелец документа)
+    /// </summary>
+    [HttpPost("{id:guid}/invite")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> InviteCollaborator(Guid id, [FromBody] InviteCollaboratorRequestDto body)
+    {
+        try
+        {
+            await _collabService.InviteByEmailAsync(id, GetUserId(), body.Email);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "InviteCollaborator {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Список соавторов (только владелец)
+    /// </summary>
+    [HttpGet("{id:guid}/collaborators")]
+    [ProducesResponseType(typeof(IReadOnlyList<DocumentCollaboratorListItemDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListCollaborators(Guid id)
+    {
+        try
+        {
+            var list = await _collabService.ListCollaboratorsAsync(id, GetUserId());
+            return Ok(list);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ListCollaborators {DocumentId}", id);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
+
+    /// <summary>
+    /// Отозвать доступ соавтора (только владелец)
+    /// </summary>
+    [HttpDelete("{id:guid}/collaborators/{collaboratorUserId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> RevokeCollaborator(Guid id, Guid collaboratorUserId)
+    {
+        try
+        {
+            await _collabService.RevokeCollaboratorAsync(id, GetUserId(), collaboratorUserId);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RevokeCollaborator {DocumentId} {CollaboratorUserId}", id, collaboratorUserId);
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }
@@ -639,7 +717,7 @@ public class DocumentsController : ControllerBase
             var document = await _documentService.GetDocumentByIdAsync(id, userId);
             if (document != null)
             {
-                var bucket = $"user-{userId}";
+                var bucket = $"user-{document.CreatorId}";
                 var pdfPath = $"documents/{id}/document.pdf";
                 using var pdfStream = new MemoryStream(pdfBytes);
                 await _minioService.UploadFileAsync(bucket, pdfPath, pdfStream, "application/pdf");
@@ -684,7 +762,7 @@ public class DocumentsController : ControllerBase
                 return NotFound(new { message = "PDF не найден. Сначала сгенерируйте PDF." });
             }
 
-            var bucket = $"user-{userId}";
+            var bucket = $"user-{document.CreatorId}";
             var pdfPath = $"documents/{id}/document.pdf";
             using var pdfStream = await _minioService.DownloadFileAsync(bucket, pdfPath);
             

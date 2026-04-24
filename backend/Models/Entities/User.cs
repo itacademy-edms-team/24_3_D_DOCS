@@ -38,5 +38,7 @@ public class User
     // Navigation properties
     public virtual ICollection<SchemaLink> SchemaLinks { get; set; } = new List<SchemaLink>();
     public virtual ICollection<DocumentLink> DocumentLinks { get; set; } = new List<DocumentLink>();
+    public virtual ICollection<DocumentCollaborator> DocumentCollaborations { get; set; } = new List<DocumentCollaborator>();
+    public virtual ICollection<UserNotification> Notifications { get; set; } = new List<UserNotification>();
 }
 

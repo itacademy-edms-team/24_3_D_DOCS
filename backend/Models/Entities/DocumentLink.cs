@@ -62,4 +62,6 @@ public class DocumentLink
 
     [ForeignKey("TitlePageId")]
     public virtual TitlePage? TitlePage { get; set; }
+
+    public virtual ICollection<DocumentCollaborator> Collaborators { get; set; } = new List<DocumentCollaborator>();
 }

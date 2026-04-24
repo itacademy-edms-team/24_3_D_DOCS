@@ -19,7 +19,9 @@ using RusalProject.Services.Agent.Core;
 using RusalProject.Services.Agent.Tools.CRUDdocTools;
 using RusalProject.Services.Agent.Tools.DocumentTools;
 using RusalProject.Services.Auth;
+using RusalProject.Services.Collab;
 using RusalProject.Services.Document;
+using RusalProject.Services.Notification;
 using RusalProject.Services.Attachment;
 using RusalProject.Services.Email;
 using RusalProject.Services.Markdown;
@@ -126,6 +128,8 @@ builder.Services.AddSingleton<IMinioService, MinioService>();
 
 // Document Services
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<ICollabService, CollabService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 // Attachment Services
 builder.Services.AddScoped<IAttachmentService, AttachmentService>();
 

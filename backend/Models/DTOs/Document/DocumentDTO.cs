@@ -6,6 +6,10 @@ public class DocumentDTO
 {
     public Guid Id { get; set; }
     public Guid CreatorId { get; set; }
+    /// <summary>True when the current user is an accepted collaborator (not the owner).</summary>
+    public bool IsShared { get; set; }
+    /// <summary>Document owner display name when <see cref="IsShared"/> is true.</summary>
+    public string? OwnerName { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public Guid? ProfileId { get; set; }
@@ -47,7 +51,16 @@ public class UpdateDocumentDTO
 
 public class UpdateDocumentContentDTO
 {
+    /// <summary>Markdown snapshot when the document was opened (for three-way merge). Omit for legacy last-write-wins.</summary>
+    public string? BaseContent { get; set; }
+
     public string Content { get; set; } = string.Empty;
+}
+
+public class UpdateDocumentContentResultDto
+{
+    public string Content { get; set; } = string.Empty;
+    public bool HasConflicts { get; set; }
 }
 
 public class UpdateDocumentOverridesDTO

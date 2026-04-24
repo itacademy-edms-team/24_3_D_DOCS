@@ -1,6 +1,9 @@
 export interface DocumentMeta {
 	id: string;
 	creatorId: string;
+	/** True when current user is an accepted collaborator (not the owner). */
+	isShared?: boolean;
+	ownerName?: string | null;
 	name: string;
 	description?: string;
 	profileId?: string;
@@ -60,7 +63,14 @@ export interface UpdateDocumentDTO {
 }
 
 export interface UpdateDocumentContentDTO {
+	/** Snapshot when document was opened (three-way merge). */
+	baseContent?: string | null;
 	content: string;
+}
+
+export interface UpdateDocumentContentResultDto {
+	content: string;
+	hasConflicts: boolean;
 }
 
 export interface UpdateDocumentOverridesDTO {

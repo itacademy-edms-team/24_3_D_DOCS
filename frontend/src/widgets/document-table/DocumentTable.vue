@@ -17,6 +17,13 @@
 				>
 					<td class="document-table__col-title">
 						<span class="document-table__name">{{ document.name }}</span>
+						<span
+							v-if="document.isShared"
+							class="document-table__badge document-table__badge--shared"
+							:title="document.ownerName ? `Владелец: ${document.ownerName}` : 'Общий документ'"
+						>
+							Общий<span v-if="document.ownerName"> · {{ document.ownerName }}</span>
+						</span>
 					</td>
 					<td class="document-table__col-profile">
 						<span
@@ -44,6 +51,7 @@
 								<Icon name="description" size="18" />
 							</button>
 							<button
+								v-if="!document.isShared"
 								class="document-table__action-btn document-table__action-btn--delete"
 								@click.stop="handleAction(document, 'delete')"
 								title="Удалить"
@@ -210,6 +218,12 @@ const handleAction = (document: DocumentMeta, action: string) => {
 .document-table__badge--profile {
 	background: var(--accent-light);
 	color: var(--accent);
+}
+
+.document-table__badge--shared {
+	margin-top: 4px;
+	background: rgba(25, 118, 210, 0.14);
+	color: var(--accent, #1976d2);
 }
 
 .document-table__empty {

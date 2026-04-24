@@ -5,6 +5,7 @@ import type {
 	CreateDocumentDTO,
 	UpdateDocumentDTO,
 	UpdateDocumentContentDTO,
+	UpdateDocumentContentResultDto,
 	UpdateDocumentOverridesDTO,
 	DocumentMetadata,
 	TocItem,
@@ -56,9 +57,33 @@ class DocumentAPI extends HttpClient {
 		return this.put<DocumentMeta, UpdateDocumentDTO>(`/api/documents/${id}`, data);
 	}
 
-	async updateContent(id: string, content: string): Promise<void> {
-		const dto: UpdateDocumentContentDTO = { content };
-		return this.put<void, UpdateDocumentContentDTO>(`/api/documents/${id}/content`, dto);
+	async updateContent(
+		id: string,
+		content: string,
+		baseContent?: string | null,
+	): Promise<UpdateDocumentContentResultDto> {
+		const dto: UpdateDocumentContentDTO = {
+			content,
+			baseContent: baseContent === undefined || baseContent === null ? undefined : baseContent,
+		};
+		return this.put<UpdateDocumentContentResultDto, UpdateDocumentContentDTO>(
+			`/api/documents/${id}/content`,
+			dto,
+		);
+	}
+
+	async inviteCollaborator(id: string, email: string): Promise<void> {
+		return this.post<void, { email: string }>(`/api/documents/${id}/invite`, { email });
+	}
+
+	async listCollaborators(id: string): Promise<
+		Array<{ userId: string; email: string; name: string; status: string }>
+	> {
+		return this.get(`/api/documents/${id}/collaborators`);
+	}
+
+	async revokeCollaborator(documentId: string, collaboratorUserId: string): Promise<void> {
+		return super.delete<void>(`/api/documents/${documentId}/collaborators/${collaboratorUserId}`);
 	}
 
 	async acceptAiChange(id: string, changeId: string): Promise<void> {

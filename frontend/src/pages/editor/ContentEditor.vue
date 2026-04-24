@@ -15,7 +15,11 @@
 						v-model="documentName"
 						@input="handleNameChange"
 						placeholder="Название документа"
+						:readonly="!isDocumentOwner"
 					/>
+					<span v-if="document?.isShared" class="content-editor__shared-pill" title="Документ другого пользователя">
+						Общий<span v-if="document?.ownerName"> · {{ document.ownerName }}</span>
+					</span>
 				</div>
 			</div>
 
@@ -106,6 +110,15 @@
 			<div class="content-editor__header-actions">
 				<div class="action-group">
 					<button
+						v-if="isDocumentOwner"
+						type="button"
+						class="content-editor__header-btn content-editor__header-btn--invite"
+						@click="showInviteModal = true"
+						title="Пригласить соавтора по email"
+					>
+						Пригласить
+					</button>
+					<button
 						class="content-editor__header-btn"
 						@click="handleGenerateToc"
 						:disabled="isGeneratingToc || !documentId"
@@ -151,7 +164,7 @@
 								<button
 									class="versions-dropdown__save-btn"
 									@click="openSaveVersionModal"
-									:disabled="isSavingVersion"
+									:disabled="!isDocumentOwner || isSavingVersion"
 								>
 									{{ isSavingVersion ? '...' : '+ Сохранить версию' }}
 								</button>
@@ -221,7 +234,7 @@
 											<button
 												class="versions-dropdown__btn-tile versions-dropdown__btn-tile--restore"
 												@click.stop="openRestoreConfirmModal(v)"
-												:disabled="isRestoringVersion"
+												:disabled="!isDocumentOwner || isRestoringVersion"
 												title="Восстановить"
 											>
 												Восстановить
@@ -229,7 +242,7 @@
 											<button
 												class="versions-dropdown__btn-tile versions-dropdown__btn-tile--delete"
 												@click.stop="openDeleteConfirmModal(v)"
-												:disabled="isDeletingVersion"
+												:disabled="!isDocumentOwner || isDeletingVersion"
 												title="Удалить"
 											>
 												Удалить
@@ -268,7 +281,8 @@
 					</button>
 				</div>
 
-				<div class="action-group">
+				<div class="action-group content-editor__notif-wrap">
+					<NotificationBell class="content-editor__notif-bell" @accepted="onCollabAccepted" />
 					<button 
 						class="content-editor__header-btn ai-btn"
 						:class="{ 'ai-btn--active': showAIPanel }"
@@ -284,6 +298,15 @@
 					</button>
 				</div>
 			</div>
+		</div>
+
+		<div v-if="mergeConflictBannerVisible" class="content-editor__merge-banner" role="alert">
+			<span>
+				Обнаружен конфликт при слиянии. Устраните маркеры <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> в тексте и сохраните снова.
+			</span>
+			<button type="button" class="content-editor__merge-banner-dismiss" @click="mergeConflictBannerVisible = false">
+				Скрыть
+			</button>
 		</div>
 
 		<!-- Editor Layout -->
@@ -359,10 +382,10 @@
 
 			<!-- Preview Panel -->
 			<div class="content-editor__preview-panel" v-show="showPreview">
-				<DocumentPreview
-					:content="content"
-					:profileId="document?.profileId"
-					:titlePageId="selectedTitlePageId"
+			<DocumentPreview
+				:content="content"
+				:profileId="selectedProfileId || undefined"
+				:titlePageId="selectedTitlePageId"
 					:titlePageVariables="titlePageVariables"
 					:documentId="documentId"
 					:tableOfContents="tableOfContents"
@@ -490,6 +513,37 @@
 			@width-changed="handleChatDockWidthChanged"
 		/>
 
+		<Modal v-model="showInviteModal" title="Пригласить соавтора" size="sm">
+			<p class="content-editor__invite-hint">Пользователь должен быть уже зарегистрирован в системе.</p>
+			<input
+				v-model="inviteEmail"
+				type="email"
+				class="content-editor__invite-input"
+				placeholder="email@example.com"
+				autocomplete="email"
+				@keyup.enter="submitInvite"
+			/>
+			<template #footer>
+				<div class="content-editor__modal-footer">
+					<button
+						type="button"
+						class="content-editor__modal-btn content-editor__modal-btn--secondary"
+						@click="showInviteModal = false"
+					>
+						Отмена
+					</button>
+					<button
+						type="button"
+						class="content-editor__modal-btn content-editor__modal-btn--primary"
+						:disabled="isInviting"
+						@click="submitInvite"
+					>
+						{{ isInviting ? '…' : 'Отправить' }}
+					</button>
+				</div>
+			</template>
+		</Modal>
+
 		<ExportPdfModal
 			v-model="showExportPdfModal"
 			:document-id="documentId"
@@ -512,6 +566,8 @@ import ChatDock from '@/features/agent/ChatDock.vue';
 import ExportPdfModal from '@/widgets/export-pdf-modal/ExportPdfModal.vue';
 import Modal from '@/shared/ui/Modal/Modal.vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
+import NotificationBell from '@/features/notifications/NotificationBell.vue';
+import { useAuthStore } from '@/entities/auth/store/authStore';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
 import { useDebounceFn } from '@vueuse/core';
@@ -520,7 +576,19 @@ import type { Profile } from '@/entities/profile/types';
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 const documentId = computed(() => route.params.id as string);
+
+const baseContentSnapshot = ref('');
+const mergeConflictBannerVisible = ref(false);
+const showInviteModal = ref(false);
+const inviteEmail = ref('');
+const isInviting = ref(false);
+
+const isDocumentOwner = computed(() => {
+	if (!document.value || !authStore.user) return true;
+	return document.value.creatorId === authStore.user.id;
+});
 
 const document = ref<Document | null>(null);
 const content = ref('');
@@ -645,6 +713,7 @@ async function reloadDocumentFromServer() {
 		const doc = await DocumentAPI.getById(documentId.value);
 		if (doc) {
 			content.value = doc.content || '';
+			baseContentSnapshot.value = doc.content || '';
 			bumpTiptapContentKey();
 			aiPendingChanges.value = doc.aiChanges || [];
 			document.value = document.value
@@ -712,12 +781,47 @@ const handleContentChange = (newContent: string) => {
 	contentSaveTimer = setTimeout(async () => {
 		contentSaveTimer = null;
 		try {
-			await DocumentAPI.updateContent(documentId.value, newContent);
+			const result = await DocumentAPI.updateContent(
+				documentId.value,
+				newContent,
+				baseContentSnapshot.value,
+			);
+			content.value = result.content;
+			document.value = document.value
+				? { ...document.value, content: result.content }
+				: document.value;
+			baseContentSnapshot.value = result.content;
+			bumpTiptapContentKey();
+			if (result.hasConflicts) {
+				mergeConflictBannerVisible.value = true;
+				showToast('Обнаружен конфликт при слиянии — см. баннер выше');
+			}
 		} catch (error) {
 			console.error('Failed to save content:', error);
 		}
 	}, 1000);
 };
+
+async function submitInvite() {
+	const email = inviteEmail.value.trim();
+	if (!email || !documentId.value || isInviting.value) return;
+	isInviting.value = true;
+	try {
+		await DocumentAPI.inviteCollaborator(documentId.value, email);
+		showToast('Приглашение отправлено');
+		showInviteModal.value = false;
+		inviteEmail.value = '';
+	} catch (e: any) {
+		const msg = e?.response?.data?.message || e?.message || 'Не удалось отправить приглашение';
+		alert(msg);
+	} finally {
+		isInviting.value = false;
+	}
+}
+
+function onCollabAccepted() {
+	router.push('/dashboard');
+}
 
 const handleAcceptAiChange = async (changeId: string) => {
 	cancelPendingContentSave();
@@ -793,6 +897,12 @@ const handleProfileChange = useDebounceFn(async (event: Event) => {
 	const target = event.target as HTMLSelectElement;
 	const newProfileId = target.value || undefined;
 
+	// Collaborators only apply the profile locally for preview; owner persists it
+	if (!isDocumentOwner.value) {
+		selectedProfileId.value = target.value;
+		return;
+	}
+
 	isUpdatingProfile.value = true;
 	try {
 		await DocumentAPI.update(documentId.value, {
@@ -801,7 +911,6 @@ const handleProfileChange = useDebounceFn(async (event: Event) => {
 		document.value.profileId = newProfileId;
 	} catch (error) {
 		console.error('Failed to update profile:', error);
-		// Revert selection on error
 		selectedProfileId.value = currentProfileId.value;
 	} finally {
 		isUpdatingProfile.value = false;
@@ -814,6 +923,12 @@ const handleTitlePageChange = useDebounceFn(async (event: Event) => {
 	const target = event.target as HTMLSelectElement;
 	const newTitlePageId = target.value || undefined;
 
+	// Collaborators only apply the title page locally for preview; owner persists it
+	if (!isDocumentOwner.value) {
+		selectedTitlePageId.value = target.value;
+		return;
+	}
+
 	isUpdatingTitlePage.value = true;
 	try {
 		await DocumentAPI.update(documentId.value, {
@@ -822,7 +937,6 @@ const handleTitlePageChange = useDebounceFn(async (event: Event) => {
 		document.value.titlePageId = newTitlePageId;
 	} catch (error) {
 		console.error('Failed to update title page:', error);
-		// Revert selection on error
 		selectedTitlePageId.value = currentTitlePageId.value;
 	} finally {
 		isUpdatingTitlePage.value = false;
@@ -906,6 +1020,8 @@ const loadDocument = async () => {
 		document.value = doc;
 		documentName.value = doc.name || 'Документ';
 		content.value = doc.content || '';
+		baseContentSnapshot.value = doc.content || '';
+		mergeConflictBannerVisible.value = false;
 		bumpTiptapContentKey();
 		aiPendingChanges.value = doc.aiChanges || [];
 		selectedProfileId.value = doc.profileId || '';
@@ -2082,6 +2198,72 @@ watch(
 	font-size: 14px;
 	color: var(--text-primary);
 	line-height: 1.5;
+}
+
+.content-editor__shared-pill {
+	margin-left: 10px;
+	padding: 4px 10px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--accent, #1976d2);
+	background: rgba(25, 118, 210, 0.12);
+	border-radius: 999px;
+	white-space: nowrap;
+}
+
+.content-editor__header-btn--invite {
+	font-size: 12px;
+	padding: 0 10px;
+}
+
+.content-editor__notif-wrap {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.content-editor__notif-bell :deep(.notif-bell__btn) {
+	width: 36px;
+	height: 36px;
+}
+
+.content-editor__merge-banner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 0 16px 8px;
+	padding: 10px 14px;
+	font-size: 13px;
+	background: rgba(198, 40, 40, 0.1);
+	border: 1px solid rgba(198, 40, 40, 0.35);
+	border-radius: var(--radius-md, 8px);
+	color: var(--text-primary);
+}
+
+.content-editor__merge-banner-dismiss {
+	flex-shrink: 0;
+	padding: 4px 10px;
+	font-size: 12px;
+	border-radius: 6px;
+	border: 1px solid rgba(0, 0, 0, 0.15);
+	background: transparent;
+	cursor: pointer;
+}
+
+.content-editor__invite-hint {
+	margin: 0 0 10px;
+	font-size: 13px;
+	color: var(--text-secondary, #666);
+}
+
+.content-editor__invite-input {
+	width: 100%;
+	padding: 10px 12px;
+	font-size: 14px;
+	border: 1px solid rgba(127, 127, 127, 0.35);
+	border-radius: 8px;
+	box-sizing: border-box;
 }
 
 .content-editor__toast {

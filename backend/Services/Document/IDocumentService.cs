@@ -11,7 +11,11 @@ public interface IDocumentService
     Task<DocumentWithContentDTO?> GetDocumentWithContentAsync(Guid documentId, Guid userId);
     Task<List<DocumentDTO>> GetDocumentsAsync(Guid userId, string? status = null, string? search = null);
     Task<DocumentDTO> UpdateDocumentAsync(Guid documentId, Guid userId, UpdateDocumentDTO dto);
-    Task UpdateDocumentContentAsync(Guid documentId, Guid userId, string content);
+    Task<UpdateDocumentContentResultDto> UpdateDocumentContentAsync(
+        Guid documentId,
+        Guid userId,
+        string? baseContent,
+        string newContent);
     Task AddPendingDocumentChangesAsync(Guid documentId, Guid userId, IReadOnlyCollection<DocumentEntityChangeDTO> changes);
     Task<List<DocumentEntityChangeDTO>> GetPendingDocumentChangesAsync(Guid documentId, Guid userId);
     Task AcceptPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId);
