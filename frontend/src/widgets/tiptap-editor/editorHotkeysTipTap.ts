@@ -11,7 +11,7 @@ import {
 import type { OpenFormulaBuilderFn } from './formulaBuilderContext';
 
 export interface EditorHotkeysTipTapOptions {
-	getBindings: () => Record<EditorHotkeyActionId, EditorHotkeyChord>;
+	getBindings: () => Record<EditorHotkeyActionId, EditorHotkeyChord | null>;
 	openFormulaBuilder: OpenFormulaBuilderFn;
 	requestImageUpload: (mode: 'insert' | 'crop') => void;
 	getDocumentId: () => string | undefined;
@@ -87,7 +87,7 @@ export const EditorHotkeysTipTap = Extension.create<EditorHotkeysTipTapOptions>(
 
 	addOptions() {
 		return {
-			getBindings: () => ({} as Record<EditorHotkeyActionId, EditorHotkeyChord>),
+			getBindings: () => ({} as Record<EditorHotkeyActionId, EditorHotkeyChord | null>),
 			openFormulaBuilder: ((_opts) => {}) as OpenFormulaBuilderFn,
 			requestImageUpload: () => {},
 			getDocumentId: () => undefined,
@@ -113,6 +113,9 @@ export const EditorHotkeysTipTap = Extension.create<EditorHotkeysTipTapOptions>(
 						const bindings = opts.getBindings();
 						for (const id of catalogIdsForPayload()) {
 							const chord = bindings[id];
+							if (chord == null) {
+								continue;
+							}
 							if (!hotkeyChordMatches(event, chord)) {
 								continue;
 							}

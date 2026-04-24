@@ -3,22 +3,24 @@ import {
 	type EditorHotkeyActionId,
 	type EditorHotkeyChord,
 } from './editorHotkeyCatalog';
-import { EDITOR_HOTKEY_DEFAULTS } from './editorHotkeyDefaults';
 
-/**
- * Ответ API (null = не задано) + заполнение пропусков дефолтами.
- */
-export function effectiveEditorHotkeyBindings(
-	api: Record<string, EditorHotkeyChord | null>,
-): Record<EditorHotkeyActionId, EditorHotkeyChord> {
-	const out = {} as Record<EditorHotkeyActionId, EditorHotkeyChord>;
+function isValidChord(v: unknown): v is EditorHotkeyChord {
+	return (
+		typeof v === 'object' &&
+		v !== null &&
+		typeof (v as EditorHotkeyChord).code === 'string' &&
+		(v as EditorHotkeyChord).code.trim().length > 0
+	);
+}
+
+/** Нормализация ответа API: только явно заданные аккорды, иначе `null`. */
+export function normalizeEditorHotkeyApiBindings(
+	api: Record<string, EditorHotkeyChord | null | undefined>,
+): Record<EditorHotkeyActionId, EditorHotkeyChord | null> {
+	const out = {} as Record<EditorHotkeyActionId, EditorHotkeyChord | null>;
 	for (const id of catalogIdsForPayload()) {
 		const v = api[id];
-		if (v && typeof v.code === 'string' && v.code.length > 0) {
-			out[id] = v;
-		} else {
-			out[id] = EDITOR_HOTKEY_DEFAULTS[id];
-		}
+		out[id] = isValidChord(v) ? v : null;
 	}
 	return out;
 }

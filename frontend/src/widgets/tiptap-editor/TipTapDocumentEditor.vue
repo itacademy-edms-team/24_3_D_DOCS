@@ -9,6 +9,71 @@
 			@change="onImageFileInputChange"
 		/>
 		<EditorContent v-if="editor" :editor="editor" class="tiptap-document-editor__surface" />
+		<div v-if="editor" class="tiptap-document-editor__hotkeys-anchor">
+			<button
+				ref="hotkeysFabRef"
+				type="button"
+				class="tiptap-document-editor__hotkeys-fab"
+				:class="{ 'tiptap-document-editor__hotkeys-fab--open': hotkeysPopoverOpen }"
+				title="Горячие клавиши"
+				aria-haspopup="dialog"
+				:aria-expanded="hotkeysPopoverOpen"
+				@click="hotkeysPopoverOpen = !hotkeysPopoverOpen"
+			>
+				<svg class="tiptap-document-editor__hotkeys-fab-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+					<path
+						fill="currentColor"
+						d="M4 5a2 2 0 012-2h12a2 2 0 012 2v4H4V5zm0 6h16v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8zm3 2v2h2v-2H7zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zM7 15v2h10v-2H7z"
+					/>
+				</svg>
+			</button>
+			<Transition name="tiptap-hotkeys-pop">
+				<div
+					v-show="hotkeysPopoverOpen"
+					ref="hotkeysPopoverRef"
+					class="tiptap-document-editor__hotkeys-popover"
+					role="dialog"
+					aria-label="Сочетания клавиш"
+				>
+					<div class="tiptap-document-editor__hotkeys-popover-inner">
+						<div class="tiptap-document-editor__hotkeys-popover-head">
+							<span class="tiptap-document-editor__hotkeys-popover-title">Сочетания клавиш</span>
+							<button
+								type="button"
+								class="tiptap-document-editor__hotkeys-popover-close"
+								aria-label="Закрыть"
+								@click="hotkeysPopoverOpen = false"
+							>
+								×
+							</button>
+						</div>
+						<div class="tiptap-document-editor__hotkeys-popover-scroll">
+							<template v-for="section in hotkeyHintSections" :key="section.key">
+								<p v-if="section.title" class="tiptap-document-editor__hotkeys-popover-section">
+									{{ section.title }}
+								</p>
+								<ul class="tiptap-document-editor__hotkeys-popover-list">
+									<li v-for="row in section.rows" :key="row.id" class="tiptap-document-editor__hotkeys-popover-row">
+										<span class="tiptap-document-editor__hotkeys-popover-label">{{ row.label }}</span>
+										<kbd class="tiptap-document-editor__hotkeys-popover-kbd">{{ row.combo }}</kbd>
+									</li>
+								</ul>
+							</template>
+						</div>
+						<div class="tiptap-document-editor__hotkeys-popover-foot">
+							<RouterLink
+								class="tiptap-document-editor__hotkeys-popover-link"
+								:to="{ name: 'settings-keyboard' }"
+								@click="hotkeysPopoverOpen = false"
+							>
+								Изменить в настройках
+								<span class="tiptap-document-editor__hotkeys-popover-link-arrow" aria-hidden="true">→</span>
+							</RouterLink>
+						</div>
+					</div>
+				</div>
+			</Transition>
+		</div>
 		<FormulaBuilderModal
 			v-model="formulaModalOpen"
 			:initial-latex="formulaModalInitial"
@@ -19,7 +84,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, provide, shallowRef, onMounted } from 'vue';
+import { ref, watch, provide, shallowRef, onMounted, onUnmounted, computed } from 'vue';
+import { RouterLink } from 'vue-router';
+import { onClickOutside } from '@vueuse/core';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -42,11 +109,13 @@ import { EditorHotkeysTipTap } from './editorHotkeysTipTap';
 import EditorHotkeysAPI from '@/shared/api/EditorHotkeysAPI';
 import {
 	catalogIdsForPayload,
+	EDITOR_HOTKEY_SECTIONS,
 	emptyBindingsPayload,
+	formatHotkeyChord,
 	type EditorHotkeyActionId,
 	type EditorHotkeyChord,
 } from '@/shared/constants/editorHotkeyCatalog';
-import { effectiveEditorHotkeyBindings } from '@/shared/constants/effectiveEditorHotkeyBindings';
+import { normalizeEditorHotkeyApiBindings } from '@/shared/constants/effectiveEditorHotkeyBindings';
 import UploadAPI from '@/shared/api/UploadAPI';
 
 function canonicalMarkdown(s: string): string {
@@ -224,8 +293,38 @@ const imageFileInputRef = ref<HTMLInputElement | null>(null);
 /** Режим выбран хоткеем; crop — отдельный UI позже, пока та же вставка. */
 const pendingImageUploadMode = ref<'insert' | 'crop'>('insert');
 
-const hotkeyBindings = shallowRef<Record<EditorHotkeyActionId, EditorHotkeyChord>>(
-	effectiveEditorHotkeyBindings(emptyBindingsPayload()),
+/** Как в API: `null` = сброшено в настройках (подсказка показывает «—», не дефолт). */
+const hotkeyBindingsRaw = shallowRef<Record<EditorHotkeyActionId, EditorHotkeyChord | null>>(
+	emptyBindingsPayload() as Record<EditorHotkeyActionId, EditorHotkeyChord | null>,
+);
+
+const hotkeysPopoverOpen = ref(false);
+const hotkeysPopoverRef = ref<HTMLElement | null>(null);
+const hotkeysFabRef = ref<HTMLButtonElement | null>(null);
+
+onClickOutside(
+	hotkeysPopoverRef,
+	() => {
+		hotkeysPopoverOpen.value = false;
+	},
+	{ ignore: [hotkeysFabRef] },
+);
+
+function formatHotkeyForHint(id: EditorHotkeyActionId): string {
+	const c = hotkeyBindingsRaw.value[id];
+	return c ? formatHotkeyChord(c) : '—';
+}
+
+const hotkeyHintSections = computed(() =>
+	EDITOR_HOTKEY_SECTIONS.map((section, si) => ({
+		key: section.title ? `s-${si}-${section.title}` : `s-${si}`,
+		title: section.title,
+		rows: section.rows.map((row) => ({
+			id: row.id,
+			label: row.label,
+			combo: formatHotkeyForHint(row.id),
+		})),
+	})),
 );
 
 function requestTipTapImageUpload(mode: 'insert' | 'crop') {
@@ -299,7 +398,7 @@ const editor = useEditor({
 			markedOptions: { gfm: true },
 		}),
 		EditorHotkeysTipTap.configure({
-			getBindings: () => hotkeyBindings.value,
+			getBindings: () => hotkeyBindingsRaw.value,
 			openFormulaBuilder,
 			requestImageUpload: requestTipTapImageUpload,
 			getDocumentId: () => props.documentId,
@@ -376,17 +475,36 @@ watch(
 	},
 );
 
-onMounted(async () => {
+function onHotkeysEscape(e: KeyboardEvent) {
+	if (e.key === 'Escape' && hotkeysPopoverOpen.value) {
+		hotkeysPopoverOpen.value = false;
+	}
+}
+
+async function fetchEditorHotkeysFromApi() {
 	try {
 		const res = await EditorHotkeysAPI.getEditorHotkeys();
-		const next: Record<string, EditorHotkeyChord | null> = {};
-		for (const id of catalogIdsForPayload()) {
-			next[id] = res.bindings[id] ?? null;
-		}
-		hotkeyBindings.value = effectiveEditorHotkeyBindings(next);
+		hotkeyBindingsRaw.value = normalizeEditorHotkeyApiBindings(res.bindings);
 	} catch {
-		/* оставляем дефолтные сочетания */
+		/* не трогаем raw — остаётся последний успешный ответ */
 	}
+}
+
+function onDocumentVisibilityForHotkeys() {
+	if (document.visibilityState === 'visible') {
+		void fetchEditorHotkeysFromApi();
+	}
+}
+
+onMounted(() => {
+	window.addEventListener('keydown', onHotkeysEscape);
+	document.addEventListener('visibilitychange', onDocumentVisibilityForHotkeys);
+	void fetchEditorHotkeysFromApi();
+});
+
+onUnmounted(() => {
+	window.removeEventListener('keydown', onHotkeysEscape);
+	document.removeEventListener('visibilitychange', onDocumentVisibilityForHotkeys);
 });
 </script>
 
@@ -413,6 +531,217 @@ onMounted(async () => {
 	min-height: 0;
 	width: 100%;
 	overflow: auto;
+}
+
+/* Как у кнопок шапки редактора: var(--bg-primary), рамка, --radius-md */
+.tiptap-document-editor__hotkeys-anchor {
+	position: absolute;
+	right: 14px;
+	bottom: 14px;
+	z-index: 20;
+	display: flex;
+	flex-direction: column-reverse;
+	align-items: flex-end;
+	gap: 10px;
+	pointer-events: none;
+}
+
+.tiptap-document-editor__hotkeys-anchor > * {
+	pointer-events: auto;
+}
+
+.tiptap-document-editor__hotkeys-fab {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	background: var(--bg-primary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	box-shadow: var(--shadow-sm);
+}
+
+.tiptap-document-editor__hotkeys-fab:hover {
+	background: var(--bg-secondary);
+	color: var(--text-primary);
+	border-color: var(--border-hover);
+	box-shadow: var(--shadow-md);
+	transform: translateY(-1px);
+}
+
+.tiptap-document-editor__hotkeys-fab:active {
+	transform: translateY(0);
+}
+
+.tiptap-document-editor__hotkeys-fab--open {
+	color: var(--accent);
+	background: var(--accent-light);
+	border-color: var(--accent);
+	box-shadow: 0 2px 8px var(--accent-light);
+}
+
+.tiptap-document-editor__hotkeys-fab-icon {
+	display: block;
+}
+
+.tiptap-document-editor__hotkeys-popover {
+	position: relative;
+	width: min(320px, calc(100vw - 48px));
+	max-height: min(70vh, 420px);
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+	background: var(--bg-primary);
+	border: 1px solid var(--border-color);
+	box-shadow: var(--shadow-lg);
+}
+
+.tiptap-document-editor__hotkeys-popover-inner {
+	display: flex;
+	flex-direction: column;
+	max-height: inherit;
+	min-height: 0;
+}
+
+.tiptap-document-editor__hotkeys-popover-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 12px 14px 10px;
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0;
+}
+
+.tiptap-document-editor__hotkeys-popover-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-primary);
+}
+
+.tiptap-document-editor__hotkeys-popover-close {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
+	font-size: 18px;
+	line-height: 1;
+	color: var(--text-secondary);
+	background: var(--bg-secondary);
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.tiptap-document-editor__hotkeys-popover-close:hover {
+	background: var(--bg-tertiary);
+	border-color: var(--border-hover);
+	color: var(--text-primary);
+}
+
+.tiptap-document-editor__hotkeys-popover-scroll {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 8px 14px 6px;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--text-secondary);
+}
+
+.tiptap-document-editor__hotkeys-popover-section {
+	margin: 10px 0 6px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-tertiary);
+}
+
+.tiptap-document-editor__hotkeys-popover-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.tiptap-document-editor__hotkeys-popover-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.tiptap-document-editor__hotkeys-popover-row:last-child {
+	border-bottom: none;
+}
+
+.tiptap-document-editor__hotkeys-popover-label {
+	flex: 1;
+	min-width: 0;
+	font-weight: 500;
+	color: var(--text-primary);
+}
+
+.tiptap-document-editor__hotkeys-popover-kbd {
+	flex-shrink: 0;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 10px;
+	font-weight: 600;
+	padding: 3px 8px;
+	border-radius: var(--radius-md);
+	color: var(--text-primary);
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+}
+
+.tiptap-document-editor__hotkeys-popover-foot {
+	padding: 10px 14px 12px;
+	border-top: 1px solid var(--border-color);
+	background: var(--bg-secondary);
+	flex-shrink: 0;
+}
+
+.tiptap-document-editor__hotkeys-popover-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--accent);
+	text-decoration: none;
+	transition: color 0.2s ease;
+}
+
+.tiptap-document-editor__hotkeys-popover-link:hover {
+	color: var(--accent-hover);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+.tiptap-document-editor__hotkeys-popover-link-arrow {
+	font-size: 14px;
+	opacity: 0.85;
+}
+
+.tiptap-hotkeys-pop-enter-active,
+.tiptap-hotkeys-pop-leave-active {
+	transition:
+		opacity 0.16s ease,
+		transform 0.16s ease;
+}
+
+.tiptap-hotkeys-pop-enter-from,
+.tiptap-hotkeys-pop-leave-to {
+	opacity: 0;
+	transform: translateY(8px) scale(0.98);
 }
 
 .tiptap-document-editor :deep(.tiptap-document-editor__prose) {
