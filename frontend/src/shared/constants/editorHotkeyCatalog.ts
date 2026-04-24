@@ -1,6 +1,6 @@
 /**
  * Идентификаторы совпадают с бэкендом (EditorHotkeyActionCatalog).
- * Редактор пока не читает эти бинды — только настройки и API.
+ * Визуальный редактор (TipTap) применяет бинды из API + значения по умолчанию.
  */
 export type EditorHotkeyActionId =
 	| 'toggle_bold'
@@ -132,4 +132,15 @@ export function chordFromEvent(e: KeyboardEvent): EditorHotkeyChord {
 		altKey: e.altKey,
 		metaKey: e.metaKey,
 	};
+}
+
+/** Совпадение с сохранённым аккордом (как при записи в настройках). */
+export function hotkeyChordMatches(e: KeyboardEvent, c: EditorHotkeyChord): boolean {
+	return (
+		e.code === c.code &&
+		e.ctrlKey === c.ctrlKey &&
+		e.shiftKey === c.shiftKey &&
+		e.altKey === c.altKey &&
+		e.metaKey === c.metaKey
+	);
 }

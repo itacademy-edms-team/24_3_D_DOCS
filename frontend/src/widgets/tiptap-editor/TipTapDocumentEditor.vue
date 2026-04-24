@@ -1,5 +1,13 @@
 <template>
 	<div class="tiptap-document-editor" :class="{ 'tiptap-document-editor--dark': isDark }">
+		<input
+			ref="imageFileInputRef"
+			type="file"
+			accept="image/*"
+			multiple
+			class="tiptap-document-editor__hidden-file-input"
+			@change="onImageFileInputChange"
+		/>
 		<EditorContent v-if="editor" :editor="editor" class="tiptap-document-editor__surface" />
 		<FormulaBuilderModal
 			v-model="formulaModalOpen"
@@ -11,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, provide } from 'vue';
+import { ref, watch, provide, shallowRef, onMounted } from 'vue';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -30,6 +38,16 @@ import { InlineMathTipTap, BlockMathTipTap } from './mathTipTap';
 import { DocumentCaptionTipTap } from './documentCaptionTipTap';
 import FormulaBuilderModal from './FormulaBuilderModal.vue';
 import { formulaBuilderKey, type OpenFormulaBuilderFn } from './formulaBuilderContext';
+import { EditorHotkeysTipTap } from './editorHotkeysTipTap';
+import EditorHotkeysAPI from '@/shared/api/EditorHotkeysAPI';
+import {
+	catalogIdsForPayload,
+	emptyBindingsPayload,
+	type EditorHotkeyActionId,
+	type EditorHotkeyChord,
+} from '@/shared/constants/editorHotkeyCatalog';
+import { effectiveEditorHotkeyBindings } from '@/shared/constants/effectiveEditorHotkeyBindings';
+import UploadAPI from '@/shared/api/UploadAPI';
 
 function canonicalMarkdown(s: string): string {
 	return s
@@ -202,6 +220,19 @@ const openFormulaBuilder: OpenFormulaBuilderFn = (opts) => {
 
 provide(formulaBuilderKey, openFormulaBuilder);
 
+const imageFileInputRef = ref<HTMLInputElement | null>(null);
+/** Режим выбран хоткеем; crop — отдельный UI позже, пока та же вставка. */
+const pendingImageUploadMode = ref<'insert' | 'crop'>('insert');
+
+const hotkeyBindings = shallowRef<Record<EditorHotkeyActionId, EditorHotkeyChord>>(
+	effectiveEditorHotkeyBindings(emptyBindingsPayload()),
+);
+
+function requestTipTapImageUpload(mode: 'insert' | 'crop') {
+	pendingImageUploadMode.value = mode;
+	imageFileInputRef.value?.click();
+}
+
 function onFormulaModalApply(latex: string) {
 	formulaModalOnApply?.(latex);
 	formulaModalOnApply = null;
@@ -267,6 +298,12 @@ const editor = useEditor({
 		Markdown.configure({
 			markedOptions: { gfm: true },
 		}),
+		EditorHotkeysTipTap.configure({
+			getBindings: () => hotkeyBindings.value,
+			openFormulaBuilder,
+			requestImageUpload: requestTipTapImageUpload,
+			getDocumentId: () => props.documentId,
+		}),
 	],
 	content: markdownToEditorInput(props.modelValue),
 	contentType: 'markdown',
@@ -292,6 +329,31 @@ const editor = useEditor({
 	},
 });
 
+async function onImageFileInputChange(ev: Event) {
+	const input = ev.target as HTMLInputElement;
+	const files = input.files;
+	input.value = '';
+	const docId = props.documentId;
+	const ed = editor.value;
+	if (!files?.length || !docId || !ed) {
+		return;
+	}
+
+	// «crop» — зарезервировано под отдельный UI; пока вставка как insert.
+	void pendingImageUploadMode.value;
+
+	try {
+		const uploads = await Promise.all(
+			Array.from(files).map((file) => UploadAPI.uploadAsset(docId, file)),
+		);
+		for (const result of uploads) {
+			ed.chain().focus().setImage({ src: result.url, alt: '' }).run();
+		}
+	} catch (err) {
+		console.error('TipTap image upload failed:', err);
+	}
+}
+
 watch(
 	() => props.modelValue,
 	(md) => {
@@ -313,6 +375,19 @@ watch(
 		});
 	},
 );
+
+onMounted(async () => {
+	try {
+		const res = await EditorHotkeysAPI.getEditorHotkeys();
+		const next: Record<string, EditorHotkeyChord | null> = {};
+		for (const id of catalogIdsForPayload()) {
+			next[id] = res.bindings[id] ?? null;
+		}
+		hotkeyBindings.value = effectiveEditorHotkeyBindings(next);
+	} catch {
+		/* оставляем дефолтные сочетания */
+	}
+});
 </script>
 
 <style scoped>
@@ -322,6 +397,15 @@ watch(
 	flex: 1;
 	min-height: 0;
 	min-width: 0;
+	position: relative;
+}
+
+.tiptap-document-editor__hidden-file-input {
+	position: absolute;
+	width: 0;
+	height: 0;
+	opacity: 0;
+	pointer-events: none;
 }
 
 .tiptap-document-editor__surface {
