@@ -60,4 +60,20 @@ public class NotificationsController : ControllerBase
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }
+
+    [HttpDelete]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> ClearAll()
+    {
+        try
+        {
+            await _notificationService.ClearAllForUserAsync(GetUserId());
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ClearAll notifications");
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
 }

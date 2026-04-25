@@ -57,4 +57,11 @@ public class NotificationService : INotificationService
         n.ReadAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task ClearAllForUserAsync(Guid userId, CancellationToken ct = default)
+    {
+        await _db.UserNotifications
+            .Where(n => n.UserId == userId)
+            .ExecuteDeleteAsync(ct);
+    }
 }

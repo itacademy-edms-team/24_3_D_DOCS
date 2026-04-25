@@ -4,7 +4,7 @@
 			<thead>
 				<tr>
 					<th class="document-table__col-title">Название</th>
-					<th class="document-table__col-profile">Профиль стиля</th>
+					<th class="document-table__col-meta" aria-hidden="true"></th>
 					<th class="document-table__col-actions">Действия</th>
 				</tr>
 			</thead>
@@ -17,22 +17,28 @@
 				>
 					<td class="document-table__col-title">
 						<span class="document-table__name">{{ document.name }}</span>
-						<span
-							v-if="document.isShared"
-							class="document-table__badge document-table__badge--shared"
-							:title="document.ownerName ? `Владелец: ${document.ownerName}` : 'Общий документ'"
-						>
-							Общий<span v-if="document.ownerName"> · {{ document.ownerName }}</span>
-						</span>
 					</td>
-					<td class="document-table__col-profile">
-						<span
-							v-if="document.profileName"
-							class="document-table__badge document-table__badge--profile"
-						>
-							{{ document.profileName }}
-						</span>
-						<span v-else class="document-table__empty">—</span>
+					<td class="document-table__col-meta">
+						<div class="document-table__meta-cell">
+							<span
+								v-if="document.isShared"
+								class="document-table__badge document-table__badge--shared"
+								:title="document.ownerName ? `Владелец: ${document.ownerName}` : 'Общий документ'"
+							>
+								<Icon name="share_network" :size="14" decorative />
+								<span class="document-table__badge-text">
+									Общий<span v-if="document.ownerName"> · {{ document.ownerName }}</span>
+								</span>
+							</span>
+							<span
+								v-else-if="document.profileName"
+								class="document-table__badge document-table__badge--profile"
+							>
+								<Icon name="palette" :size="14" decorative />
+								<span class="document-table__badge-text">{{ document.profileName }}</span>
+							</span>
+							<span v-else class="document-table__empty">—</span>
+						</div>
 					</td>
 					<td class="document-table__col-actions" @click.stop>
 						<div class="document-table__actions">
@@ -41,14 +47,14 @@
 								@click.stop="handleAction(document, 'open')"
 								title="Открыть"
 							>
-								<Icon name="folder_open" size="18" />
+								<Icon name="open_external" :size="18" decorative />
 							</button>
 							<button
 								class="document-table__action-btn"
 								@click.stop="handleAction(document, 'export-pdf')"
 								title="Экспорт PDF"
 							>
-								<Icon name="description" size="18" />
+								<Icon name="file_pdf" :size="18" decorative />
 							</button>
 							<button
 								v-if="!document.isShared"
@@ -56,7 +62,7 @@
 								@click.stop="handleAction(document, 'delete')"
 								title="Удалить"
 							>
-								<Icon name="trash" size="18" />
+								<Icon name="trash" :size="18" decorative />
 							</button>
 						</div>
 					</td>
@@ -203,27 +209,53 @@ const handleAction = (document: DocumentMeta, action: string) => {
 	font-weight: 500;
 }
 
-.document-table__col-profile {
-	width: 150px;
+.document-table__col-meta {
+	width: 200px;
+	min-width: 160px;
+	vertical-align: middle;
+}
+
+.document-table__meta-cell {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	min-height: 36px;
 }
 
 .document-table__badge {
-	display: inline-block;
-	padding: 4px 8px;
-	border-radius: var(--radius-sm);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	padding: 6px 10px;
+	border-radius: var(--radius-md);
 	font-size: 12px;
-	font-weight: 500;
+	font-weight: 600;
+	border: 1px solid transparent;
+}
+
+.document-table__badge-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .document-table__badge--profile {
 	background: var(--accent-light);
 	color: var(--accent);
+	border-color: rgba(var(--accent-rgb, 37, 99, 235), 0.2);
 }
 
 .document-table__badge--shared {
-	margin-top: 4px;
-	background: rgba(25, 118, 210, 0.14);
-	color: var(--accent, #1976d2);
+	background: var(--bg-secondary);
+	color: var(--text-primary);
+	border-color: var(--border-color);
+	box-shadow: var(--shadow-sm);
+}
+
+.document-table__badge--shared :deep(.icon) {
+	flex-shrink: 0;
+	color: var(--accent);
 }
 
 .document-table__empty {
@@ -250,7 +282,7 @@ const handleAction = (document: DocumentMeta, action: string) => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--text-secondary);
+	color: var(--text-primary);
 	transition: all 0.2s ease;
 	position: relative;
 }

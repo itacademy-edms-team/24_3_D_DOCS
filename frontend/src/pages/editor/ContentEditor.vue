@@ -112,11 +112,11 @@
 					<button
 						v-if="isDocumentOwner"
 						type="button"
-						class="content-editor__header-btn content-editor__header-btn--invite"
+						class="content-editor__header-btn"
 						@click="showInviteModal = true"
 						title="Пригласить соавтора по email"
 					>
-						Пригласить
+						<Icon name="user_add" :size="18" decorative />
 					</button>
 					<button
 						class="content-editor__header-btn"
@@ -124,8 +124,8 @@
 						:disabled="isGeneratingToc || !documentId"
 						title="Сгенерировать содержание"
 					>
-						<span v-if="!isGeneratingToc">TOC</span>
-						<span v-else class="spinner-small"></span>
+						<span v-if="isGeneratingToc" class="spinner-small"></span>
+						<Icon v-else name="list_toc" :size="18" decorative />
 					</button>
 					<button
 						class="content-editor__header-btn"
@@ -143,9 +143,7 @@
 						:disabled="!documentId"
 						title="Скачать PDF"
 					>
-						<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-							<path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 10h1.5v1H10v-1zm0 3h1.5v1H10v-1zm0-6h1.5v1H10V7zm4 3h1.5v1H14v-1zm0 3h1.5v1H14v-1zm0-6h1.5v1H14V7zm4 3h1.5v1H18v-1zm0 3h1.5v1H18v-1zm0-6h1.5v1H18V7z"/>
-						</svg>
+						<Icon name="file_pdf" :size="18" decorative />
 					</button>
 					<div class="versions-dropdown" ref="versionsDropdownRef">
 						<button
@@ -155,9 +153,7 @@
 							:disabled="!documentId"
 							title="История версий"
 						>
-							<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-								<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-							</svg>
+							<Icon name="history" :size="18" decorative />
 						</button>
 						<Transition name="versions-panel">
 							<div v-if="showVersionsPanel" class="versions-dropdown__panel">
@@ -567,6 +563,7 @@ import ExportPdfModal from '@/widgets/export-pdf-modal/ExportPdfModal.vue';
 import Modal from '@/shared/ui/Modal/Modal.vue';
 import DocumentAPI from '@/entities/document/api/DocumentAPI';
 import NotificationBell from '@/features/notifications/NotificationBell.vue';
+import Icon from '@/components/Icon.vue';
 import { useAuthStore } from '@/entities/auth/store/authStore';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
@@ -1559,7 +1556,7 @@ watch(
 	background: var(--bg-primary);
 	border: 1px solid var(--border-color);
 	border-radius: var(--radius-md);
-	color: var(--text-secondary);
+	color: var(--text-primary);
 	cursor: pointer;
 	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 	position: relative;
@@ -2209,11 +2206,6 @@ watch(
 	background: rgba(25, 118, 210, 0.12);
 	border-radius: 999px;
 	white-space: nowrap;
-}
-
-.content-editor__header-btn--invite {
-	font-size: 12px;
-	padding: 0 10px;
 }
 
 .content-editor__notif-wrap {

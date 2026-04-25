@@ -45,6 +45,12 @@ import moon from '../assets/icons/toolbar/moon.svg?raw'
 import logout from '../assets/icons/toolbar/logout.svg?raw'
 import visibility from '../assets/icons/toolbar/visibility.svg?raw'
 import visibility_off from '../assets/icons/toolbar/visibility_off.svg?raw'
+import open_external from '../assets/icons/toolbar/open_external.svg?raw'
+import file_pdf from '../assets/icons/toolbar/file_pdf.svg?raw'
+import list_toc from '../assets/icons/toolbar/list_toc.svg?raw'
+import history from '../assets/icons/toolbar/history.svg?raw'
+import user_add from '../assets/icons/toolbar/user_add.svg?raw'
+import share_network from '../assets/icons/toolbar/share_network.svg?raw'
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -89,7 +95,13 @@ const icons = {
   moon,
   logout,
   visibility,
-  visibility_off
+  visibility_off,
+  open_external,
+  file_pdf,
+  list_toc,
+  history,
+  user_add,
+  share_network
 }
 
 const svgContent = computed(() => icons[props.name] || '')
@@ -108,7 +120,28 @@ const ariaRole = computed(() => (props.decorative ? 'img' : 'img'))
   width: 100%;
   height: 100%;
   display: block;
-  fill: currentColor;
+}
+
+/* Lucide-style stroke icons: do not force fill — circles/paths were turning into solid blobs */
+.icon :deep(svg[fill='none']) {
+  fill: none;
   stroke: currentColor;
+}
+
+.icon :deep(svg[fill='none'] path),
+.icon :deep(svg[fill='none'] circle),
+.icon :deep(svg[fill='none'] line),
+.icon :deep(svg[fill='none'] polyline),
+.icon :deep(svg[fill='none'] polygon),
+.icon :deep(svg[fill='none'] rect),
+.icon :deep(svg[fill='none'] ellipse) {
+  fill: none;
+  stroke: currentColor;
+}
+
+/* Solid glyphs (root explicitly filled, e.g. stop) */
+.icon :deep(svg[fill='currentColor']) {
+  fill: currentColor;
+  stroke: none;
 }
 </style>

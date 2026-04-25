@@ -26,6 +26,10 @@ class NotificationsAPI extends HttpClient {
 	async markRead(id: string): Promise<void> {
 		return this.post<void>(`/api/notifications/${id}/read`, {});
 	}
+
+	async clearAll(): Promise<void> {
+		return this.delete<void>('/api/notifications');
+	}
 }
 
 export default new NotificationsAPI();
