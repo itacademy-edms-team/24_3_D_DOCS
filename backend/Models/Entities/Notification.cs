@@ -7,6 +7,8 @@ namespace RusalProject.Models.Entities;
 public class UserNotification
 {
     public const string TypeCollabInvite = "collab_invite";
+    public const string TypeCollabAccepted = "collab_accepted";
+    public const string TypeCollabLeft = "collab_left";
 
     [Key]
     [Column("id")]

@@ -32,3 +32,15 @@ public class DocumentCollaboratorListItemDto
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
 }
+
+public class CollabStatusChangePayloadDto
+{
+    [JsonPropertyName("documentId")]
+    public Guid DocumentId { get; set; }
+
+    [JsonPropertyName("documentName")]
+    public string DocumentName { get; set; } = string.Empty;
+
+    [JsonPropertyName("collaboratorName")]
+    public string CollaboratorName { get; set; } = string.Empty;
+}

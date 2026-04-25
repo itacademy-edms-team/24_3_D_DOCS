@@ -67,4 +67,24 @@ public class CollabController : ControllerBase
             return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
         }
     }
+
+    [HttpPost("documents/{documentId:guid}/leave")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> LeaveCollab(Guid documentId)
+    {
+        try
+        {
+            await _collabService.LeaveCollabAsync(documentId, GetUserId());
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "LeaveCollab {DocumentId}", documentId);
+            return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
+        }
+    }
 }

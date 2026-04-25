@@ -12,4 +12,5 @@ public interface ICollabService
         Guid ownerUserId,
         CancellationToken ct = default);
     Task RevokeCollaboratorAsync(Guid documentId, Guid ownerUserId, Guid collaboratorUserId, CancellationToken ct = default);
+    Task LeaveCollabAsync(Guid documentId, Guid userId, CancellationToken ct = default);
 }

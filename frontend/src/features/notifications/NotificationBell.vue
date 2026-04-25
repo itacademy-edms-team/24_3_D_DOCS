@@ -55,17 +55,47 @@
 								<button type="button" class="notif-bell__decline" @click="decline(n)">Отклонить</button>
 							</div>
 						</template>
-						<template v-else>
-							<div class="notif-bell__text">{{ n.type }}</div>
-							<button
-								v-if="!n.readAt"
-								type="button"
-								class="notif-bell__mark-read"
-								@click="markReadOnly(n)"
-							>
-								Ок
-							</button>
-						</template>
+					<template v-else-if="n.type === 'collab_accepted' && n.payload?.collaboratorName">
+						<div class="notif-bell__text">
+							<strong>{{ n.payload.collaboratorName }}</strong>
+							принял(а) приглашение к документу
+							<span class="notif-bell__doc-name">«{{ n.payload.documentName || 'Документ' }}»</span>
+						</div>
+						<button
+							v-if="!n.readAt"
+							type="button"
+							class="notif-bell__mark-read"
+							@click="markReadOnly(n)"
+						>
+							Ок
+						</button>
+					</template>
+					<template v-else-if="n.type === 'collab_left' && n.payload?.collaboratorName">
+						<div class="notif-bell__text">
+							<strong>{{ n.payload.collaboratorName }}</strong>
+							покинул(а) соавторство в документе
+							<span class="notif-bell__doc-name">«{{ n.payload.documentName || 'Документ' }}»</span>
+						</div>
+						<button
+							v-if="!n.readAt"
+							type="button"
+							class="notif-bell__mark-read"
+							@click="markReadOnly(n)"
+						>
+							Ок
+						</button>
+					</template>
+					<template v-else>
+						<div class="notif-bell__text">{{ n.type }}</div>
+						<button
+							v-if="!n.readAt"
+							type="button"
+							class="notif-bell__mark-read"
+							@click="markReadOnly(n)"
+						>
+							Ок
+						</button>
+					</template>
 					</li>
 				</ul>
 			</div>

@@ -9,6 +9,7 @@ export interface NotificationListItem {
 		documentName?: string;
 		inviterName?: string;
 		notificationId?: string;
+		collaboratorName?: string;
 	} | null;
 	readAt: string | null;
 	createdAt: string;

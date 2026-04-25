@@ -113,8 +113,18 @@
 						v-if="isDocumentOwner"
 						type="button"
 						class="content-editor__header-btn"
+						:class="{ 'content-editor__header-btn--active': showCollabPanel }"
+						@click="toggleCollabPanel"
+						title="Соавторы"
+					>
+						<Icon name="share_network" :size="18" decorative />
+					</button>
+					<button
+						v-if="isDocumentOwner"
+						type="button"
+						class="content-editor__header-btn"
 						@click="showInviteModal = true"
-						title="Пригласить соавтора по email"
+						title="Пригласить соавтора"
 					>
 						<Icon name="user_add" :size="18" decorative />
 					</button>
@@ -509,6 +519,51 @@
 			@width-changed="handleChatDockWidthChanged"
 		/>
 
+		<!-- Collab Panel modal (owner only) -->
+		<Modal v-if="isDocumentOwner" v-model="showCollabPanel" title="Соавторы" size="sm">
+			<div v-if="isLoadingCollabs" class="collab-panel__loading">Загрузка…</div>
+			<div v-else-if="collaborators.length === 0" class="collab-panel__empty">Соавторов пока нет</div>
+			<ul v-else class="collab-panel__list">
+				<li v-for="c in collaborators" :key="c.userId" class="collab-panel__item">
+					<div class="collab-panel__info">
+						<span class="collab-panel__name">{{ c.name || c.email }}</span>
+						<span class="collab-panel__email" v-if="c.name">{{ c.email }}</span>
+						<span
+							class="collab-panel__status"
+							:class="`collab-panel__status--${c.status}`"
+						>{{ statusLabel(c.status) }}</span>
+					</div>
+					<button
+						class="collab-panel__kick"
+						:disabled="isRevokingId === c.userId"
+						@click="revokeCollaborator(c.userId)"
+						title="Удалить соавтора"
+					>
+						<Icon v-if="isRevokingId !== c.userId" name="trash" :size="16" decorative />
+						<span v-else class="spinner-small"></span>
+					</button>
+				</li>
+			</ul>
+			<template #footer>
+				<div class="content-editor__modal-footer">
+					<button
+						type="button"
+						class="content-editor__modal-btn content-editor__modal-btn--secondary"
+						@click="showCollabPanel = false"
+					>
+						Закрыть
+					</button>
+					<button
+						type="button"
+						class="content-editor__modal-btn content-editor__modal-btn--primary"
+						@click="showCollabPanel = false; showInviteModal = true"
+					>
+						+ Пригласить
+					</button>
+				</div>
+			</template>
+		</Modal>
+
 		<Modal v-model="showInviteModal" title="Пригласить соавтора" size="sm">
 			<p class="content-editor__invite-hint">Пользователь должен быть уже зарегистрирован в системе.</p>
 			<input
@@ -581,6 +636,49 @@ const mergeConflictBannerVisible = ref(false);
 const showInviteModal = ref(false);
 const inviteEmail = ref('');
 const isInviting = ref(false);
+
+// Collab panel
+const showCollabPanel = ref(false);
+const collaborators = ref<Array<{ userId: string; email: string; name: string; status: string }>>([]);
+const isLoadingCollabs = ref(false);
+const isRevokingId = ref<string | null>(null);
+
+function statusLabel(status: string) {
+	if (status === 'accepted') return 'Соавтор';
+	if (status === 'pending') return 'Ожидает';
+	return status;
+}
+
+async function loadCollaborators() {
+	if (!documentId.value) return;
+	isLoadingCollabs.value = true;
+	try {
+		collaborators.value = await DocumentAPI.listCollaborators(documentId.value);
+	} catch (e) {
+		console.error('Failed to load collaborators', e);
+	} finally {
+		isLoadingCollabs.value = false;
+	}
+}
+
+async function toggleCollabPanel() {
+	showCollabPanel.value = !showCollabPanel.value;
+	if (showCollabPanel.value) await loadCollaborators();
+}
+
+async function revokeCollaborator(userId: string) {
+	if (!documentId.value || isRevokingId.value) return;
+	if (!confirm('Удалить соавтора?')) return;
+	isRevokingId.value = userId;
+	try {
+		await DocumentAPI.revokeCollaborator(documentId.value, userId);
+		await loadCollaborators();
+	} catch (e: any) {
+		alert(e?.message || 'Не удалось удалить соавтора');
+	} finally {
+		isRevokingId.value = null;
+	}
+}
 
 const isDocumentOwner = computed(() => {
 	if (!document.value || !authStore.user) return true;
@@ -2247,6 +2345,109 @@ watch(
 	margin: 0 0 10px;
 	font-size: 13px;
 	color: var(--text-secondary, #666);
+}
+
+/* Collab panel */
+.collab-panel__loading,
+.collab-panel__empty {
+	padding: 16px 0;
+	text-align: center;
+	font-size: 13px;
+	color: var(--text-secondary);
+}
+
+.collab-panel__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.collab-panel__item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 12px;
+	border-radius: var(--radius-md);
+	border: 1px solid var(--border-color);
+	background: var(--bg-primary);
+}
+
+.collab-panel__item:hover {
+	background: var(--bg-secondary);
+}
+
+.collab-panel__info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.collab-panel__name {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-primary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.collab-panel__email {
+	font-size: 11px;
+	color: var(--text-tertiary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.collab-panel__status {
+	font-size: 11px;
+	font-weight: 500;
+	padding: 2px 8px;
+	border-radius: 999px;
+	width: fit-content;
+	background: var(--bg-tertiary);
+	color: var(--text-secondary);
+}
+
+.collab-panel__status--accepted {
+	background: rgba(var(--accent-rgb, 37, 99, 235), 0.1);
+	color: var(--accent);
+}
+
+.collab-panel__status--pending {
+	background: rgba(245, 158, 11, 0.1);
+	color: #b45309;
+}
+
+.collab-panel__kick {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	flex-shrink: 0;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--radius-md);
+	color: var(--text-tertiary);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.collab-panel__kick:hover:not(:disabled) {
+	background: rgba(239, 68, 68, 0.08);
+	border-color: var(--danger);
+	color: var(--danger);
+}
+
+.collab-panel__kick:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .content-editor__invite-input {

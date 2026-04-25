@@ -12,6 +12,10 @@ class CollabAPI extends HttpClient {
 	async declineInvite(inviteId: string): Promise<void> {
 		return this.post<void>(`/api/collab/invites/${inviteId}/decline`, {});
 	}
+
+	async leaveCollab(documentId: string): Promise<void> {
+		return this.post<void>(`/api/collab/documents/${documentId}/leave`, {});
+	}
 }
 
 export default new CollabAPI();

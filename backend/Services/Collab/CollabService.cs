@@ -105,6 +105,7 @@ public class CollabService : ICollabService
     public async Task AcceptInviteAsync(Guid inviteId, Guid userId, CancellationToken ct = default)
     {
         var row = await _db.DocumentCollaborators
+            .Include(c => c.Document)
             .FirstOrDefaultAsync(c => c.Id == inviteId && c.UserId == userId, ct);
 
         if (row == null)
@@ -132,6 +133,22 @@ public class CollabService : ICollabService
                 // ignore malformed
             }
         }
+
+        // Notify the document owner
+        var accepter = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        var ownerId = row.Document?.CreatorId ?? row.InvitedBy;
+        var ownerPayload = new CollabStatusChangePayloadDto
+        {
+            DocumentId = row.DocumentId,
+            DocumentName = row.Document?.Name ?? string.Empty,
+            CollaboratorName = accepter?.Name ?? accepter?.Email ?? "Пользователь",
+        };
+        _db.UserNotifications.Add(new UserNotification
+        {
+            UserId = ownerId,
+            Type = UserNotification.TypeCollabAccepted,
+            PayloadJson = JsonSerializer.Serialize(ownerPayload),
+        });
 
         await _db.SaveChangesAsync(ct);
     }
@@ -218,6 +235,39 @@ public class CollabService : ICollabService
             return;
 
         row.Status = DocumentCollaborator.StatusRevoked;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task LeaveCollabAsync(Guid documentId, Guid userId, CancellationToken ct = default)
+    {
+        var row = await _db.DocumentCollaborators
+            .Include(c => c.Document)
+            .FirstOrDefaultAsync(c => c.DocumentId == documentId && c.UserId == userId, ct);
+
+        if (row == null)
+            throw new InvalidOperationException("Вы не являетесь соавтором этого документа");
+
+        if (row.Document?.CreatorId == userId)
+            throw new InvalidOperationException("Владелец не может покинуть собственный документ");
+
+        row.Status = DocumentCollaborator.StatusRevoked;
+
+        // Notify the document owner
+        var leaver = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        var ownerId = row.Document?.CreatorId ?? row.InvitedBy;
+        var payload = new CollabStatusChangePayloadDto
+        {
+            DocumentId = documentId,
+            DocumentName = row.Document?.Name ?? string.Empty,
+            CollaboratorName = leaver?.Name ?? leaver?.Email ?? "Пользователь",
+        };
+        _db.UserNotifications.Add(new UserNotification
+        {
+            UserId = ownerId,
+            Type = UserNotification.TypeCollabLeft,
+            PayloadJson = JsonSerializer.Serialize(payload),
+        });
+
         await _db.SaveChangesAsync(ct);
     }
 }

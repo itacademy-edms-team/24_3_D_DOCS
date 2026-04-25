@@ -56,14 +56,22 @@
 							>
 								<Icon name="file_pdf" :size="18" decorative />
 							</button>
-							<button
-								v-if="!document.isShared"
-								class="document-table__action-btn document-table__action-btn--delete"
-								@click.stop="handleAction(document, 'delete')"
-								title="Удалить"
-							>
-								<Icon name="trash" :size="18" decorative />
-							</button>
+						<button
+							v-if="!document.isShared"
+							class="document-table__action-btn document-table__action-btn--delete"
+							@click.stop="handleAction(document, 'delete')"
+							title="Удалить"
+						>
+							<Icon name="trash" :size="18" decorative />
+						</button>
+						<button
+							v-if="document.isShared"
+							class="document-table__action-btn document-table__action-btn--leave"
+							@click.stop="handleAction(document, 'leave')"
+							title="Покинуть соавторство"
+						>
+							<Icon name="log_out" :size="18" decorative />
+						</button>
 						</div>
 					</td>
 				</tr>
@@ -302,7 +310,8 @@ const handleAction = (document: DocumentMeta, action: string) => {
 	background: var(--bg-tertiary);
 }
 
-.document-table__action-btn--delete:hover {
+.document-table__action-btn--delete:hover,
+.document-table__action-btn--leave:hover {
 	background: rgba(239, 68, 68, 0.1);
 	color: var(--danger);
 	border-color: var(--danger);

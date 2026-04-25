@@ -319,6 +319,7 @@ import InfoBanner from '@/widgets/info-banner/InfoBanner.vue';
 import ThemeToggle from '@/features/theme-toggle/ThemeToggle.vue';
 import ChatDock from '@/features/agent/ChatDock.vue';
 import NotificationBell from '@/features/notifications/NotificationBell.vue';
+import CollabAPI from '@/shared/api/CollabAPI';
 import Modal from '@/shared/ui/Modal/Modal.vue';
 import Button from '@/shared/ui/Button/Button.vue';
 import Icon from '@/components/Icon.vue';
@@ -575,13 +576,25 @@ function openShareExportModal() {
 	showExportPdfModal.value = true;
 }
 
-function handleDocumentAction(document: DocumentMeta, action: string) {
+async function handleDocumentAction(document: DocumentMeta, action: string) {
 	if (action === 'open') {
 		router.push(`/document/${document.id}`);
 	} else if (action === 'export-pdf') {
 		openDocumentExportModal(document);
 	} else if (action === 'delete') {
 		handleDelete(document);
+	} else if (action === 'leave') {
+		await handleLeaveCollab(document);
+	}
+}
+
+async function handleLeaveCollab(doc: DocumentMeta) {
+	if (!confirm(`Покинуть соавторство документа «${doc.name}»?`)) return;
+	try {
+		await CollabAPI.leaveCollab(doc.id);
+		await loadData();
+	} catch (e: any) {
+		alert(e?.message || 'Не удалось покинуть соавторство');
 	}
 }
 

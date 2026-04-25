@@ -51,6 +51,7 @@ import list_toc from '../assets/icons/toolbar/list_toc.svg?raw'
 import history from '../assets/icons/toolbar/history.svg?raw'
 import user_add from '../assets/icons/toolbar/user_add.svg?raw'
 import share_network from '../assets/icons/toolbar/share_network.svg?raw'
+import log_out from '../assets/icons/toolbar/log_out.svg?raw'
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -101,7 +102,8 @@ const icons = {
   list_toc,
   history,
   user_add,
-  share_network
+  share_network,
+  log_out
 }
 
 const svgContent = computed(() => icons[props.name] || '')
