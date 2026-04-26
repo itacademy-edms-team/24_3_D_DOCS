@@ -1,18 +1,26 @@
 <template>
 	<div class="settings-keyboard-page">
 		<header class="settings-header content-header">
-			<button class="settings-back" @click="router.push('/settings')">
-				<Icon name="arrow_back" size="18" ariaLabel="Назад" />
-				<span>Назад</span>
-			</button>
-			<h1 class="page-title">Клавиши редактора</h1>
+			<div class="settings-header__left">
+				<button class="settings-back" @click="router.push('/settings')">
+					<Icon name="arrow_back" size="18" ariaLabel="Назад" />
+					<span>Назад</span>
+				</button>
+				<h1 class="page-title">Клавиши редактора</h1>
+			</div>
+			<div class="settings-header__actions">
+				<Button variant="primary" :isLoading="isSaving" :disabled="isLoading || !!recordingActionId" @click="save">
+					Сохранить
+				</Button>
+			</div>
 		</header>
 
 		<main class="settings-body content-body">
 			<section class="keyboard-section">
 				<p class="hint">
-					Назначьте сочетания для действий в редакторе (пока только сохранение в профиль, без вызова в
-					TipTap). Нажмите «Назначить», затем комбинацию в рамке ниже. Esc — отменить запись.
+					Назначьте сочетания клавиш для действий в редакторе. Сочетания сохраняются в вашем профиле и
+					применяются в визуальном режиме. Нажмите «Назначить» у строки, затем нажмите комбинацию в области
+					ниже. Esc — отменить запись.
 				</p>
 
 				<p v-if="loadError" class="error-banner">{{ loadError }}</p>
@@ -70,12 +78,6 @@
 						</ul>
 					</template>
 				</div>
-
-				<div class="save-bar">
-					<Button variant="primary" :isLoading="isSaving" :disabled="isLoading || !!recordingActionId" @click="save">
-						Сохранить
-					</Button>
-				</div>
 			</section>
 		</main>
 	</div>
@@ -112,16 +114,14 @@ const recordingLabel = ref('');
 const pressed = ref(new Set<string>());
 
 const recordingHint = computed(() =>
-	recordingActionId.value
-		? ''
-		: 'Сначала нажмите «Назначить» у нужной строки, затем сочетание здесь.',
+	recordingActionId.value ? '' : 'Сначала нажмите «Назначить» у нужной строки.',
 );
 
 const pressedCodes = computed(() => Array.from(pressed.value).sort());
 const pressedDisplay = computed(() => pressedCodes.value.join(' + '));
 
 function formatBinding(c: EditorHotkeyChord | null | undefined): string {
-	if (!c) return '—';
+	if (!c) return 'Не задано';
 	return formatHotkeyChord(c);
 }
 
@@ -246,9 +246,23 @@ onMounted(() => {
 .settings-header {
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: var(--spacing-md);
 	padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-md);
 	border-bottom: 1px solid var(--border-color);
+	flex-wrap: wrap;
+}
+
+.settings-header__left {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-md);
+	min-width: 0;
+	flex: 1;
+}
+
+.settings-header__actions {
+	flex-shrink: 0;
 }
 
 .settings-back {
@@ -277,6 +291,7 @@ onMounted(() => {
 	font-size: 28px;
 	font-weight: 700;
 	color: var(--text-primary);
+	min-width: 0;
 }
 
 .settings-body {
@@ -329,6 +344,10 @@ onMounted(() => {
 	font-size: 14px;
 	line-height: 1.5;
 	color: var(--text-secondary);
+}
+
+.capture-panel__idle {
+	text-align: center;
 }
 
 .capture-panel__recording strong {
@@ -413,12 +432,6 @@ onMounted(() => {
 .binds-row__btn {
 	padding: 0.45rem 0.85rem;
 	font-size: 13px;
-}
-
-.save-bar {
-	margin-top: var(--spacing-xl);
-	display: flex;
-	justify-content: flex-end;
 }
 
 @media (max-width: 560px) {

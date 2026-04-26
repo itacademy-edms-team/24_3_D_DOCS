@@ -180,7 +180,7 @@
 										</button>
 										<button
 											class="items-table__action-btn items-table__action-btn--delete"
-											@click.stop="handleDelete(item)"
+											@click.stop="openDeleteProfileConfirm(item)"
 											title="Удалить"
 										>
 											<Icon name="trash" size="18" />
@@ -239,7 +239,7 @@
 										</button>
 										<button
 											class="items-table__action-btn items-table__action-btn--delete"
-											@click.stop="handleTitlePageDelete(item)"
+											@click.stop="openDeleteTitlePageConfirm(item)"
 											title="Удалить"
 										>
 											<Icon name="trash" size="18" />
@@ -255,13 +255,6 @@
 						</tbody>
 					</table>
 					</div>
-				</div>
-
-				<!-- Footer -->
-				<div class="table-footer">
-					<span class="items-count">
-						Показано {{ activeTab === 'shared' ? filteredTitlePages.length : filteredItems.length }} из {{ activeTab === 'shared' ? titlePages.length : totalItems }}
-					</span>
 				</div>
 			</div>
 		</main>
@@ -300,6 +293,55 @@
 			@document-content-changed="handleAgentDocumentChanged"
 			@width-changed="handleChatDockWidthChanged"
 		/>
+
+		<Transition name="main-toast">
+			<div
+				v-if="toast.visible"
+				class="main-page__toast"
+				:class="'main-page__toast--' + toast.variant"
+				role="status"
+			>
+				{{ toast.text }}
+			</div>
+		</Transition>
+
+		<Modal v-model="showDeleteConfirm" title="Удаление" size="sm">
+			<p class="main-page__confirm-text">{{ deleteConfirmText }}</p>
+			<template #footer>
+				<div class="main-page__modal-footer">
+					<button
+						type="button"
+						class="main-page__modal-btn main-page__modal-btn--secondary"
+						@click="cancelDeleteConfirm"
+					>
+						Отмена
+					</button>
+					<button type="button" class="main-page__modal-btn main-page__modal-btn--danger" @click="confirmDelete">
+						Удалить
+					</button>
+				</div>
+			</template>
+		</Modal>
+
+		<Modal v-model="showLeaveCollabConfirm" title="Покинуть соавторство" size="sm">
+			<p v-if="leaveCollabDoc" class="main-page__confirm-text">
+				Покинуть соавторство документа «{{ leaveCollabDoc.name }}»? Доступ к документу будет отозван.
+			</p>
+			<template #footer>
+				<div class="main-page__modal-footer">
+					<button
+						type="button"
+						class="main-page__modal-btn main-page__modal-btn--secondary"
+						@click="cancelLeaveCollabConfirm"
+					>
+						Отмена
+					</button>
+					<button type="button" class="main-page__modal-btn main-page__modal-btn--danger" @click="confirmLeaveCollab">
+						Выйти
+					</button>
+				</div>
+			</template>
+		</Modal>
 	</div>
 </template>
 
@@ -435,12 +477,98 @@ const filteredItems = computed(() => {
 	return items;
 });
 
-const totalItems = computed(() => currentItems.value.length);
-
-/** Строки таблицы документов совпадают с подсчётом в футере (поиск + сортировка на главной). */
+/** Строки таблицы документов (поиск + сортировка на главной). */
 const docsTableRows = computed((): DocumentMeta[] =>
 	activeTab.value === 'docs' ? (filteredItems.value as DocumentMeta[]) : [],
 );
+
+const toast = ref<{ visible: boolean; text: string; variant: 'success' | 'error' }>({
+	visible: false,
+	text: '',
+	variant: 'error',
+});
+let mainToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showMainToast(text: string, variant: 'success' | 'error' = 'error') {
+	if (mainToastTimer) clearTimeout(mainToastTimer);
+	toast.value = { visible: true, text, variant };
+	mainToastTimer = setTimeout(() => {
+		toast.value = { ...toast.value, visible: false };
+		mainToastTimer = null;
+	}, 3800);
+}
+
+const showDeleteConfirm = ref(false);
+const deletePending = ref<{ kind: 'document' | 'profile' | 'title'; id: string; name: string } | null>(null);
+
+const deleteConfirmText = computed(() => {
+	const p = deletePending.value;
+	if (!p) return '';
+	const label =
+		p.kind === 'document' ? 'документ' : p.kind === 'profile' ? 'профиль стилей' : 'титульный лист';
+	return `Удалить ${label} «${p.name}»? Это действие нельзя отменить.`;
+});
+
+function openDeleteDocumentConfirm(doc: DocumentMeta) {
+	deletePending.value = { kind: 'document', id: doc.id, name: doc.name };
+	showDeleteConfirm.value = true;
+}
+
+function openDeleteProfileConfirm(item: Profile) {
+	deletePending.value = { kind: 'profile', id: item.id, name: item.name };
+	showDeleteConfirm.value = true;
+}
+
+function openDeleteTitlePageConfirm(item: { id: string; name: string }) {
+	deletePending.value = { kind: 'title', id: item.id, name: item.name };
+	showDeleteConfirm.value = true;
+}
+
+function cancelDeleteConfirm() {
+	showDeleteConfirm.value = false;
+	deletePending.value = null;
+}
+
+async function confirmDelete() {
+	const p = deletePending.value;
+	if (!p) return;
+	try {
+		if (p.kind === 'document') await DocumentAPI.delete(p.id);
+		else if (p.kind === 'profile') await ProfileAPI.delete(p.id);
+		else await TitlePageAPI.delete(p.id);
+		await loadData();
+		cancelDeleteConfirm();
+	} catch (e: any) {
+		const msg = e?.response?.data?.message || e?.message || 'Не удалось удалить';
+		showMainToast(msg, 'error');
+	}
+}
+
+const showLeaveCollabConfirm = ref(false);
+const leaveCollabDoc = ref<DocumentMeta | null>(null);
+
+function requestLeaveCollab(doc: DocumentMeta) {
+	leaveCollabDoc.value = doc;
+	showLeaveCollabConfirm.value = true;
+}
+
+function cancelLeaveCollabConfirm() {
+	showLeaveCollabConfirm.value = false;
+	leaveCollabDoc.value = null;
+}
+
+async function confirmLeaveCollab() {
+	const doc = leaveCollabDoc.value;
+	if (!doc) return;
+	try {
+		await CollabAPI.leaveCollab(doc.id);
+		await loadData();
+		cancelLeaveCollabConfirm();
+	} catch (e: any) {
+		const msg = e?.response?.data?.message || e?.message || 'Не удалось покинуть соавторство';
+		showMainToast(msg, 'error');
+	}
+}
 
 async function loadData() {
 	isLoading.value = true;
@@ -522,20 +650,6 @@ function handleTitlePageCreatedFromModal(titlePageId: string) {
 	loadData();
 }
 
-async function handleTitlePageDelete(item: any) {
-	if (!confirm('Вы уверены, что хотите удалить этот титульник?')) {
-		return;
-	}
-
-	try {
-		await TitlePageAPI.delete(item.id);
-		await loadData();
-	} catch (error) {
-		console.error('Failed to delete:', error);
-		alert('Ошибка при удалении');
-	}
-}
-
 function handleNewProject() {
 	if (activeTab.value === 'profiles') {
 		handleCreateProfileOrTitlePage();
@@ -576,25 +690,15 @@ function openShareExportModal() {
 	showExportPdfModal.value = true;
 }
 
-async function handleDocumentAction(document: DocumentMeta, action: string) {
+function handleDocumentAction(document: DocumentMeta, action: string) {
 	if (action === 'open') {
 		router.push(`/document/${document.id}`);
 	} else if (action === 'export-pdf') {
 		openDocumentExportModal(document);
 	} else if (action === 'delete') {
-		handleDelete(document);
+		openDeleteDocumentConfirm(document);
 	} else if (action === 'leave') {
-		await handleLeaveCollab(document);
-	}
-}
-
-async function handleLeaveCollab(doc: DocumentMeta) {
-	if (!confirm(`Покинуть соавторство документа «${doc.name}»?`)) return;
-	try {
-		await CollabAPI.leaveCollab(doc.id);
-		await loadData();
-	} catch (e: any) {
-		alert(e?.message || 'Не удалось покинуть соавторство');
+		requestLeaveCollab(document);
 	}
 }
 
@@ -633,24 +737,6 @@ async function handleTitlePageExportDdoc(item: { id: string; name: string }) {
 	} catch (e) {
 		console.error(e);
 		alert('Не удалось скачать .ddoc');
-	}
-}
-
-async function handleDelete(item: Profile | DocumentMeta) {
-	if (!confirm('Вы уверены, что хотите удалить этот элемент?')) {
-		return;
-	}
-
-	try {
-		if (activeTab.value === 'profiles') {
-			await ProfileAPI.delete(item.id);
-		} else {
-			await DocumentAPI.delete(item.id);
-		}
-		await loadData();
-	} catch (error) {
-		console.error('Failed to delete:', error);
-		alert('Ошибка при удалении');
 	}
 }
 
@@ -1142,12 +1228,80 @@ onMounted(async () => {
 	font-size: 15px;
 }
 
-.table-footer {
-	flex-shrink: 0;
-	margin-top: auto;
-	padding: 1.5rem 0;
-	border-top: 1px solid var(--border-color);
-	color: var(--text-tertiary);
-	font-size: 13px;
+.main-page__toast {
+	position: fixed;
+	top: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 12px 22px;
+	font-size: 14px;
+	font-weight: 500;
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-lg);
+	z-index: 10001;
+	max-width: min(520px, calc(100vw - 32px));
+	text-align: center;
+	line-height: 1.4;
+}
+
+.main-page__toast--success {
+	background: #16a34a;
+	color: #fff;
+}
+
+.main-page__toast--error {
+	background: #dc2626;
+	color: #fff;
+}
+
+.main-toast-enter-active,
+.main-toast-leave-active {
+	transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.main-toast-enter-from,
+.main-toast-leave-to {
+	opacity: 0;
+	transform: translate(-50%, -10px);
+}
+
+.main-page__confirm-text {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--text-primary);
+}
+
+.main-page__modal-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.main-page__modal-btn {
+	padding: 8px 16px;
+	font-size: 14px;
+	font-weight: 500;
+	border-radius: var(--radius-md);
+	cursor: pointer;
+	font-family: inherit;
+	border: 1px solid transparent;
+}
+
+.main-page__modal-btn--secondary {
+	background: var(--bg-secondary);
+	border-color: var(--border-color);
+	color: var(--text-primary);
+}
+
+.main-page__modal-btn--danger {
+	background: var(--danger, #ef4444);
+	color: #fff;
+	border-color: var(--danger, #ef4444);
+}
+
+.main-page__modal-btn--danger:hover {
+	filter: brightness(1.05);
 }
 </style>

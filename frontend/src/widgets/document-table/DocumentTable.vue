@@ -30,14 +30,6 @@
 									Общий<span v-if="document.ownerName"> · {{ document.ownerName }}</span>
 								</span>
 							</span>
-							<span
-								v-else-if="document.profileName"
-								class="document-table__badge document-table__badge--profile"
-							>
-								<Icon name="palette" :size="14" decorative />
-								<span class="document-table__badge-text">{{ document.profileName }}</span>
-							</span>
-							<span v-else class="document-table__empty">—</span>
 						</div>
 					</td>
 					<td class="document-table__col-actions" @click.stop>
@@ -218,8 +210,8 @@ const handleAction = (document: DocumentMeta, action: string) => {
 }
 
 .document-table__col-meta {
-	width: 200px;
-	min-width: 160px;
+	width: 160px;
+	min-width: 120px;
 	vertical-align: middle;
 }
 
@@ -246,12 +238,6 @@ const handleAction = (document: DocumentMeta, action: string) => {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-.document-table__badge--profile {
-	background: var(--accent-light);
-	color: var(--accent);
-	border-color: rgba(var(--accent-rgb, 37, 99, 235), 0.2);
 }
 
 .document-table__badge--shared {

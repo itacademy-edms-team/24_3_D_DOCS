@@ -503,7 +503,11 @@
 
 		<!-- Toast notification -->
 		<Transition name="toast">
-			<div v-if="toastNotification.visible" class="content-editor__toast">
+			<div
+				v-if="toastNotification.visible"
+				class="content-editor__toast"
+				:class="'content-editor__toast--' + toastNotification.variant"
+			>
 				{{ toastNotification.text }}
 			</div>
 		</Transition>
@@ -520,23 +524,28 @@
 		/>
 
 		<!-- Collab Panel modal (owner only) -->
-		<Modal v-if="isDocumentOwner" v-model="showCollabPanel" title="Соавторы" size="sm">
+		<Modal v-if="isDocumentOwner" v-model="showCollabPanel" title="Соавторы" size="md">
 			<div v-if="isLoadingCollabs" class="collab-panel__loading">Загрузка…</div>
 			<div v-else-if="collaborators.length === 0" class="collab-panel__empty">Соавторов пока нет</div>
 			<ul v-else class="collab-panel__list">
 				<li v-for="c in collaborators" :key="c.userId" class="collab-panel__item">
-					<div class="collab-panel__info">
-						<span class="collab-panel__name">{{ c.name || c.email }}</span>
-						<span class="collab-panel__email" v-if="c.name">{{ c.email }}</span>
-						<span
-							class="collab-panel__status"
-							:class="`collab-panel__status--${c.status}`"
-						>{{ statusLabel(c.status) }}</span>
+					<div class="collab-panel__avatar" aria-hidden="true">
+						{{ collabInitials(c) }}
+					</div>
+					<div class="collab-panel__main">
+						<div class="collab-panel__topline">
+							<span class="collab-panel__name">{{ c.name || c.email }}</span>
+							<span
+								class="collab-panel__status"
+								:class="`collab-panel__status--${c.status}`"
+							>{{ statusLabel(c.status) }}</span>
+						</div>
+						<span v-if="c.name" class="collab-panel__email">{{ c.email }}</span>
 					</div>
 					<button
 						class="collab-panel__kick"
 						:disabled="isRevokingId === c.userId"
-						@click="revokeCollaborator(c.userId)"
+						@click="openKickCollaboratorModal(c)"
 						title="Удалить соавтора"
 					>
 						<Icon v-if="isRevokingId !== c.userId" name="trash" :size="16" decorative />
@@ -559,6 +568,23 @@
 						@click="showCollabPanel = false; showInviteModal = true"
 					>
 						+ Пригласить
+					</button>
+				</div>
+			</template>
+		</Modal>
+
+		<Modal v-if="isDocumentOwner" v-model="showKickModal" title="Удалить соавтора" size="sm">
+			<p v-if="kickTarget" class="collab-panel__kick-confirm">
+				Убрать доступ у <strong>{{ kickTarget.name || kickTarget.email }}</strong>? Пользователь потеряет возможность
+				редактировать документ.
+			</p>
+			<template #footer>
+				<div class="content-editor__modal-footer">
+					<button type="button" class="content-editor__modal-btn content-editor__modal-btn--secondary" @click="cancelKickCollaboratorModal">
+						Отмена
+					</button>
+					<button type="button" class="content-editor__modal-btn content-editor__modal-btn--danger" :disabled="!!isRevokingId" @click="confirmKickCollaborator">
+						Удалить
 					</button>
 				</div>
 			</template>
@@ -642,11 +668,21 @@ const showCollabPanel = ref(false);
 const collaborators = ref<Array<{ userId: string; email: string; name: string; status: string }>>([]);
 const isLoadingCollabs = ref(false);
 const isRevokingId = ref<string | null>(null);
+const showKickModal = ref(false);
+const kickTarget = ref<{ userId: string; email: string; name: string } | null>(null);
 
 function statusLabel(status: string) {
 	if (status === 'accepted') return 'Соавтор';
 	if (status === 'pending') return 'Ожидает';
 	return status;
+}
+
+function collabInitials(c: { name: string; email: string }) {
+	const s = (c.name || c.email || '?').trim();
+	if (!s) return '?';
+	const parts = s.split(/\s+/).filter(Boolean);
+	if (parts.length >= 2) return (parts[0]![0] + parts[1]![0]).toUpperCase().slice(0, 2);
+	return s.slice(0, 2).toUpperCase();
 }
 
 async function loadCollaborators() {
@@ -666,15 +702,26 @@ async function toggleCollabPanel() {
 	if (showCollabPanel.value) await loadCollaborators();
 }
 
-async function revokeCollaborator(userId: string) {
-	if (!documentId.value || isRevokingId.value) return;
-	if (!confirm('Удалить соавтора?')) return;
-	isRevokingId.value = userId;
+function openKickCollaboratorModal(c: { userId: string; email: string; name: string }) {
+	kickTarget.value = { userId: c.userId, email: c.email, name: c.name };
+	showKickModal.value = true;
+}
+
+function cancelKickCollaboratorModal() {
+	showKickModal.value = false;
+	kickTarget.value = null;
+}
+
+async function confirmKickCollaborator() {
+	const t = kickTarget.value;
+	if (!documentId.value || !t || isRevokingId.value) return;
+	isRevokingId.value = t.userId;
 	try {
-		await DocumentAPI.revokeCollaborator(documentId.value, userId);
+		await DocumentAPI.revokeCollaborator(documentId.value, t.userId);
+		cancelKickCollaboratorModal();
 		await loadCollaborators();
 	} catch (e: any) {
-		alert(e?.message || 'Не удалось удалить соавтора');
+		showToastError(e?.response?.data?.message || e?.message || 'Не удалось удалить соавтора');
 	} finally {
 		isRevokingId.value = null;
 	}
@@ -741,15 +788,28 @@ const showDuplicateVersionModal = ref(false);
 const duplicateVersionMessage = ref('');
 const versionToDelete = ref<DocumentVersion | null>(null);
 const currentVersionId = ref<string | null>(null);
-const toastNotification = ref<{ text: string; visible: boolean }>({ text: '', visible: false });
+const toastNotification = ref<{ text: string; visible: boolean; variant: 'success' | 'error' }>({
+	text: '',
+	visible: false,
+	variant: 'success',
+});
 let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 const showToast = (text: string) => {
 	if (toastTimeout) clearTimeout(toastTimeout);
-	toastNotification.value = { text, visible: true };
+	toastNotification.value = { text, visible: true, variant: 'success' };
 	toastTimeout = setTimeout(() => {
 		toastNotification.value = { ...toastNotification.value, visible: false };
 		toastTimeout = null;
 	}, 3000);
+};
+
+const showToastError = (text: string) => {
+	if (toastTimeout) clearTimeout(toastTimeout);
+	toastNotification.value = { text, visible: true, variant: 'error' };
+	toastTimeout = setTimeout(() => {
+		toastNotification.value = { ...toastNotification.value, visible: false };
+		toastTimeout = null;
+	}, 4200);
 };
 
 const currentProfileId = computed(() => {
@@ -908,7 +968,7 @@ async function submitInvite() {
 		inviteEmail.value = '';
 	} catch (e: any) {
 		const msg = e?.response?.data?.message || e?.message || 'Не удалось отправить приглашение';
-		alert(msg);
+		showToastError(msg);
 	} finally {
 		isInviting.value = false;
 	}
@@ -2362,33 +2422,58 @@ watch(
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--spacing-sm, 0.5rem);
 }
 
 .collab-panel__item {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-	padding: 10px 12px;
+	gap: var(--spacing-md, 1rem);
+	padding: 14px 16px;
 	border-radius: var(--radius-md);
 	border: 1px solid var(--border-color);
-	background: var(--bg-primary);
+	background: var(--bg-secondary);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .collab-panel__item:hover {
-	background: var(--bg-secondary);
+	border-color: var(--border-hover);
+	box-shadow: var(--shadow-sm);
 }
 
-.collab-panel__info {
+.collab-panel__avatar {
+	flex-shrink: 0;
+	width: 44px;
+	height: 44px;
+	border-radius: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 14px;
+	font-weight: 700;
+	color: var(--accent);
+	background: var(--accent-light);
+	border: 1px solid rgba(var(--accent-rgb, 37, 99, 235), 0.2);
+}
+
+.collab-panel__main {
+	flex: 1;
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: 4px;
+}
+
+.collab-panel__topline {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
 	min-width: 0;
 }
 
 .collab-panel__name {
-	font-size: 13px;
+	font-size: 15px;
 	font-weight: 600;
 	color: var(--text-primary);
 	overflow: hidden;
@@ -2397,7 +2482,7 @@ watch(
 }
 
 .collab-panel__email {
-	font-size: 11px;
+	font-size: 12px;
 	color: var(--text-tertiary);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2405,11 +2490,11 @@ watch(
 }
 
 .collab-panel__status {
+	flex-shrink: 0;
 	font-size: 11px;
-	font-weight: 500;
-	padding: 2px 8px;
+	font-weight: 600;
+	padding: 4px 10px;
 	border-radius: 999px;
-	width: fit-content;
 	background: var(--bg-tertiary);
 	color: var(--text-secondary);
 }
@@ -2450,13 +2535,40 @@ watch(
 	cursor: not-allowed;
 }
 
+.collab-panel__kick-confirm {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--text-primary);
+}
+
 .content-editor__invite-input {
 	width: 100%;
 	padding: 10px 12px;
 	font-size: 14px;
-	border: 1px solid rgba(127, 127, 127, 0.35);
-	border-radius: 8px;
+	font-family: inherit;
+	color: var(--text-primary);
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
 	box-sizing: border-box;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.content-editor__invite-input::placeholder {
+	color: var(--text-tertiary);
+}
+
+.content-editor__invite-input:hover:not(:disabled) {
+	border-color: var(--border-hover);
+	background: var(--bg-tertiary);
+}
+
+.content-editor__invite-input:focus {
+	outline: none;
+	border-color: var(--accent);
+	background: var(--bg-primary);
+	box-shadow: 0 0 0 3px var(--accent-light);
 }
 
 .content-editor__toast {
@@ -2464,14 +2576,24 @@ watch(
 	top: 24px;
 	left: 50%;
 	transform: translateX(-50%);
-	padding: 12px 20px;
-	background: #16a34a;
+	padding: 12px 22px;
 	color: white;
 	font-size: 14px;
 	font-weight: 500;
 	border-radius: var(--radius-md);
 	box-shadow: var(--shadow-lg);
 	z-index: 9999;
+	max-width: min(520px, calc(100vw - 32px));
+	text-align: center;
+	line-height: 1.4;
+}
+
+.content-editor__toast--success {
+	background: #16a34a;
+}
+
+.content-editor__toast--error {
+	background: #dc2626;
 }
 
 .toast-enter-active,
