@@ -109,6 +109,36 @@ const defToolbars = computed(() => [
 	h(DownloadPdfToolbarButton, { documentId: props.documentId }),
 ]);
 
+/** Прокрутка часто на `.md-editor-content`, а не только на `.cm-scroller` — сохраняем цепочку вверх. */
+function snapshotAncestorScrollers(start: HTMLElement | null): Array<{
+	el: HTMLElement;
+	top: number;
+	left: number;
+}> {
+	const snaps: Array<{ el: HTMLElement; top: number; left: number }> = [];
+	let el: HTMLElement | null = start;
+	for (let depth = 0; depth < 16 && el; depth++, el = el.parentElement) {
+		if (el.classList.contains('markdown-editor')) break;
+		const dy = el.scrollHeight - el.clientHeight;
+		const dx = el.scrollWidth - el.clientWidth;
+		if (dy > 1 || dx > 1) {
+			snaps.push({ el, top: el.scrollTop, left: el.scrollLeft });
+		}
+	}
+	return snaps;
+}
+
+function restoreScrollSnapshots(snaps: Array<{ el: HTMLElement; top: number; left: number }>) {
+	for (const s of snaps) {
+		try {
+			s.el.scrollTop = s.top;
+			s.el.scrollLeft = s.left;
+		} catch {
+			/* detached */
+		}
+	}
+}
+
 const handleUploadImg: UploadImgEvent = async (files, callBack) => {
 	if (!props.documentId) {
 		console.error('Document ID is required for image upload');
@@ -141,9 +171,37 @@ useMarkdownEditorShortcuts({
 watch(
 	() => props.modelValue,
 	async (newValue) => {
-		if (localContent.value !== newValue) {
-			localContent.value = newValue;
+		if (localContent.value === newValue) {
+			return;
 		}
+
+		const view = mdEditorRef.value?.getEditorView?.() ?? getEditorViewFromDOM() ?? null;
+		if (view) {
+			const current = view.state.doc.toString();
+			if (current !== newValue) {
+				const snaps = snapshotAncestorScrollers(view.scrollDOM as HTMLElement);
+				view.dispatch({
+					changes: { from: 0, to: view.state.doc.length, insert: newValue },
+					scrollIntoView: false,
+				});
+				localContent.value = newValue;
+				await nextTick();
+				ensureAiExtensionInstalled();
+				const restoreAll = () => restoreScrollSnapshots(snaps);
+				restoreAll();
+				requestAnimationFrame(() => {
+					restoreAll();
+					requestAnimationFrame(restoreAll);
+				});
+				return;
+			}
+			localContent.value = newValue;
+			await nextTick();
+			ensureAiExtensionInstalled();
+			return;
+		}
+
+		localContent.value = newValue;
 		await nextTick();
 		ensureAiExtensionInstalled();
 	},

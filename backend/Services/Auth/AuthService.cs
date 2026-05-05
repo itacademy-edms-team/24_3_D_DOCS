@@ -146,7 +146,7 @@ public class AuthService : IAuthService
         return await GenerateTokensForUser(user);
     }
 
-    public async Task<TokenResponseDTO> RefreshTokenAsync(RefreshTokenRequestDTO request)
+    public async Task<LoginResponseDTO> RefreshTokenAsync(RefreshTokenRequestDTO request)
     {
         var refreshToken = request.RefreshToken;
 
@@ -202,12 +202,20 @@ public class AuthService : IAuthService
             refreshTokenTtl
         );
 
-        return new TokenResponseDTO
+        return new LoginResponseDTO
         {
             AccessToken = newAccessToken,
             RefreshToken = newRefreshToken,
             AccessTokenExpiration = accessTokenExpiration,
-            RefreshTokenExpiration = refreshTokenExpiration
+            RefreshTokenExpiration = refreshTokenExpiration,
+            User = new UserDTO
+            {
+                Id = user.Id,
+                Email = user.Email,
+                Name = user.Name,
+                Role = user.Role,
+                CreatedAt = user.CreatedAt
+            }
         };
     }
 

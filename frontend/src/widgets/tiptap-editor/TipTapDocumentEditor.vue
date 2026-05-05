@@ -464,6 +464,10 @@ watch(
 		if (normalizeMarkdownForCompare(current, md)) {
 			return;
 		}
+		const scrollHost = ed.view.dom.closest('.tiptap-document-editor__surface') as HTMLElement | null;
+		const scrollTop = scrollHost?.scrollTop ?? 0;
+		const scrollLeft = scrollHost?.scrollLeft ?? 0;
+
 		isApplyingExternalUpdate = true;
 		ed.commands.setContent(markdownToEditorInput(md), {
 			contentType: 'markdown',
@@ -471,6 +475,18 @@ watch(
 		});
 		queueMicrotask(() => {
 			isApplyingExternalUpdate = false;
+			if (!scrollHost) {
+				return;
+			}
+			const restore = () => {
+				scrollHost.scrollTop = scrollTop;
+				scrollHost.scrollLeft = scrollLeft;
+			};
+			restore();
+			requestAnimationFrame(() => {
+				restore();
+				requestAnimationFrame(restore);
+			});
 		});
 	},
 );

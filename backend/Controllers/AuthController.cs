@@ -96,7 +96,7 @@ public class AuthController : ControllerBase
     /// Обновление токенов через Refresh Token
     /// </summary>
     [HttpPost("refresh")]
-    [ProducesResponseType(typeof(TokenResponseDTO), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(LoginResponseDTO), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequestDTO request)
     {

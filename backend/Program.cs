@@ -33,6 +33,7 @@ using RusalProject.Services.Chat;
 using RusalProject.Services.Ollama;
 using RusalProject.Services.AgentSources;
 using RusalProject.Services.EditorHotkeys;
+using RusalProject.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -128,6 +129,7 @@ builder.Services.AddSingleton<IMinioService, MinioService>();
 
 // Document Services
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddSingleton<IDocumentEditorRealtimeService, DocumentEditorRealtimeService>();
 builder.Services.AddScoped<ICollabService, CollabService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 // Attachment Services
@@ -207,9 +209,26 @@ builder.Services.AddAuthentication(options =>
         NameClaimType = JwtRegisteredClaimNames.Sub,
         RoleClaimType = ClaimTypes.Role
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken)
+                && path.StartsWithSegments("/hubs/document-editor"))
+            {
+                context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddAuthorization();
+
+builder.Services.AddSignalR();
 
 // CORS Configuration
 builder.Services.AddCors(options =>
@@ -336,5 +355,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<DocumentEditorHub>("/hubs/document-editor");
 
 app.Run();

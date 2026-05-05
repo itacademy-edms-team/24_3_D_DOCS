@@ -25,7 +25,7 @@ public interface IAuthService
     /// <summary>
     /// Обновление токенов через Refresh Token
     /// </summary>
-    Task<TokenResponseDTO> RefreshTokenAsync(RefreshTokenRequestDTO request);
+    Task<LoginResponseDTO> RefreshTokenAsync(RefreshTokenRequestDTO request);
 
     /// <summary>
     /// Выход пользователя (отзыв токенов)

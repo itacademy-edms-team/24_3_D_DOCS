@@ -26,6 +26,7 @@ public class DocumentService : IDocumentService
     private readonly IMinioService _minioService;
     private readonly IProfileService _profileService;
     private readonly ITitlePageService _titlePageService;
+    private readonly IDocumentEditorRealtimeService _documentEditorRealtime;
     private readonly ILogger<DocumentService> _logger;
 
     public DocumentService(
@@ -33,12 +34,14 @@ public class DocumentService : IDocumentService
         IMinioService minioService,
         IProfileService profileService,
         ITitlePageService titlePageService,
+        IDocumentEditorRealtimeService documentEditorRealtime,
         ILogger<DocumentService> logger)
     {
         _context = context;
         _minioService = minioService;
         _profileService = profileService;
         _titlePageService = titlePageService;
+        _documentEditorRealtime = documentEditorRealtime;
         _logger = logger;
     }
 
@@ -84,6 +87,20 @@ public class DocumentService : IDocumentService
                     || d.Collaborators.Any(c =>
                         c.UserId == userId && c.Status == DocumentCollaborator.StatusAccepted)),
             ct);
+
+    private async Task<string> GetUserDisplayNameAsync(Guid userId, CancellationToken ct = default)
+    {
+        var row = await _context.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.Name, u.Email })
+            .FirstOrDefaultAsync(ct);
+        if (row == null)
+        {
+            return "Пользователь";
+        }
+
+        return string.IsNullOrWhiteSpace(row.Name) ? row.Email : row.Name;
+    }
 
     public async Task<DocumentDTO> CreateDocumentAsync(Guid userId, CreateDocumentDTO dto)
     {
@@ -313,6 +330,14 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("UpdateDocumentContentAsync: Content saved successfully to MinIO");
+
+        var editorName = await GetUserDisplayNameAsync(userId);
+        await _documentEditorRealtime.NotifyDocumentContentChangedAsync(
+            documentId,
+            userId,
+            editorName,
+            document.UpdatedAt);
+
         return new UpdateDocumentContentResultDto { Content = merged, HasConflicts = hasConflicts };
     }
 
@@ -417,6 +442,13 @@ public class DocumentService : IDocumentService
         _context.DocumentAiChanges.RemoveRange(groupChanges);
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
+        var editorName = await GetUserDisplayNameAsync(userId);
+        await _documentEditorRealtime.NotifyDocumentContentChangedAsync(
+            documentId,
+            userId,
+            editorName,
+            document.UpdatedAt);
     }
 
     public async Task RejectPendingDocumentChangeAsync(Guid documentId, Guid userId, string changeId)
@@ -624,6 +656,13 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Restored version {VersionId} for document {DocumentId}", versionId, documentId);
+
+        var editorName = await GetUserDisplayNameAsync(userId);
+        await _documentEditorRealtime.NotifyDocumentContentChangedAsync(
+            documentId,
+            userId,
+            editorName,
+            document.UpdatedAt);
     }
 
     public async Task DeleteVersionAsync(Guid documentId, Guid versionId, Guid userId)

@@ -217,7 +217,6 @@ async function markReadOnly(n: NotificationListItem) {
 
 async function clearAll() {
 	if (!items.value.length) return;
-	if (!confirm('Удалить все уведомления?')) return;
 	clearing.value = true;
 	try {
 		await NotificationsAPI.clearAll();

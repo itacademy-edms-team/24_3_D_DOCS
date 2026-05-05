@@ -67,12 +67,15 @@ onMounted(() => {
 });
 
 function onDisplayClick(e: MouseEvent) {
+	e.stopPropagation();
 	if (e.detail === 2) {
+		e.preventDefault();
 		startEdit();
 		return;
 	}
 	/* Одиночный щелчок + таймер конструктора ломал ввод в таблицах (курсор не оставался в ячейке). Конструктор — только Alt+щелчок. */
 	if (e.detail === 1 && e.altKey) {
+		e.preventDefault();
 		const fn = openFormulaBuilder;
 		if (!fn) return;
 		fn({
@@ -84,6 +87,13 @@ function onDisplayClick(e: MouseEvent) {
 				void nextTick(() => paint());
 			},
 		});
+		return;
+	}
+	if (e.detail === 1) {
+		const pos = props.getPos();
+		if (typeof pos === 'number') {
+			props.editor.commands.setNodeSelection(pos);
+		}
 	}
 }
 
@@ -105,11 +115,23 @@ function onKeydown(e: KeyboardEvent) {
 	if (e.key === 'Enter') {
 		e.preventDefault();
 		commit();
+		const pos = props.getPos();
+		if (typeof pos === 'number') {
+			void nextTick(() => {
+				props.editor.commands.setNodeSelection(pos);
+			});
+		}
 	}
 	if (e.key === 'Escape') {
 		isEditing.value = false;
 		localFormula.value = (props.node.attrs.formula as string) || '';
 		void nextTick(() => paint());
+		const pos = props.getPos();
+		if (typeof pos === 'number') {
+			void nextTick(() => {
+				props.editor.commands.setNodeSelection(pos);
+			});
+		}
 	}
 }
 </script>

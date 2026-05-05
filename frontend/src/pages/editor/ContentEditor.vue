@@ -632,7 +632,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick, provide } from 'vue';
-import { onClickOutside } from '@vueuse/core';
+import { onClickOutside, useDebounceFn } from '@vueuse/core';
 import { useRoute, useRouter } from 'vue-router';
 import Button from '@/shared/ui/Button/Button.vue';
 import MarkdownEditor from '@/widgets/markdown-editor/MarkdownEditor.vue';
@@ -648,7 +648,10 @@ import Icon from '@/components/Icon.vue';
 import { useAuthStore } from '@/entities/auth/store/authStore';
 import ProfileAPI from '@/entities/profile/api/ProfileAPI';
 import TitlePageAPI from '@/entities/title-page/api/TitlePageAPI';
-import { useDebounceFn } from '@vueuse/core';
+import {
+	startDocumentEditorRealtime,
+	type DocumentContentChangedPayload,
+} from '@/features/document-collab/documentEditorRealtime';
 import type { Document, DocumentAiChange, DocumentMetadata, TocItem, DocumentVersion } from '@/entities/document/types';
 import type { Profile } from '@/entities/profile/types';
 
@@ -743,7 +746,7 @@ function bumpTiptapContentKey() {
 	tiptapContentKey.value += 1;
 }
 
-const showPreview = ref(true);
+const showPreview = ref(false);
 const swapped = ref(false);
 const activeTab = ref<'editor' | 'titlePage'>('editor');
 const showExportPdfModal = ref(false);
@@ -869,7 +872,7 @@ async function reloadDocumentFromServer() {
 		if (doc) {
 			content.value = doc.content || '';
 			baseContentSnapshot.value = doc.content || '';
-			bumpTiptapContentKey();
+			/* Не bumpTiptapContentKey: remount сбрасывает прокрутку; TipTap сам подтянет modelValue. */
 			aiPendingChanges.value = doc.aiChanges || [];
 			document.value = document.value
 				? {
@@ -919,6 +922,55 @@ const handleNameChange = useDebounceFn(async () => {
 }, 1000);
 
 let contentSaveTimer: ReturnType<typeof setTimeout> | null = null;
+/** После успешного PUT контента — игнор своего же push из SignalR. */
+let lastLocalContentSaveAt = 0;
+/** В момент старта PUT (до await) — иначе hub часто приходит раньше, чем выставится lastLocalContentSaveAt. */
+let lastLocalContentSaveStartedAt = 0;
+
+function isSameDocumentUserId(a: string | undefined, b: string | undefined): boolean {
+	if (!a || !b) return false;
+	return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+let collabHubStop: (() => Promise<void>) | null = null;
+
+async function teardownCollabHub() {
+	if (collabHubStop) {
+		try {
+			await collabHubStop();
+		} catch {
+			// ignore
+		}
+		collabHubStop = null;
+	}
+}
+
+async function setupCollabHub() {
+	await teardownCollabHub();
+	if (!documentId.value || !authStore.isAuth) return;
+
+	const dId = documentId.value;
+	const onRemoteContentChanged = (payload: DocumentContentChangedPayload) => {
+		if (payload.documentId !== dId) return;
+		const myId = authStore.user?.id;
+		const fromSelf = isSameDocumentUserId(payload.editorUserId, myId);
+		const now = Date.now();
+		const justSavingLocally =
+			fromSelf &&
+			(now - lastLocalContentSaveAt < 8000 || now - lastLocalContentSaveStartedAt < 8000);
+		if (justSavingLocally) {
+			return;
+		}
+		cancelPendingContentSave();
+		void reloadDocumentFromServer();
+	};
+
+	try {
+		collabHubStop = await startDocumentEditorRealtime(dId, onRemoteContentChanged);
+	} catch (e) {
+		console.warn('Collaboration hub: не удалось подключиться', e);
+	}
+}
 
 function cancelPendingContentSave() {
 	if (contentSaveTimer !== null) {
@@ -935,6 +987,7 @@ const handleContentChange = (newContent: string) => {
 	cancelPendingContentSave();
 	contentSaveTimer = setTimeout(async () => {
 		contentSaveTimer = null;
+		lastLocalContentSaveStartedAt = Date.now();
 		try {
 			const result = await DocumentAPI.updateContent(
 				documentId.value,
@@ -946,8 +999,9 @@ const handleContentChange = (newContent: string) => {
 				? { ...document.value, content: result.content }
 				: document.value;
 			baseContentSnapshot.value = result.content;
-			bumpTiptapContentKey();
+			lastLocalContentSaveAt = Date.now();
 			if (result.hasConflicts) {
+				bumpTiptapContentKey();
 				mergeConflictBannerVisible.value = true;
 				showToast('Обнаружен конфликт при слиянии — см. баннер выше');
 			}
@@ -1390,9 +1444,11 @@ onClickOutside(versionsDropdownRef, () => {
 
 watch(
 	() => route.params.id as string,
-	(newId, oldId) => {
+	async (newId, oldId) => {
 		if (newId && newId !== oldId) {
-			loadDocument();
+			await teardownCollabHub();
+			await loadDocument();
+			await setupCollabHub();
 		}
 	},
 	{ immediate: false }
@@ -1400,6 +1456,7 @@ watch(
 
 onMounted(async () => {
 	await loadDocument();
+	await setupCollabHub();
 
 	// Load profiles and title pages for selectors
 	await Promise.all([loadProfiles(), loadTitlePages()]);
@@ -1408,7 +1465,8 @@ onMounted(async () => {
 	window.addEventListener('resize', handleWindowResize);
 });
 
-onUnmounted(() => {
+onUnmounted(async () => {
+	await teardownCollabHub();
 	window.removeEventListener('resize', handleWindowResize);
 });
 
